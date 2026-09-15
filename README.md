@@ -37,27 +37,53 @@ npx tsx src/cli/index.ts chains
 
 ### As a Claude Code plugin
 
-The repo ships a plugin manifest. Point Claude Code at this directory and the MCP server
-is registered automatically:
+Build first (`npm install && npm run build`) — the plugin runs the compiled server.
+
+The repo is its own single-plugin marketplace, so installing is two steps. Note that the
+marketplace path must be in `./path` or absolute form; a bare `.` is rejected.
+
+```bash
+claude plugin marketplace add ./Singularity-Agent   # run from the PARENT directory
+claude plugin install singularity-agent@singularity
+```
+
+Or the same thing from inside a Claude Code session:
 
 ```
-/plugin install /path/to/Singularity-Agent
+/plugin marketplace add ./Singularity-Agent
+/plugin install singularity-agent@singularity
 ```
+
+`/plugin install` takes a `plugin-name@marketplace-name` id, never a filesystem path —
+passing a path fails with "Marketplace not found".
+
+Verify with `claude plugin list`. To update after a rebuild, bump `version` in both
+`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then
+`claude plugin update singularity-agent`.
 
 ### As a plain MCP server
 
-Add to your MCP client config:
+The quickest route — no marketplace, no plugin:
+
+```bash
+claude mcp add singularity -- node /absolute/path/to/Singularity-Agent/dist/mcp/server.js
+```
+
+Or add it to any MCP client's config by hand:
 
 ```json
 {
   "mcpServers": {
     "singularity": {
       "command": "node",
-      "args": ["/path/to/Singularity-Agent/dist/mcp/server.js"]
+      "args": ["/absolute/path/to/Singularity-Agent/dist/mcp/server.js"]
     }
   }
 }
 ```
+
+Working inside this repo, the committed `.mcp.json` already does this with a relative
+path, so Claude Code offers the server on startup with nothing to configure.
 
 ---
 

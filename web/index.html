@@ -969,33 +969,54 @@
         runs the same commands you would and reads the actual, current answer off the chain.
       </p>
 
-      <h3>Installing it as a Claude Code plugin</h3>
+      <h3>The quickest way</h3>
+      <p>
+        One command, run from anywhere. Use the full path to wherever you cloned the repo,
+        and make sure you've run <code>npm run build</code> first.
+      </p>
       <figure class="term">
         <div class="term-bar">
-          <span class="prompt">&gt;</span>
-          <code class="cmd">/plugin install /path/to/Singularity-Agent</code>
-          <button class="copy" type="button" data-copy="/plugin install /path/to/Singularity-Agent">Copy</button>
+          <span class="prompt">$</span>
+          <code class="cmd">claude mcp add singularity -- node /path/to/Singularity-Agent/dist/mcp/server.js</code>
+          <button class="copy" type="button" data-copy="claude mcp add singularity -- node /path/to/Singularity-Agent/dist/mcp/server.js">Copy</button>
         </div>
-        <pre><code><span class="ok">✓</span> singularity-agent installed <span class="dim">— 10 tools registered</span></code></pre>
+        <pre><code><span class="ok">✓</span> Added stdio MCP server singularity</code></pre>
       </figure>
 
-      <h3>Or wiring it into any MCP client</h3>
-      <p>Add this to your client's MCP configuration file:</p>
+      <h3>Or install it as a proper plugin</h3>
+      <p>
+        The repo doubles as its own single-plugin marketplace, so this is two steps. Run the
+        first one from the folder <em>containing</em> Singularity-Agent — the path has to be in
+        <code>./name</code> or absolute form, and a bare <code>.</code> is rejected.
+      </p>
       <figure class="term">
         <div class="term-bar">
-          <span class="prompt">{}</span>
-          <code class="cmd">mcp config</code>
-          <button class="copy" type="button" data-copy='{"mcpServers":{"singularity":{"command":"node","args":["/path/to/Singularity-Agent/dist/mcp/server.js"]}}}'>Copy</button>
+          <span class="prompt">$</span>
+          <code class="cmd">claude plugin marketplace add ./Singularity-Agent</code>
+          <button class="copy" type="button" data-copy="claude plugin marketplace add ./Singularity-Agent">Copy</button>
         </div>
-        <pre><code>{
-  <span class="acc">"mcpServers"</span>: {
-    <span class="acc">"singularity"</span>: {
-      <span class="acc">"command"</span>: <span class="dim">"node"</span>,
-      <span class="acc">"args"</span>: [<span class="dim">"/path/to/Singularity-Agent/dist/mcp/server.js"</span>]
-    }
-  }
-}</code></pre>
+        <pre><code><span class="ok">✓</span> Successfully added marketplace: singularity</code></pre>
       </figure>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">claude plugin install singularity-agent@singularity</code>
+          <button class="copy" type="button" data-copy="claude plugin install singularity-agent@singularity">Copy</button>
+        </div>
+        <pre><code><span class="ok">✓</span> Successfully installed plugin: singularity-agent@singularity <span class="dim">(scope: user)</span></code></pre>
+      </figure>
+
+      <div class="callout caution">
+        <strong><code>/plugin install</code> does not take a folder path</strong>
+        <span>
+          It expects a <code>plugin-name@marketplace-name</code> id. Handing it a path fails
+          with “Marketplace not found” — add the marketplace first, as above. Both commands
+          also work inside a session as <code>/plugin marketplace add</code> and
+          <code>/plugin install</code>.
+        </span>
+      </div>
+
+      <p>Check it landed with <code>claude plugin list</code>.</p>
 
       <h3>Then just ask</h3>
       <ul>

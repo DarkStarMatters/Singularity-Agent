@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "singularity": {
-      "command": "npx",
-      "args": ["-y", "singularity-agent", "mcp"],
+      "command": "node",
+      "args": ["dist/mcp/server.js"],
       "env": {}
     }
   }

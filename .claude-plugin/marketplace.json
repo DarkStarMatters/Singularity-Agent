@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "singularity",
+  "description": "Singularity-Agent — a universal, read-only blockchain client for Claude Code.",
+  "owner": {
+    "name": "Deadsg"
+  },
+  "plugins": [
+    {
+      "name": "singularity-agent",
+      "description": "Universal blockchain client for EVM, Solana, Bitcoin and Cosmos. Read-only: resolves addresses and names, reads balances and transactions, decodes calldata, and builds unsigned transactions for you to sign in your own wallet. Holds no keys.",
+      "author": {
+        "name": "Deadsg"
+      },
+      "source": "./",
+      "category": "development",
+      "version": "0.1.0",
+      "homepage": "https://github.com/Deadsg/Singularity-Agent"
+    }
+  ]
+}
