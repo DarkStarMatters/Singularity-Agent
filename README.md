@@ -101,7 +101,19 @@ npm run x-bot    # X mentions and replies
 
 ### Telegram
 
-| Where | When it answers |
+Every tool the CLI and MCP server expose has a bot command, and a test asserts
+that mapping so the three cannot drift:
+
+| Command | | Command | |
+| --- | --- | --- | --- |
+| `/balance` | one address, one chain | `/read` | call a view function |
+| `/portfolio` | one address, many chains | `/decode` | decode EVM calldata |
+| `/tx` | look up a transaction | `/transfer` | build an **unsigned** transfer |
+| `/resolve` | identify an address or hash | `/health` | which RPCs are reachable |
+| `/fees` | current gas conditions | `/chains` | what is supported |
+| `/block` | fetch a block | `/forget` | drop this chat's history |
+
+| Where | When it answers conversationally |
 | --- | --- |
 | DM | every message |
 | Group | a command, an @mention of this bot, or a reply to one of its own messages |
@@ -133,6 +145,35 @@ it on never fires a burst of replies at old posts.
 Replies obey `X_POSTING_ENABLED` exactly as posts do. Left off, the listener
 reads mentions, composes answers and logs them without sending: the honest way
 to find out what the agent would say before letting it say it.
+
+#### Unprompted project updates
+
+With `X_UPDATE_INTERVAL_HOURS` set (default 6), the listener also posts about
+the project on its own. The risk with an agent that posts about itself on a
+timer is obvious — it invents a release that never happened — so the model is
+never asked "what is new?". It is handed a fact sheet read out of the
+repository (the real version, the real chain registry, real commit subjects)
+and told that anything not in it does not exist.
+
+Each post is written from a rotating angle — coverage, capability, safety,
+changelog, philosophy — and angles used recently are excluded, so five posts
+cover five different things before any repeats. The changelog angle is skipped
+entirely when there are no commits to report, and a model that returns nothing
+posts nothing: an empty completion means "nothing to say", never the chat
+fallback. Real output, all five angles, from this repo:
+
+```
+[coverage]   Reaches 23 chains: ethereum, base, arbitrum, solana, bitcoin, cosmoshub.
+[capability] Get balances across many chains with one request.
+[safety]     Singularity reads public chain data only. It builds unsigned transfers
+             for you to sign in your own wallet but holds no keys and cannot sign
+             or broadcast.
+[changelog]  v0.0.2 answers mentions and replies on Telegram and X.
+```
+
+The same thing is available on demand through elizaOS as `POST_PROJECT_UPDATE`
+("post an update about what chains we support"), sharing the grounding code, so
+an agent cannot talk its way past it either.
 
 #### The spam filter
 
@@ -195,6 +236,7 @@ framework in. Install it in the project that runs the agent.
 | `SINGULARITY_CHAINS` | a bare "what do you support" |
 | `SINGULARITY_BUILD_TRANSFER` | a chain, a recipient and an amount — returns an **unsigned** draft |
 | `POST_TO_X` | "post", "tweet", "publish" — see the gate below |
+| `POST_PROJECT_UPDATE` | "post an update", "announce" — grounded in repo facts |
 
 Two providers run before each reply: `SINGULARITY_CHAINS` tells the model which chain
 ids actually exist, and `X_POSTING_STATUS` tells it whether a post will really go out,

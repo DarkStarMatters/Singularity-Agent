@@ -19,6 +19,10 @@ export interface XState {
   sinceId?: string;
   /** The account the cursor belongs to; a different one invalidates it. */
   userId?: string;
+  /** When the last unprompted project update went out, as epoch ms. */
+  lastUpdateAt?: number;
+  /** Angles used recently, newest first, so posts do not repeat themselves. */
+  recentAngles?: string[];
   updatedAt?: string;
 }
 
@@ -35,6 +39,10 @@ export function loadState(path = statePath()): XState {
     return {
       ...(typeof parsed.sinceId === 'string' ? { sinceId: parsed.sinceId } : {}),
       ...(typeof parsed.userId === 'string' ? { userId: parsed.userId } : {}),
+      ...(typeof parsed.lastUpdateAt === 'number' ? { lastUpdateAt: parsed.lastUpdateAt } : {}),
+      ...(Array.isArray(parsed.recentAngles)
+        ? { recentAngles: parsed.recentAngles.filter((a): a is string => typeof a === 'string') }
+        : {}),
     };
   } catch {
     return {};

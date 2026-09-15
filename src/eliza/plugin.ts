@@ -13,6 +13,7 @@
 import type { Plugin } from '@elizaos/core';
 import { chainActions } from './actions.js';
 import { postToXAction } from './post-action.js';
+import { postProjectUpdateAction } from './update-action.js';
 import { providers } from './providers.js';
 import { grokModels } from './grok-model.js';
 import { loadXConfig } from '../x/client.js';
@@ -27,7 +28,7 @@ export const singularityPlugin: Plugin = {
   // provider still thinks with Grok. Actions are unaffected by priority.
   priority: 100,
 
-  actions: [...chainActions, postToXAction],
+  actions: [...chainActions, postToXAction, postProjectUpdateAction],
   providers,
   models: grokModels,
 

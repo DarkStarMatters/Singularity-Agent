@@ -11,6 +11,7 @@
 import type {
   Amount,
   BalanceEntry,
+  DecodedCall,
   FeeEstimate,
   NormalizedBlock,
   NormalizedTx,
@@ -219,6 +220,83 @@ export function formatUnsignedTx(tx: UnsignedTx): string {
   }
 
   lines.push('', '<i>Singularity holds no keys. Nothing here has been signed or broadcast.</i>');
+  return lines.join('\n');
+}
+
+/**
+ * A decoded call. The `note` branch matters: an unrecognized selector is a
+ * useful answer ("this is not a function I know"), not a failure, and saying so
+ * is better than showing an empty argument list as if it decoded cleanly.
+ */
+export function formatDecoded(call: DecodedCall): string {
+  const lines = [bold('Decoded calldata'), ''];
+
+  if (call.signature) lines.push(`${bold('Signature')}: ${code(call.signature)}`);
+  else if (call.name) lines.push(`${bold('Function')}: ${code(call.name)}`);
+  if (call.selector) lines.push(`${bold('Selector')}: ${code(call.selector)}`);
+
+  if (call.args?.length) {
+    lines.push('', bold('Arguments'));
+    call.args.forEach((arg, index) => {
+      const label = arg.name || `arg${index}`;
+      const type = arg.type ? ` <i>(${esc(arg.type)})</i>` : '';
+      lines.push(`  ${esc(label)}${type}: ${code(arg.value)}`);
+    });
+  }
+
+  if (call.note) lines.push('', `<i>${esc(call.note)}</i>`);
+  return lines.join('\n');
+}
+
+/**
+ * Contract reads return whatever the function returns, so there is no fixed
+ * shape to format. Scalars are shown plainly and anything structured goes in a
+ * code block, which is the only honest rendering of an unknown value.
+ */
+export function formatReadResult(chain: string, address: string, value: unknown): string {
+  const lines = [`${bold('Contract read')} — ${esc(chain)}`, code(shortAddress(address)), ''];
+
+  if (value === null || value === undefined) {
+    lines.push('<i>The call returned nothing.</i>');
+  } else if (typeof value === 'object') {
+    lines.push(`<pre>${esc(JSON.stringify(value, null, 2))}</pre>`);
+  } else {
+    lines.push(code(String(value)));
+  }
+
+  return lines.join('\n');
+}
+
+export interface EndpointHealth {
+  chain: string;
+  ok: boolean;
+  ms: number;
+  error?: string;
+}
+
+/**
+ * Endpoint health, failures first — a list of 40 green ticks buries the one
+ * red line that the person actually needs to see.
+ */
+export function formatHealth(results: EndpointHealth[]): string {
+  const failed = results.filter((r) => !r.ok);
+  const healthy = results.filter((r) => r.ok);
+
+  const lines = [
+    bold('Endpoint health'),
+    `${healthy.length}/${results.length} reachable`,
+    '',
+  ];
+
+  for (const result of failed) {
+    lines.push(`❌ ${bold(result.chain)} — ${esc(result.error ?? 'unreachable')}`);
+  }
+  if (failed.length && healthy.length) lines.push('');
+
+  for (const result of healthy) {
+    lines.push(`✅ ${esc(result.chain)} <i>${esc(result.ms)}ms</i>`);
+  }
+
   return lines.join('\n');
 }
 

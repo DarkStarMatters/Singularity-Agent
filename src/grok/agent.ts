@@ -24,6 +24,15 @@ export interface AgentOptions {
   temperature?: number;
   /** Set false for a surface where tool answers are not wanted. */
   tools?: boolean;
+  /**
+   * Return an empty string instead of a fallback when the model says nothing.
+   *
+   * A chat surface wants the fallback: a person waiting on a reply needs to be
+   * told something went wrong. An autonomous poster wants the opposite — an
+   * empty completion means "nothing to say", and publishing "I could not put an
+   * answer together" to X would be worse than silence.
+   */
+  allowEmpty?: boolean;
   memory?: ConversationMemory;
 }
 
@@ -46,6 +55,15 @@ export class GrokAgent {
   ) {
     this.memory = options.memory ?? new ConversationMemory();
     this.maxToolRounds = options.maxToolRounds ?? 4;
+  }
+
+  /**
+   * A sibling agent on the same client with different options and its own
+   * memory — used for one-off writing tasks, like composing a project update,
+   * that must not inherit a conversation's history or its fallback behaviour.
+   */
+  variant(overrides: Partial<AgentOptions>): GrokAgent {
+    return new GrokAgent(this.client, { ...this.options, memory: undefined, ...overrides });
   }
 
   /** Exposed so a surface can offer a "forget this thread" command. */
@@ -119,7 +137,11 @@ export class GrokAgent {
         continue;
       }
 
-      const text = assistant.content || EMPTY_FALLBACK;
+      const text = assistant.content || (this.options.allowEmpty ? '' : EMPTY_FALLBACK);
+
+      // Nothing said, and the caller asked for silence: do not remember the
+      // turn either, or the next prompt inherits an empty assistant message.
+      if (!text) return { text: '', toolRuns, rounds };
 
       // Only the conversation is remembered, not the tool traffic: replaying
       // tool calls would balloon every later prompt for no gain, since the

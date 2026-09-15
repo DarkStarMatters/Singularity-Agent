@@ -417,3 +417,47 @@ async function toAddress(input: string, chain: ChainSpec): Promise<string> {
     adapter.addressExpectation(chain, raw),
   );
 }
+
+export interface EndpointHealthResult {
+  chain: string;
+  ok: boolean;
+  /** Round-trip time of the probe, successful or not. */
+  ms: number;
+  error?: string;
+}
+
+/**
+ * Probe every configured endpoint and report which answer.
+ *
+ * Lives here rather than in the CLI because the Telegram bot needs it too, and
+ * "which of my RPCs are down" is the first question when balances start
+ * failing. Adapters that expose a cheap `healthCheck` use it; the rest fall
+ * back to fetching the chain tip, which every adapter supports.
+ *
+ * Failures are values, not throws: one unreachable chain must not hide the
+ * status of the other forty.
+ */
+export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthResult[]> {
+  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : allChains();
+
+  return Promise.all(
+    targets.map(async (chain): Promise<EndpointHealthResult> => {
+      const adapter = adapterFor(chain);
+      const started = Date.now();
+
+      try {
+        if (adapter.healthCheck) await adapter.healthCheck(chain);
+        else await adapter.getBlock(chain, 'latest');
+
+        return { chain: chain.id, ok: true, ms: Date.now() - started };
+      } catch (err) {
+        return {
+          chain: chain.id,
+          ok: false,
+          ms: Date.now() - started,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }),
+  );
+}

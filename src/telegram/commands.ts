@@ -12,8 +12,11 @@ import {
   formatBalance,
   formatBlock,
   formatChains,
+  formatDecoded,
   formatFees,
+  formatHealth,
   formatPortfolio,
+  formatReadResult,
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
@@ -138,6 +141,50 @@ const transfer: Command = {
   },
 };
 
+const decode: Command = {
+  name: 'decode',
+  usage: '/decode <hex calldata> [abi entry]',
+  summary: 'Decode EVM calldata into a function call',
+  async run(ctx) {
+    const data = required(ctx, 0, 'hex calldata', decode);
+
+    // Everything after the data is one human-readable ABI entry, which contains
+    // spaces — so it is rejoined rather than read as separate arguments.
+    const abi = ctx.args.slice(1).join(' ').trim();
+    return formatDecoded(ops.decode(data, abi ? [abi] : undefined));
+  },
+};
+
+const read: Command = {
+  name: 'read',
+  usage: '/read <chain> <address> [method] [abi entry]',
+  summary: 'Call a view function or read account data',
+  async run(ctx) {
+    const chain = required(ctx, 0, 'a chain', read);
+    const address = required(ctx, 1, 'a contract address', read);
+
+    const abi = ctx.args.slice(3).join(' ').trim();
+    const value = await ops.readContract({
+      chain,
+      address,
+      method: ctx.args[2],
+      ...(abi ? { abi } : {}),
+    });
+
+    return formatReadResult(chain, address, value);
+  },
+};
+
+const health: Command = {
+  name: 'health',
+  usage: '/health [chain,chain,…]',
+  summary: 'Check which RPC endpoints are reachable',
+  async run(ctx) {
+    const named = ctx.args[0]?.split(',').map((c) => c.trim()).filter(Boolean);
+    return formatHealth(await ops.checkEndpoints(named));
+  },
+};
+
 const forget: Command = {
   name: 'forget',
   usage: '/forget',
@@ -200,6 +247,9 @@ const COMMAND_LIST: Command[] = [
   block,
   chains,
   transfer,
+  read,
+  decode,
+  health,
   forget,
   chatid,
   help,

@@ -43,6 +43,10 @@ export async function main(): Promise<void> {
   const maxPerHour = positiveInt(process.env.X_MAX_REPLIES_PER_HOUR, 12);
   const maxPerAuthor = positiveInt(process.env.X_MAX_REPLIES_PER_AUTHOR_PER_HOUR, 3);
 
+  // 0 disables unprompted posting. Default 6h: four posts a day is present
+  // without being a nuisance, and each one costs a completion.
+  const updateIntervalHours = Number(process.env.X_UPDATE_INTERVAL_HOURS ?? 6);
+
   const listener = new XListener(
     new XClient(xConfig),
     createAgent(new GrokClient(grokConfig), 'x'),
@@ -54,6 +58,7 @@ export async function main(): Promise<void> {
         minAccountAgeDays: positiveInt(process.env.X_MIN_ACCOUNT_AGE_DAYS, 7),
         minFollowers: positiveInt(process.env.X_MIN_FOLLOWERS, 10),
       },
+      updateIntervalHours,
       ...(dryRun ? { dryRun: true } : {}),
     },
   );
@@ -67,6 +72,11 @@ export async function main(): Promise<void> {
   );
   console.error(
     `[singularity-x] spending cap: ${maxPerHour} replies/hour, ${maxPerAuthor} per account. Spam is filtered before the model is called.`,
+  );
+  console.error(
+    updateIntervalHours > 0
+      ? `[singularity-x] project updates every ${updateIntervalHours}h, written only from facts read out of the repo.`
+      : '[singularity-x] unprompted project updates are off (X_UPDATE_INTERVAL_HOURS=0).',
   );
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

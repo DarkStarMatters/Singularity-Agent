@@ -373,9 +373,13 @@ describe('grok model handlers', () => {
 });
 
 describe('plugin', () => {
-  it('exposes every action, including the gated one', () => {
-    expect(singularityPlugin.actions).toHaveLength(chainActions.length + 1);
-    expect(singularityPlugin.actions?.map((a) => a.name)).toContain('POST_TO_X');
+  it('exposes every action, including the two gated ones', () => {
+    // The chain lookups, plus POST_TO_X and POST_PROJECT_UPDATE.
+    expect(singularityPlugin.actions).toHaveLength(chainActions.length + 2);
+
+    const names = singularityPlugin.actions?.map((a) => a.name);
+    expect(names).toContain('POST_TO_X');
+    expect(names).toContain('POST_PROJECT_UPDATE');
   });
 
   it('gives every action a description the model can choose from', () => {

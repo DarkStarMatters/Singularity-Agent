@@ -22,6 +22,15 @@ import { GrokAgent } from '../grok/agent.js';
 import { XClient, type Mention, type PostResult } from './client.js';
 import { classifyMention, ReplyBudget, type SpamOptions, type SpamVerdict } from './spam.js';
 import { cursorFor, loadState, saveState, type XState } from './state.js';
+import {
+  collectProjectFacts,
+  isDue,
+  nextAngle,
+  postUpdate,
+  UPDATE_ANGLES,
+  type ComposedUpdate,
+  type UpdateAngle,
+} from './updates.js';
 
 export interface ListenerOptions {
   /** Seconds between polls. Below the tier's limit this just earns 429s. */
@@ -36,6 +45,8 @@ export interface ListenerOptions {
   maxRepliesPerAuthorPerHour?: number;
   /** Thresholds for the spam filter. */
   spam?: SpamOptions;
+  /** Hours between unprompted project updates. 0 disables them entirely. */
+  updateIntervalHours?: number;
   /** Test seam. */
   now?: () => number;
 }
@@ -118,12 +129,67 @@ export class XListener {
     }
   }
 
+  /**
+   * Posts an unprompted project update if one is due.
+   *
+   * Run from the poll loop rather than on its own timer: one clock is easier to
+   * reason about, and "due" is checked against a persisted timestamp, so a
+   * restart cannot turn a six-hourly post into a post on every boot.
+   */
+  async maybePostUpdate(): Promise<ComposedUpdate | null> {
+    const intervalHours = this.options.updateIntervalHours ?? 0;
+    if (intervalHours <= 0) return null;
+
+    const now = this.options.now?.() ?? Date.now();
+    const recent = (this.state.recentAngles ?? []).filter((angle): angle is UpdateAngle =>
+      (UPDATE_ANGLES as readonly string[]).includes(angle),
+    );
+
+    if (!isDue({ intervalHours, recentAngles: recent, ...(this.state.lastUpdateAt ? { lastPostedAt: this.state.lastUpdateAt } : {}) }, now)) {
+      return null;
+    }
+
+    const facts = collectProjectFacts();
+    const angle = nextAngle(recent, facts);
+
+    const update = await postUpdate(this.client, this.agent, facts, angle, {
+      ...(this.options.dryRun ? { dryRun: true } : {}),
+      now: () => now,
+    });
+
+    // The clock advances even when the model declined to write anything, or a
+    // dry run would compose a fresh post on every single poll.
+    this.state = {
+      ...this.state,
+      lastUpdateAt: now,
+      recentAngles: [angle, ...recent.filter((a) => a !== angle)].slice(0, UPDATE_ANGLES.length - 1),
+    };
+    saveState(this.state);
+
+    if (update) {
+      console.error(
+        update.result.published
+          ? `[singularity-x] posted a ${angle} update -> ${update.result.url}`
+          : `[singularity-x] DRAFT ${angle} update: ${update.text}`,
+      );
+    } else {
+      console.error(`[singularity-x] nothing worth saying for the ${angle} angle; skipped.`);
+    }
+
+    return update;
+  }
+
   private async loop(): Promise<void> {
     while (this.running) {
       let waitSeconds = this.pollSeconds;
 
       try {
         await this.pollOnce();
+        await this.maybePostUpdate().catch((err) => {
+          // A failed update must not stop the listener answering mentions.
+          console.error(`[singularity-x] update failed: ${(err as Error).message}`);
+          return null;
+        });
       } catch (err) {
         const message = (err as Error).message;
         // A 429 here means the tier's window is exhausted; backing off by a
