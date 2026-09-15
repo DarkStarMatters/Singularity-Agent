@@ -1,2 +1,2 @@
 /** Kept in step with package.json by hand; there is only one place to change it. */
-export const VERSION = '0.1.0';
+export const VERSION = '0.0.2';

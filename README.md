@@ -87,6 +87,82 @@ path, so Claude Code offers the server on startup with nothing to configure.
 
 ---
 
+## Conversational surfaces
+
+Two long-running bots share one brain. Both use the same agent loop
+(`src/grok/agent.ts`), the same persona (`src/grok/persona.ts`), and the same
+tool catalogue (`src/tools/catalog.ts`) that MCP exposes — so Grok can answer a
+chain question by *calling the tools*, not by guessing at a number.
+
+```bash
+npm run bot      # Telegram
+npm run x-bot    # X mentions and replies
+```
+
+### Telegram
+
+| Where | When it answers |
+| --- | --- |
+| DM | every message |
+| Group | a command, an @mention of this bot, or a reply to one of its own messages |
+
+Anything else in a group is other people's conversation and is ignored. Replies
+are threaded *and* open with an @ping, because a thread line is easy to miss in
+a fast group. `/forget` drops what it remembers of a chat.
+
+Mentions are read from Telegram's parsed entities rather than by searching the
+text, so `@YourBot` inside a code block or a URL is not a mention.
+
+> **Privacy mode.** BotFather enables it by default, and while it is on your bot
+> only *receives* commands and replies to its own messages — @mentions never
+> arrive. For the mention path to do anything, run `/setprivacy` → **Disable**.
+
+Model output is sanitized before sending (`src/telegram/html.ts`): a whitelist
+of four tags, http(s) links only, and if the markup does not come out balanced
+the whole reply is sent as escaped plain text. Telegram rejects a malformed
+message outright, so the failure mode being defended against is the user getting
+no reply at all.
+
+### X
+
+The listener polls mentions, answers them in thread, and persists a cursor to
+`~/.singularity/x-state.json`. On first run it does **not** answer the existing
+timeline — it records where the timeline is and starts from there, so switching
+it on never fires a burst of replies at old posts.
+
+Replies obey `X_POSTING_ENABLED` exactly as posts do. Left off, the listener
+reads mentions, composes answers and logs them without sending: the honest way
+to find out what the agent would say before letting it say it.
+
+#### The spam filter
+
+Every reply costs an xAI completion (several, with tool calls) plus one of the
+few writes the tier allows. So mentions are screened **before** the model is
+called, and the default is silence.
+
+The rule that carries it: a cold mention must be **on topic** — naming a chain,
+an asset, an address, or a hash. A question mark does not qualify, because
+"can I get a follow back?" is a question with nothing to answer.
+
+That ordering is empirical. Measured against this account's real mentions, a
+filter built on account age and follower count let **20 of 25** through: the
+accounts farming engagement are years old with six-figure follower counts, and
+the genuinely new accounts were the honest ones. Those signals are kept only for
+the zero-audience throwaway case, and nothing rests on them. With the on-topic
+rule and an engagement-farming phrase list, the same 25 mentions score **0
+replies** while genuine questions still pass.
+
+On top of the classifier sit hard caps — `X_MAX_REPLIES_PER_HOUR` and
+`X_MAX_REPLIES_PER_AUTHOR_PER_HOUR` — which see the pattern the classifier
+cannot: no single account can monopolize the budget, and a coordinated flood
+cannot drain it in one poll. Spam is rejected *before* it charges against the
+cap, so a flood cannot lock out the real questions arriving in the same window.
+
+Every skip is logged with its reason. Silence you cannot explain is
+indistinguishable from a broken bot.
+
+---
+
 ## As an elizaOS agent
 
 `singularity-agent/eliza` exports a plugin that gives an [elizaOS](https://elizaos.ai)
@@ -341,14 +417,19 @@ Architecture:
 ```
 src/core/       normalized types, chain registry, formatting, bech32/base58 codecs
 src/adapters/   one adapter per family, all implementing ChainAdapter
-src/tools/      operations shared by every front end
+src/tools/      operations, plus the tool catalogue every model front end reads
 src/mcp/        MCP server
 src/cli/        CLI and terminal rendering
-src/telegram/   Telegram bot
+src/grok/       xAI client, agent loop, persona, conversation memory
+src/telegram/   Telegram bot: engagement rules, HTML sanitizing
+src/x/          X client, OAuth 1.0a signing, mention listener, spam filter
 src/eliza/      elizaOS plugin, character and Grok model handlers
-src/x/          X API client and OAuth 1.0a signing
-src/grok/       xAI chat client
 ```
+
+`src/tools/catalog.ts` is the single definition of every tool — name,
+description and argument schema. The MCP server registers from it, and
+`src/grok/tools.ts` converts the same zod shapes into function-calling schemas.
+Improving a description improves it everywhere at once, which is the point.
 
 `src/eliza/` compiles in a second pass (`tsconfig.eliza.json`) because `@elizaos/core`
 ships declaration files with extensionless imports under `"type": "module"`, which

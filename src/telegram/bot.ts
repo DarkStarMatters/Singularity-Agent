@@ -16,9 +16,13 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS, type CommandContext } from './commands.js';
-import { formatError } from './format.js';
+import { esc, formatError } from './format.js';
 import { loadConfig, loadEnvFile, ConfigError, type TelegramConfig } from './config.js';
 import { TelegramApi, TelegramApiError, type TelegramMessage, type TelegramUpdate } from './api.js';
+import { decideEngagement, pingFor } from './engage.js';
+import { sanitizeModelHtml } from './html.js';
+import { GrokAgent, createAgent } from '../grok/agent.js';
+import { GrokClient, loadGrokConfig } from '../grok/client.js';
 
 /** `/name@bot args…` — the `@bot` part is present only in groups. */
 const COMMAND_PATTERN = /^\/([A-Za-z0-9_]{1,32})(?:@([A-Za-z0-9_]{1,32}))?(?:\s+([\s\S]*))?$/;
@@ -89,7 +93,11 @@ class RateLimiter {
 export class SingularityBot {
   private readonly api: TelegramApi;
   private readonly limiter: RateLimiter;
+  /** Null when no xAI key is configured: commands still work, chat does not. */
+  private readonly agent: GrokAgent | null;
   private username = '';
+  /** Needed to recognize replies to our own messages in a multi-bot group. */
+  private botId: number | undefined;
   private offset = 0;
   private running = false;
   /** Messages from before startup are stale; answering a backlog spams the group. */
@@ -98,11 +106,15 @@ export class SingularityBot {
   constructor(private readonly config: TelegramConfig) {
     this.api = new TelegramApi(config.token);
     this.limiter = new RateLimiter(config.rateLimitPerMinute);
+
+    const grok = loadGrokConfig();
+    this.agent = grok ? createAgent(new GrokClient(grok), 'telegram') : null;
   }
 
   async start(): Promise<void> {
     const me = await this.api.getMe();
     this.username = me.username ?? '';
+    this.botId = me.id;
     this.running = true;
     this.startedAt = Math.floor(Date.now() / 1000);
 
@@ -110,6 +122,11 @@ export class SingularityBot {
       ? `${this.config.allowedChats.size} allowlisted chat(s)`
       : 'any chat';
     console.error(`[singularity-bot] connected as @${this.username} — serving ${scope}`);
+    console.error(
+      this.agent
+        ? '[singularity-bot] Grok is configured — mentions, replies and DMs get conversational answers.'
+        : '[singularity-bot] no XAI_API_KEY — commands only, no conversation.',
+    );
 
     await this.poll();
   }
@@ -154,9 +171,14 @@ export class SingularityBot {
     if (message.date < this.startedAt) return;
 
     const parsed = parseCommand(message.text);
-    // Plain group conversation. Not ours.
-    if (!parsed) return;
-    if (!shouldHandle(parsed, message.chat.type, this.username)) return;
+    const isCommand = Boolean(parsed) && shouldHandle(parsed!, message.chat.type, this.username);
+
+    // A command aimed at another bot is not ours, and neither is it plain
+    // conversation we should answer — drop it outright.
+    if (parsed && !isCommand) return;
+
+    const engagement = decideEngagement(message, this.username, this.botId, isCommand);
+    if (!engagement.engage) return;
 
     if (!(await this.chatIsAllowed(message))) return;
 
@@ -168,7 +190,43 @@ export class SingularityBot {
       return;
     }
 
-    await this.runCommand(parsed, message);
+    if (isCommand) {
+      await this.runCommand(parsed!, message);
+      return;
+    }
+    await this.converse(message, engagement.text);
+  }
+
+  /**
+   * A free-text turn: Grok answers, calling chain tools as it needs them.
+   *
+   * The conversation key is the chat, not the user. A group thread reads as one
+   * conversation to the people in it, so it should to the model too — and
+   * `name` on each turn is what keeps the speakers apart.
+   */
+  private async converse(message: TelegramMessage, text: string): Promise<void> {
+    if (!this.agent) {
+      await this.reply(
+        message,
+        'I can only run commands right now — no xAI key is configured for conversation. Try /help.',
+      );
+      return;
+    }
+    if (!text) return;
+
+    // Typing shows up immediately; a tool-calling turn can take several seconds.
+    await this.api.sendChatAction(message.chat.id, 'typing').catch(() => undefined);
+
+    let body: string;
+    try {
+      const speaker = message.from?.username ?? message.from?.first_name;
+      const reply = await this.agent.respond(String(message.chat.id), text, speaker);
+      body = sanitizeModelHtml(reply.text);
+    } catch (err) {
+      body = formatError(err);
+    }
+
+    await this.reply(message, `${esc(pingFor(message))}${body}`);
   }
 
   /**
@@ -196,6 +254,7 @@ export class SingularityBot {
       chatId: message.chat.id,
       chatType: message.chat.type,
       config: this.config,
+      ...(this.agent ? { forget: () => this.agent!.forget(String(message.chat.id)) } : {}),
     };
 
     let text: string;

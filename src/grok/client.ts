@@ -1,9 +1,13 @@
 /**
  * Grok (xAI) client.
  *
- * The xAI API is OpenAI-compatible, so this is a small POST against
- * /v1/chat/completions rather than an SDK. Kept deliberately narrow: the agent
- * needs one call shape (prompt in, text out) and nothing else.
+ * The xAI API is OpenAI-compatible, so this is a POST against
+ * /v1/chat/completions rather than an SDK.
+ *
+ * Two call shapes are exposed. `chat()` is prompt-in/text-out and is what the
+ * elizaOS model handlers use. `complete()` returns the whole assistant message,
+ * including any tool calls, and is what the conversational agent loop in
+ * `agent.ts` drives — it has to see the tool calls to answer them.
  */
 import { SingularityError } from '../core/errors.js';
 
@@ -14,9 +18,43 @@ export interface GrokConfig {
   model: string;
 }
 
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Present on an assistant turn that wants tools run. */
+  tool_calls?: ToolCall[];
+  /** Required on a `tool` turn: which call this is the result of. */
+  tool_call_id?: string;
+  /** Distinguishes speakers in a group conversation. */
+  name?: string;
+}
+
+/** A function the model may call, in OpenAI/xAI function-calling form. */
+export interface ToolSchema {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: unknown;
+  };
+}
+
+export interface AssistantMessage {
+  content: string;
+  toolCalls: ToolCall[];
+}
+
+export interface ChatOptions {
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  tools?: ToolSchema[];
 }
 
 /** Returns null when no key is configured, so Grok stays optional. */
@@ -46,12 +84,23 @@ export class GrokError extends SingularityError {
 export class GrokClient {
   constructor(private readonly config: GrokConfig) {}
 
-  async chat(
-    messages: ChatMessage[],
-    options: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {},
-  ): Promise<string> {
+  /** Text in, text out. Throws if the model answered with tool calls only. */
+  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
+    const message = await this.complete(messages, options);
+
+    if (!message.content) {
+      throw new GrokError(200, 'response contained no message content');
+    }
+    return message.content;
+  }
+
+  /**
+   * One round trip. Returns whatever the model said, which may be text, tool
+   * calls, or both — the caller decides what to do next.
+   */
+  async complete(messages: ChatMessage[], options: ChatOptions = {}): Promise<AssistantMessage> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 60_000);
 
     let response: Response;
     try {
@@ -66,6 +115,7 @@ export class GrokClient {
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 512,
+          ...(options.tools?.length ? { tools: options.tools, tool_choice: 'auto' } : {}),
         }),
         signal: controller.signal,
       });
@@ -77,7 +127,7 @@ export class GrokClient {
     }
 
     const body = (await response.json().catch(() => ({}))) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
       error?: { message?: string };
     };
 
@@ -85,9 +135,12 @@ export class GrokClient {
       throw new GrokError(response.status, body.error?.message ?? `HTTP ${response.status}`);
     }
 
-    const content = body.choices?.[0]?.message?.content?.trim();
-    if (!content) throw new GrokError(response.status, 'response contained no message content');
+    const message = body.choices?.[0]?.message;
+    if (!message) throw new GrokError(response.status, 'response contained no choices');
 
-    return content;
+    return {
+      content: message.content?.trim() ?? '',
+      toolCalls: message.tool_calls ?? [],
+    };
   }
 }

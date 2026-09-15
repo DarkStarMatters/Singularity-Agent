@@ -1,6 +1,6 @@
 {
   "name": "singularity-agent",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "description": "Universal CLI + MCP plugin for practical blockchain interaction across EVM, Solana, Bitcoin and Cosmos.",
   "type": "module",
   "license": "MIT",
@@ -31,7 +31,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build",
-    "bot": "tsx src/telegram/bot.ts"
+    "bot": "tsx src/telegram/bot.ts",
+    "x-bot": "tsx src/x/bot.ts"
   },
   "keywords": [
     "mcp",

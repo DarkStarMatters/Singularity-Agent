@@ -25,6 +25,8 @@ export interface CommandContext {
   chatId: number;
   chatType: 'private' | 'group' | 'supergroup' | 'channel';
   config: TelegramConfig;
+  /** Drops this chat's conversational history. Absent when Grok is off. */
+  forget?: () => void;
 }
 
 export interface Command {
@@ -136,6 +138,17 @@ const transfer: Command = {
   },
 };
 
+const forget: Command = {
+  name: 'forget',
+  usage: '/forget',
+  summary: 'Drop what I remember of this chat',
+  run(ctx) {
+    if (!ctx.forget) return 'I am not holding any conversation history — no xAI key is configured.';
+    ctx.forget();
+    return 'Forgotten. This chat starts fresh.';
+  },
+};
+
 const chatid: Command = {
   name: 'chatid',
   usage: '/chatid',
@@ -187,6 +200,7 @@ const COMMAND_LIST: Command[] = [
   block,
   chains,
   transfer,
+  forget,
   chatid,
   help,
 ];

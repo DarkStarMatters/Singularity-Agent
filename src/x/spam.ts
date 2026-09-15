@@ -1,0 +1,378 @@
+/**
+ * Deciding which mentions are worth answering.
+ *
+ * This runs *before* the model does, and that ordering is the whole point. A
+ * reply costs an xAI completion (with tool calls, several) plus one of a small
+ * number of writes the X tier allows per window. A mentions timeline full of
+ * engagement bots would burn both on an audience of nobody.
+ *
+ * The rule that actually does the work is the last one: a cold mention must be
+ * **on topic** — it must name a chain, an asset, an address, a hash, or one of
+ * the things this agent can look up. A question mark is not enough, because
+ * "can I get a follow back?" is a question and there is nothing to answer.
+ *
+ * That ordering was arrived at empirically. Measured against a real mentions
+ * timeline, filters built on account age and follower count let ~80% of spam
+ * through: the accounts farming engagement are years old with six-figure
+ * follower counts, and the genuinely new accounts were the honest ones. Those
+ * signals are kept only for the narrow case they do catch — a zero-follower
+ * throwaway — and nothing rests on them.
+ *
+ * Every rejection carries a reason, and the listener logs it. Silence you
+ * cannot explain is indistinguishable from a broken bot.
+ */
+import { detect } from '../core/detect.js';
+import type { Mention } from './client.js';
+
+export interface SpamVerdict {
+  /** True when the mention should not reach the model. */
+  skip: boolean;
+  reason?: string;
+}
+
+export interface SpamOptions {
+  /** Accounts younger than this are treated as throwaways. */
+  minAccountAgeDays?: number;
+  /** Below this follower count, an account has to look especially genuine. */
+  minFollowers?: number;
+  /** A mention tagging more accounts than this is a broadcast, not a question. */
+  maxHandles?: number;
+  maxHashtags?: number;
+  maxLinks?: number;
+  now?: () => number;
+}
+
+/**
+ * Phrases from the scam genres that dominate crypto mentions. Matched on word
+ * boundaries against lowercased text.
+ *
+ * These are not "rude words" — each one names a specific fraud that targets
+ * exactly this audience, and there is no legitimate question that needs the bot
+ * to engage with one.
+ */
+const SCAM_PHRASES = [
+  'dm me',
+  'dm for',
+  'send me a dm',
+  'sending me a quick dm',
+  'message me',
+  'send me your',
+  'seed phrase',
+  'private key',
+  'recovery expert',
+  'recover your',
+  'lost funds',
+  'wallet drained',
+  'hacked wallet',
+  'contact the expert',
+  'whatsapp',
+  'telegram me',
+  'double your',
+  'guaranteed profit',
+  'guaranteed returns',
+  'free mint',
+  'claim your',
+  'claim now',
+  'airdrop is live',
+  'connect your wallet',
+  'verify your wallet',
+  'giveaway',
+  'first 100',
+  'presale',
+  'x100',
+  '100x gem',
+  'financial freedom',
+  'trading signals',
+  'copy my trades',
+  'investment opportunity',
+];
+
+/**
+ * Engagement farming: the dominant genre in a crypto project's mentions, and
+ * the one nothing else catches. These accounts are old, well-followed, and
+ * fluent — they simply have nothing to say. Every phrase here is an opener
+ * whose only purpose is to start a DM, and none of them contains a question
+ * this agent could answer.
+ */
+const FARMING_PHRASES = [
+  "let's connect",
+  'lets connect',
+  "let's talk",
+  "let's discuss",
+  "let's make moves",
+  "let's go to moon",
+  'love to connect',
+  'would love to discuss',
+  'reach out anytime',
+  'feel free to reach out',
+  'got you covered',
+  'need assistance',
+  'follow back',
+  'follow me',
+  'followback',
+  'collaboration',
+  'collaborations',
+  'promotion',
+  'great project',
+  'great execution',
+  'strong project',
+  'solid project',
+  'impressive work',
+  'amazing community',
+  'strong vision',
+  'compelling vision',
+  'shows promise',
+  'looks promising',
+  'moving nicely',
+  'deserves more attention',
+  'caught my eye',
+  'strong impression',
+  'to the moon',
+  'push it',
+];
+
+/**
+ * Words naming something this agent can actually look up.
+ *
+ * Matching is on word boundaries, so plurals are listed explicitly — `\bchain\b`
+ * does not match "chains", and "which chains do you support?" is exactly the
+ * kind of question that must get through.
+ */
+const TOPIC_WORDS = [
+  'balance',
+  'balances',
+  'wallet',
+  'wallets',
+  'address',
+  'addresses',
+  'transaction',
+  'transactions',
+  'tx',
+  'hash',
+  'gas',
+  'fee',
+  'fees',
+  'gwei',
+  'block',
+  'blocks',
+  'chain',
+  'chains',
+  'token',
+  'tokens',
+  'holdings',
+  'portfolio',
+  'ens',
+  'contract',
+  'contracts',
+  'transfer',
+  'explorer',
+  'nft',
+  'defi',
+  'staking',
+  'bridge',
+  'mainnet',
+  'testnet',
+  'rpc',
+  'eth',
+  'btc',
+  'sol',
+  'solana',
+  'bitcoin',
+  'ethereum',
+  'base',
+  'arbitrum',
+  'optimism',
+  'polygon',
+  'cosmos',
+];
+
+const HANDLE = /@[A-Za-z0-9_]{1,15}/g;
+const HASHTAG = /#[\w]+/g;
+const LINK = /https?:\/\/\S+/g;
+/** Emoji and pictographs, which spam leans on far harder than people do. */
+const PICTOGRAPH = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu;
+
+function countOf(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0;
+}
+
+function mentionsAny(text: string, phrases: string[]): string | null {
+  for (const phrase of phrases) {
+    // Word boundaries, so "pump" does not fire inside "pumpkin".
+    if (new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text)) {
+      return phrase;
+    }
+  }
+  return null;
+}
+
+/**
+ * Does this text name something the agent can actually look up?
+ *
+ * Detection is reused rather than guessed at: `detect()` already knows every
+ * address, name and hash format on every supported family, so a mention
+ * carrying a bare address counts as on-topic even with no keyword in it.
+ */
+export function isOnTopic(text: string): boolean {
+  if (mentionsAny(text.toLowerCase(), TOPIC_WORDS)) return true;
+
+  return text
+    .split(/[\s,;:()[\]{}"'`]+/)
+    .map((word) => word.replace(/[.?!]+$/, ''))
+    .filter((word) => word.length > 6)
+    .some((word) => {
+      const kind = detect(word).kind;
+      return kind === 'address' || kind === 'tx' || kind === 'name';
+    });
+}
+
+/**
+ * `isFollowUp` means the agent has already replied in this thread — not merely
+ * that the mention is a reply to something. Every reply to one of the agent's
+ * own posts is "a reply", and treating that as a reason to relax the filter is
+ * exactly how engagement bots get answered: they all reply to posts.
+ *
+ * A genuine follow-up skips only the on-topic test, because "and on arbitrum?"
+ * is a fair question once a conversation is underway. Everything else — scams,
+ * farming, broadcasts — still applies.
+ */
+export function classifyMention(
+  mention: Mention,
+  options: SpamOptions & { isFollowUp?: boolean } = {},
+): SpamVerdict {
+  const {
+    minAccountAgeDays = 7,
+    minFollowers = 10,
+    maxHandles = 3,
+    maxHashtags = 2,
+    maxLinks = 1,
+    now = Date.now,
+  } = options;
+
+  const raw = mention.text ?? '';
+  const lower = raw.toLowerCase();
+  // What is left once the addressing is removed is the actual message.
+  const body = raw.replace(HANDLE, '').replace(LINK, '').trim();
+
+  const scam = mentionsAny(lower, SCAM_PHRASES);
+  if (scam) return { skip: true, reason: `scam phrase: "${scam}"` };
+
+  const farming = mentionsAny(lower, FARMING_PHRASES);
+  if (farming) return { skip: true, reason: `engagement farming: "${farming}"` };
+
+  if (body.length < 3) return { skip: true, reason: 'no message beyond the handles' };
+
+  const handles = countOf(raw, HANDLE);
+  if (handles > maxHandles) {
+    return { skip: true, reason: `tags ${handles} accounts — a broadcast, not a question` };
+  }
+
+  const hashtags = countOf(raw, HASHTAG);
+  if (hashtags > maxHashtags) return { skip: true, reason: `${hashtags} hashtags` };
+
+  const links = countOf(raw, LINK);
+  if (links > maxLinks) return { skip: true, reason: `${links} links` };
+
+  // A link plus almost no words is an advert with a fig leaf.
+  if (links > 0 && body.length < 40) {
+    return { skip: true, reason: 'a link with no real question attached' };
+  }
+
+  const pictographs = countOf(raw, PICTOGRAPH);
+  if (pictographs > 4 || (pictographs > 0 && body.replace(PICTOGRAPH, '').trim().length < 10)) {
+    return { skip: true, reason: 'mostly emoji' };
+  }
+
+  if (isShouting(body)) return { skip: true, reason: 'all caps' };
+
+  const age = accountAgeDays(mention.authorCreatedAt, now());
+  const followers = mention.authorFollowers;
+
+  // A brand-new account with no audience, mentioning a bot, is a throwaway far
+  // more often than it is a person. Only applied when X actually sent the
+  // metrics — absent data is not evidence.
+  if (age !== null && age < minAccountAgeDays && (followers ?? 0) < minFollowers) {
+    return {
+      skip: true,
+      reason: `account is ${Math.floor(age)}d old with ${followers ?? 0} followers`,
+    };
+  }
+
+  if (options.isFollowUp) return { skip: false };
+
+  // The positive test, and the one that carries the filter.
+  //
+  // A question mark deliberately does not qualify on its own: "can I get a
+  // follow back?" is a question with nothing in it to answer, and questions
+  // like it are most of what arrives.
+  if (!isOnTopic(raw)) {
+    return { skip: true, reason: 'nothing this agent can look up — no chain, asset, address or hash' };
+  }
+
+  return { skip: false };
+}
+
+function isShouting(text: string): boolean {
+  const letters = text.replace(/[^A-Za-z]/g, '');
+  if (letters.length < 12) return false;
+
+  const upper = letters.replace(/[^A-Z]/g, '').length;
+  return upper / letters.length > 0.8;
+}
+
+function accountAgeDays(createdAt: string | undefined, now: number): number | null {
+  if (!createdAt) return null;
+
+  const created = Date.parse(createdAt);
+  return Number.isNaN(created) ? null : (now - created) / 86_400_000;
+}
+
+/**
+ * Hard spending limits, independent of whether a mention looks genuine.
+ *
+ * The classifier judges mentions one at a time and cannot see a pattern; this
+ * sees the pattern and nothing else. A single account cannot monopolize the
+ * budget, and a coordinated flood cannot drain it in one poll — whatever any
+ * individual message looks like.
+ */
+export class ReplyBudget {
+  private readonly perAuthor = new Map<string, number[]>();
+  private readonly all: number[] = [];
+
+  constructor(
+    private readonly maxPerHour = 12,
+    private readonly maxPerAuthorPerHour = 3,
+  ) {}
+
+  /** Checks and consumes in one step, so a caller cannot forget to record. */
+  take(authorId: string, now = Date.now()): SpamVerdict {
+    const cutoff = now - 3_600_000;
+    prune(this.all, cutoff);
+
+    const mine = this.perAuthor.get(authorId) ?? [];
+    prune(mine, cutoff);
+    this.perAuthor.set(authorId, mine);
+
+    if (this.all.length >= this.maxPerHour) {
+      return { skip: true, reason: `hourly reply budget spent (${this.maxPerHour}/h)` };
+    }
+    if (mine.length >= this.maxPerAuthorPerHour) {
+      return {
+        skip: true,
+        reason: `already replied ${mine.length}× to this account in the last hour`,
+      };
+    }
+
+    this.all.push(now);
+    mine.push(now);
+    return { skip: false };
+  }
+
+  get spentThisHour(): number {
+    return this.all.length;
+  }
+}
+
+function prune(times: number[], cutoff: number): void {
+  while (times.length && times[0]! <= cutoff) times.shift();
+}

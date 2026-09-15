@@ -13,8 +13,9 @@
 import { buildAuthHeader, type OAuthCredentials } from './oauth.js';
 import { SingularityError } from '../core/errors.js';
 
-const TWEETS_ENDPOINT = 'https://api.x.com/2/tweets';
-const VERIFY_ENDPOINT = 'https://api.x.com/2/users/me';
+const API_ROOT = 'https://api.x.com/2';
+const TWEETS_ENDPOINT = `${API_ROOT}/tweets`;
+const VERIFY_ENDPOINT = `${API_ROOT}/users/me`;
 
 /** The standard limit. Premium accounts allow more, but assume the floor. */
 export const DEFAULT_POST_LIMIT = 280;
@@ -31,6 +32,31 @@ export interface PostResult {
   url?: string;
   /** Why it was not published, when it was not. */
   reason?: string;
+  /** The post this one answers, when it is a reply. */
+  inReplyTo?: string;
+}
+
+/** One mention or reply, flattened into what the agent actually needs. */
+export interface Mention {
+  id: string;
+  text: string;
+  authorId: string;
+  /** Resolved from the response's `includes`, when X sent it. */
+  authorUsername?: string;
+  /** Groups a whole reply thread; used as the conversation memory key. */
+  conversationId?: string;
+  /** The post this one replies to, when it is a reply rather than a mention. */
+  repliedToId?: string;
+  createdAt?: string;
+  /** Author signals used by the spam filter; absent if X did not send them. */
+  authorFollowers?: number;
+  authorCreatedAt?: string;
+}
+
+export interface MentionPage {
+  mentions: Mention[];
+  /** Pass back as `sinceId` next poll. Absent when nothing new arrived. */
+  newestId?: string;
 }
 
 export class XApiError extends SingularityError {
@@ -94,13 +120,104 @@ export class XClient {
   }
 
   /**
+   * Mentions and replies addressed to `userId`, newest-first from X.
+   *
+   * `sinceId` is what makes this safe to poll: X returns only what arrived
+   * after that post, so a restart with a persisted id does not answer the same
+   * mention twice. Without it, only the most recent few are fetched — enough to
+   * establish a starting point without replying to a backlog.
+   */
+  async mentions(userId: string, sinceId?: string, maxResults = 20): Promise<MentionPage> {
+    const url = new URL(`${API_ROOT}/users/${encodeURIComponent(userId)}/mentions`);
+    url.searchParams.set('max_results', String(Math.min(Math.max(maxResults, 5), 100)));
+    url.searchParams.set('tweet.fields', 'created_at,author_id,conversation_id,referenced_tweets');
+    url.searchParams.set('expansions', 'author_id');
+    // public_metrics and created_at feed the spam filter — a throwaway account
+    // is the strongest single signal, and they cost nothing extra here.
+    url.searchParams.set('user.fields', 'username,public_metrics,created_at');
+    if (sinceId) url.searchParams.set('since_id', sinceId);
+
+    const href = url.toString();
+    const response = await fetch(href, {
+      headers: { authorization: buildAuthHeader('GET', href, this.config) },
+    });
+
+    const body = (await response.json().catch(() => ({}))) as {
+      data?: Array<{
+        id: string;
+        text: string;
+        author_id?: string;
+        conversation_id?: string;
+        created_at?: string;
+        referenced_tweets?: Array<{ type: string; id: string }>;
+      }>;
+      includes?: {
+        users?: Array<{
+          id: string;
+          username: string;
+          created_at?: string;
+          public_metrics?: { followers_count?: number };
+        }>;
+      };
+      meta?: { newest_id?: string; result_count?: number };
+      detail?: string;
+      title?: string;
+    };
+
+    if (!response.ok) {
+      throw new XApiError(response.status, body.detail ?? body.title ?? 'no detail');
+    }
+
+    const authors = new Map((body.includes?.users ?? []).map((user) => [user.id, user] as const));
+
+    const mentions: Mention[] = (body.data ?? []).map((tweet) => {
+      const author = tweet.author_id ? authors.get(tweet.author_id) : undefined;
+      const parent = tweet.referenced_tweets?.find((ref) => ref.type === 'replied_to');
+      const followers = author?.public_metrics?.followers_count;
+
+      return {
+        id: tweet.id,
+        text: tweet.text,
+        authorId: tweet.author_id ?? '',
+        ...(author ? { authorUsername: author.username } : {}),
+        ...(author?.created_at ? { authorCreatedAt: author.created_at } : {}),
+        ...(typeof followers === 'number' ? { authorFollowers: followers } : {}),
+        ...(tweet.conversation_id ? { conversationId: tweet.conversation_id } : {}),
+        ...(tweet.created_at ? { createdAt: tweet.created_at } : {}),
+        ...(parent ? { repliedToId: parent.id } : {}),
+      };
+    });
+
+    return {
+      mentions,
+      ...(body.meta?.newest_id ? { newestId: body.meta.newest_id } : {}),
+    };
+  }
+
+  /**
+   * Replies to a post. Gated exactly as `post()` is — a reply is as public and
+   * as permanent as a top-level post, and there is no reason to trust it more.
+   */
+  reply(
+    text: string,
+    inReplyToTweetId: string,
+    options: { dryRun?: boolean } = {},
+  ): Promise<PostResult> {
+    return this.post(text, { ...options, inReplyTo: inReplyToTweetId });
+  }
+
+  /**
    * Publishes, or returns a draft when posting is disabled.
    *
    * Length is checked before the switch so a too-long draft is caught during a
    * dry run rather than at the moment someone enables publishing.
    */
-  async post(text: string, options: { dryRun?: boolean } = {}): Promise<PostResult> {
+  async post(
+    text: string,
+    options: { dryRun?: boolean; inReplyTo?: string } = {},
+  ): Promise<PostResult> {
     const trimmed = text.trim();
+    const threading = options.inReplyTo ? { inReplyTo: options.inReplyTo } : {};
 
     if (!trimmed) {
       throw new SingularityError('EMPTY_POST', 'Refusing to post an empty message.');
@@ -114,13 +231,14 @@ export class XClient {
     }
 
     if (options.dryRun) {
-      return { published: false, text: trimmed, reason: 'Dry run requested.' };
+      return { published: false, text: trimmed, reason: 'Dry run requested.', ...threading };
     }
     if (!this.config.postingEnabled) {
       return {
         published: false,
         text: trimmed,
         reason: 'Posting is disabled. Set X_POSTING_ENABLED=true in .env to publish for real.',
+        ...threading,
       };
     }
 
@@ -132,7 +250,10 @@ export class XClient {
         authorization: buildAuthHeader('POST', TWEETS_ENDPOINT, this.config),
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ text: trimmed }),
+      body: JSON.stringify({
+        text: trimmed,
+        ...(options.inReplyTo ? { reply: { in_reply_to_tweet_id: options.inReplyTo } } : {}),
+      }),
     });
 
     const body = (await response.json().catch(() => ({}))) as {
@@ -150,6 +271,7 @@ export class XClient {
       text: body.data.text,
       id: body.data.id,
       url: `https://x.com/i/web/status/${body.data.id}`,
+      ...threading,
     };
   }
 }

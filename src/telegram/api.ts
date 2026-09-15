@@ -25,12 +25,28 @@ export interface TelegramUser {
   first_name?: string;
 }
 
+/**
+ * A span Telegram has already parsed out of the text. `mention` is `@username`;
+ * `text_mention` is a user with no username, carrying the account instead.
+ * Using these rather than searching the text ourselves is what keeps
+ * "@Singularity" in a code block or a URL from reading as an address.
+ */
+export interface TelegramEntity {
+  type: string;
+  offset: number;
+  length: number;
+  user?: TelegramUser;
+}
+
 export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
   date: number;
   text?: string;
+  entities?: TelegramEntity[];
+  /** Present when this message replies to another — including one of ours. */
+  reply_to_message?: TelegramMessage;
   new_chat_members?: TelegramUser[];
 }
 
@@ -146,6 +162,16 @@ export class TelegramApi {
           }
         : {}),
     });
+  }
+
+  /**
+   * The "typing…" indicator. Telegram clears it after ~5s or when a message
+   * arrives, so it is sent once at the start of a turn rather than refreshed —
+   * a tool-calling answer that takes longer simply shows nothing for a moment,
+   * which is better than a heartbeat that keeps firing if the turn fails.
+   */
+  sendChatAction(chatId: number, action: 'typing' = 'typing'): Promise<boolean> {
+    return this.call<boolean>('sendChatAction', { chat_id: chatId, action });
   }
 
   leaveChat(chatId: number): Promise<boolean> {

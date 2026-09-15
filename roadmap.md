@@ -12,7 +12,7 @@ non-goals."
 
 ---
 
-## Shipped — v0.1.0
+## Shipped — v0.0.2
 
 **Coverage.** 23 chains across four families: 13 EVM (Ethereum, Base, Arbitrum, OP,
 Polygon, BNB, Avalanche, Gnosis, Scroll, Linea, ZKsync + 2 testnets), 2 Solana, 3 UTXO
