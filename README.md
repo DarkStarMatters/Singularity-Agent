@@ -148,7 +148,7 @@ to find out what the agent would say before letting it say it.
 
 #### Unprompted project updates
 
-With `X_UPDATE_INTERVAL_HOURS` set (default 1), the listener also posts about
+With `X_UPDATE_INTERVAL_HOURS` set (default 4), the listener also posts about
 the project on its own. The risk with an agent that posts about itself on a
 timer is obvious — it invents a release that never happened — so the model is
 never asked "what is new?". It is handed a fact sheet read out of the
@@ -157,11 +157,10 @@ and told that anything not in it does not exist.
 
 Each post is written from a rotating angle — coverage, capability, safety,
 changelog, philosophy — and angles used recently are excluded, so five posts
-cover five different things before any repeats. At the hourly default that
-rotation comes round in five hours, so the last dozen posts are also fed back
-into the prompt as "do not say these again", and a post that still overlaps a
-recent one by more than 60% of its content words is dropped rather than
-published. The changelog angle is skipped
+cover five different things before any repeats. That rotation still comes round
+within a day, so the last dozen posts are also fed back into the prompt as "do
+not say these again", and a post that still overlaps a recent one by more than
+60% of its content words is dropped rather than published. The changelog angle is skipped
 entirely when there are no commits to report, and a model that returns nothing
 posts nothing: an empty completion means "nothing to say", never the chat
 fallback. Real output, all five angles, from this repo:

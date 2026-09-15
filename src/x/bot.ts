@@ -43,10 +43,11 @@ export async function main(): Promise<void> {
   const maxPerHour = positiveInt(process.env.X_MAX_REPLIES_PER_HOUR, 12);
   const maxPerAuthor = positiveInt(process.env.X_MAX_REPLIES_PER_AUTHOR_PER_HOUR, 3);
 
-  // 0 disables unprompted posting. Hourly is 24 posts a day, each costing a
-  // completion and one of the account's daily writes — check the tier's limit
-  // before raising it further.
-  const updateIntervalHours = Number(process.env.X_UPDATE_INTERVAL_HOURS ?? 1);
+  // 0 disables unprompted posting. Every 4h is six posts a day, which leaves
+  // the daily write budget with room for replies to mentions — the two share
+  // the same quota, and updates firing on a timer would otherwise crowd out
+  // the answers people are actually waiting for.
+  const updateIntervalHours = Number(process.env.X_UPDATE_INTERVAL_HOURS ?? 4);
 
   const listener = new XListener(
     new XClient(xConfig),
