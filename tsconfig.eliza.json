@@ -1,0 +1,24 @@
+// A second compilation pass, for src/eliza only.
+//
+// @elizaos/core ships declaration files that use extensionless relative imports
+// (`export * from './types'`) while declaring "type": "module". Node's ESM
+// resolver — and therefore TypeScript's NodeNext mode — cannot resolve those,
+// so every type imported from the package comes back as "has no exported
+// member". Bundler resolution reads them correctly.
+//
+// The alternative was hand-writing local copies of Action, Plugin, Provider and
+// friends, which would silently drift from the real framework. Compiling this
+// one directory against the genuine types is worth an extra tsc pass.
+//
+// The main tsconfig excludes src/eliza and keeps NodeNext, so the rest of the
+// project still has extensionless imports rejected at build time. Delete this
+// file when upstream fixes its packaging.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src/eliza/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test"]
+}

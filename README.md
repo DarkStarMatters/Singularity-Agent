@@ -87,6 +87,73 @@ path, so Claude Code offers the server on startup with nothing to configure.
 
 ---
 
+## As an elizaOS agent
+
+`singularity-agent/eliza` exports a plugin that gives an [elizaOS](https://elizaos.ai)
+agent three things at once: the chain lookups, a gated X posting action, and Grok as
+the model behind `runtime.useModel()`.
+
+```ts
+// src/index.ts of your elizaOS project
+import { singularityPlugin, singularityCharacter } from 'singularity-agent/eliza';
+
+export default {
+  agents: [{ character: singularityCharacter, plugins: [singularityPlugin] }],
+};
+```
+
+`@elizaos/core` is an *optional peer* dependency and is imported for types only — the
+plugin is a plain object of functions, so the CLI and the MCP server never pull the
+framework in. Install it in the project that runs the agent.
+
+### What it registers
+
+| Action | Fires on |
+| --- | --- |
+| `SINGULARITY_BALANCE` | an address or name plus at most one chain |
+| `SINGULARITY_PORTFOLIO` | an address or name plus several chains, or a general holdings question |
+| `SINGULARITY_TRANSACTION` | a transaction hash |
+| `SINGULARITY_RESOLVE` | "what is this string" |
+| `SINGULARITY_FEES` | a named chain plus a fee/gas word |
+| `SINGULARITY_BLOCK` | a named chain plus a block/height word |
+| `SINGULARITY_CHAINS` | a bare "what do you support" |
+| `SINGULARITY_BUILD_TRANSFER` | a chain, a recipient and an amount — returns an **unsigned** draft |
+| `POST_TO_X` | "post", "tweet", "publish" — see the gate below |
+
+Two providers run before each reply: `SINGULARITY_CHAINS` tells the model which chain
+ids actually exist, and `X_POSTING_STATUS` tells it whether a post will really go out,
+so it cannot report a draft as published.
+
+Every action goes through `src/tools/operations.ts`, the same layer the CLI and MCP
+server use, so a chain added to the registry appears in the agent with no code change.
+
+### Posting is off by default
+
+Publishing is public and effectively irreversible, so three gates stand in front of it:
+
+1. **Credentials.** Without all four OAuth 1.0a values `POST_TO_X` fails `validate`, so
+   the agent is never offered it and cannot promise a post it can't make.
+2. **`X_POSTING_ENABLED` must be exactly `"true"`.** Not `1`, not `yes`, not `on`.
+   Anything else drafts the post, shows it, and sends nothing.
+3. **`dryRun`** in the handler options forces a draft regardless of 1 and 2.
+
+A draft comes back as a *successful* result carrying the text and a reason — drafting is
+the designed outcome, not a failure, so the agent reports it instead of retrying.
+
+Text the user wrote themselves is published verbatim: `post: …` or a quoted string skips
+the model entirely. Only a described post (`post something about base fees`) is drafted
+through Grok, and an over-length draft is reported rather than truncated.
+
+### Grok
+
+The plugin registers `TEXT_SMALL` and `TEXT_LARGE` at priority 100, so an agent that
+also loads another model provider still thinks with Grok. Set `XAI_API_KEY`; optionally
+point `XAI_SMALL_MODEL` at a cheaper model for the high-frequency calls, leaving
+`XAI_MODEL` for the ones that write posts. Credentials are read from the runtime's
+settings first (a character's `secrets` block) and fall back to the environment.
+
+---
+
 ## Quick tour
 
 ```bash
@@ -266,6 +333,7 @@ npm run typecheck
 npm test
 npm run dev -- chains        # run the CLI from source
 npm run mcp                  # run the MCP server from source
+npm run bot                  # run the Telegram bot from source
 ```
 
 Architecture:
@@ -273,10 +341,20 @@ Architecture:
 ```
 src/core/       normalized types, chain registry, formatting, bech32/base58 codecs
 src/adapters/   one adapter per family, all implementing ChainAdapter
-src/tools/      operations shared by both front ends
+src/tools/      operations shared by every front end
 src/mcp/        MCP server
 src/cli/        CLI and terminal rendering
+src/telegram/   Telegram bot
+src/eliza/      elizaOS plugin, character and Grok model handlers
+src/x/          X API client and OAuth 1.0a signing
+src/grok/       xAI chat client
 ```
+
+`src/eliza/` compiles in a second pass (`tsconfig.eliza.json`) because `@elizaos/core`
+ships declaration files with extensionless imports under `"type": "module"`, which
+NodeNext cannot resolve. The rest of the project keeps NodeNext, so missing `.js`
+extensions are still caught at build time. `npm run build` and `npm run typecheck` run
+both passes.
 
 Adding a chain family means implementing `ChainAdapter` (`src/core/adapter.ts`) and
 registering it in `src/adapters/index.ts`. Anything a family genuinely cannot do throws

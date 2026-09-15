@@ -1,0 +1,169 @@
+/**
+ * A thin Telegram Bot API client over `fetch`.
+ *
+ * The bot needs five methods out of a ~100-method API, and this process holds a
+ * bot token, so a framework would be mostly attack surface. Long polling is used
+ * rather than webhooks so the bot runs anywhere without a public URL or TLS.
+ */
+
+const API_ROOT = 'https://api.telegram.org';
+
+/** Telegram truncates anything longer; we cut it ourselves so the tail is ours. */
+export const MAX_MESSAGE_LENGTH = 4096;
+
+export interface TelegramChat {
+  id: number;
+  type: 'private' | 'group' | 'supergroup' | 'channel';
+  title?: string;
+  username?: string;
+}
+
+export interface TelegramUser {
+  id: number;
+  is_bot: boolean;
+  username?: string;
+  first_name?: string;
+}
+
+export interface TelegramMessage {
+  message_id: number;
+  chat: TelegramChat;
+  from?: TelegramUser;
+  date: number;
+  text?: string;
+  new_chat_members?: TelegramUser[];
+}
+
+export interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+  edited_message?: TelegramMessage;
+}
+
+export interface SendMessageOptions {
+  chatId: number;
+  text: string;
+  /** Threads the answer under the question — essential in a busy group. */
+  replyToMessageId?: number;
+  disableWebPagePreview?: boolean;
+}
+
+export class TelegramApiError extends Error {
+  constructor(
+    readonly method: string,
+    readonly errorCode: number,
+    description: string,
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(`Telegram ${method} failed (${errorCode}): ${description}`);
+    this.name = 'TelegramApiError';
+  }
+}
+
+interface ApiResponse<T> {
+  ok: boolean;
+  result?: T;
+  description?: string;
+  error_code?: number;
+  parameters?: { retry_after?: number; migrate_to_chat_id?: number };
+}
+
+export class TelegramApi {
+  constructor(private readonly token: string) {}
+
+  /**
+   * `timeoutMs` must outlast the long poll itself, so the abort fires only when
+   * the connection is genuinely dead rather than at every idle poll.
+   */
+  async call<T>(method: string, params: Record<string, unknown> = {}, timeoutMs = 20_000): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_ROOT}/bot${this.token}/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(params),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const reason = (err as Error).name === 'AbortError' ? 'timed out' : (err as Error).message;
+      throw new TelegramApiError(method, 0, reason);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
+
+    if (!payload.ok) {
+      const code = payload.error_code ?? response.status;
+      throw new TelegramApiError(
+        method,
+        code,
+        payload.description ?? `HTTP ${response.status}`,
+        payload.parameters?.retry_after,
+      );
+    }
+    return payload.result as T;
+  }
+
+  getMe(): Promise<TelegramUser> {
+    return this.call<TelegramUser>('getMe');
+  }
+
+  /**
+   * `allowed_updates` is deliberately narrow: with Telegram's default group
+   * privacy mode the bot only receives commands anyway, and asking for less
+   * means the server sends less of other people's group chatter.
+   */
+  getUpdates(offset: number, timeoutSeconds: number): Promise<TelegramUpdate[]> {
+    return this.call<TelegramUpdate[]>(
+      'getUpdates',
+      {
+        offset,
+        timeout: timeoutSeconds,
+        allowed_updates: ['message'],
+      },
+      // Give the HTTP call headroom beyond the long poll it is holding open.
+      (timeoutSeconds + 15) * 1000,
+    );
+  }
+
+  async sendMessage(options: SendMessageOptions): Promise<TelegramMessage> {
+    return this.call<TelegramMessage>('sendMessage', {
+      chat_id: options.chatId,
+      text: truncateForTelegram(options.text),
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: options.disableWebPagePreview !== false },
+      ...(options.replyToMessageId
+        ? {
+            reply_parameters: {
+              message_id: options.replyToMessageId,
+              // The message may be gone by the time we answer; still deliver.
+              allow_sending_without_reply: true,
+            },
+          }
+        : {}),
+    });
+  }
+
+  leaveChat(chatId: number): Promise<boolean> {
+    return this.call<boolean>('leaveChat', { chat_id: chatId });
+  }
+}
+
+/**
+ * Cuts on a line boundary where possible so a truncated table does not end
+ * mid-tag — unbalanced HTML makes Telegram reject the whole message.
+ */
+export function truncateForTelegram(text: string, limit = MAX_MESSAGE_LENGTH): string {
+  if (text.length <= limit) return text;
+
+  const notice = '\n\n… truncated.';
+  const budget = limit - notice.length;
+  const cut = text.slice(0, budget);
+  const lastNewline = cut.lastIndexOf('\n');
+
+  return (lastNewline > budget * 0.5 ? cut.slice(0, lastNewline) : cut) + notice;
+}
