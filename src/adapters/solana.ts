@@ -77,6 +77,17 @@ async function withConnection<T>(
   );
 }
 
+/**
+ * A skipped or pruned slot is a fact about the chain, not a sick endpoint, so it
+ * must not trigger RPC failover. -32007 and -32009 are Solana's skipped-slot
+ * codes; a null result surfaces as web3.js's own "not found" throw.
+ */
+function isMissingSlot(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === -32007 || code === -32009) return true;
+  return /not found|was skipped/i.test((err as Error | null)?.message ?? '');
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host;
@@ -294,15 +305,16 @@ export const solanaAdapter: ChainAdapter = {
         );
       }
 
-      // `transactionDetails: 'signatures'` returns a signature list, but the
-      // SDK's overload resolution collapses to the full block type here.
-      const block = (await connection.getBlock(slot, {
-        maxSupportedTransactionVersion: 0,
-        transactionDetails: 'signatures',
-        rewards: false,
-      })) as SignatureOnlyBlock | null;
-
-      if (!block) {
+      // web3.js only ships response validators for `transactionDetails` of
+      // 'accounts' and 'none'; 'signatures' falls through to the full-block
+      // struct, which rejects every response for a missing `transactions`
+      // array. `getBlockSignatures` sends the same request with the validator
+      // that matches it.
+      let block: SignatureOnlyBlock;
+      try {
+        block = await connection.getBlockSignatures(slot);
+      } catch (err) {
+        if (!isMissingSlot(err)) throw err; // let withConnection try the next endpoint
         throw new SingularityError(
           'BLOCK_NOT_FOUND',
           `Slot ${slot} has no block on ${chain.name}.`,
