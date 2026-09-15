@@ -19,6 +19,7 @@
  *     agent answering a mention from yesterday, which is worse than not
  *     answering at all.
  */
+import { SingularityError } from '../core/errors.js';
 import type { PostResult, XClient } from './client.js';
 
 export type PendingKind = 'update' | 'reply';
@@ -44,6 +45,8 @@ export interface ResolvedPost {
   result?: PostResult;
   /** Present when publishing failed. */
   error?: string;
+  /** What to do about it — the half of an error worth acting on. */
+  hint?: string;
   /** Who decided, when the transport knows. */
   by?: string;
 }
@@ -120,6 +123,9 @@ export class PostGate {
         pending,
         approved: true,
         error: err instanceof Error ? err.message : String(err),
+        // Without this the reviewer sees "403" and nothing about the two
+        // portal settings that fix it.
+        ...(err instanceof SingularityError && err.hint ? { hint: err.hint } : {}),
         ...(by ? { by } : {}),
       };
     }

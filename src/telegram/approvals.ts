@@ -59,7 +59,7 @@ export function renderPending(pending: PendingPost): string {
 }
 
 export function renderResolved(resolution: ResolvedPost): string {
-  const { pending, approved, result, error, by } = resolution;
+  const { pending, approved, result, error, hint, by } = resolution;
   const who = by ? ` by ${esc(by)}` : '';
 
   if (!approved) {
@@ -72,6 +72,9 @@ export function renderResolved(resolution: ResolvedPost): string {
       esc(pending.text),
       '',
       `<i>${esc(error)}</i>`,
+      // The hint is the half of an error worth acting on — a bare "403" sends
+      // someone hunting, while the hint names the two settings that fix it.
+      ...(hint ? ['', esc(hint)] : []),
     ].join('\n');
   }
 

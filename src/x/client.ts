@@ -67,7 +67,7 @@ export class XApiError extends SingularityError {
       status === 401
         ? 'Check X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_SECRET, and that the app has Read and Write permission. Access tokens issued before Write was enabled stay read-only until regenerated.'
         : status === 403
-          ? 'The app may lack Write permission, or the post duplicates a recent one.'
+          ? 'The app is read-only, or the post duplicates a recent one. Fixing the permissions takes TWO steps in the X developer portal, and the second is the one people miss: (1) the app → User authentication settings → App permissions → "Read and write"; (2) Keys and tokens → REGENERATE the Access Token and Secret. A token minted while the app was read-only stays read-only forever — changing the permission does not upgrade it. Then put the new X_ACCESS_TOKEN and X_ACCESS_SECRET in .env.'
           : status === 429
             ? 'Rate limited. The free tier allows very few posts per day.'
             : undefined,

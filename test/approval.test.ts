@@ -191,6 +191,18 @@ describe('approval cards', () => {
     expect(card).toContain('rate limited');
   });
 
+  it('shows the hint, which is the half worth acting on', () => {
+    // A bare "403" sends someone hunting; the hint names the fix.
+    const card = renderResolved({
+      pending,
+      approved: true,
+      error: 'X API returned 403: not configured for oauth1 permissions',
+      hint: 'Regenerate the Access Token after switching the app to Read and write.',
+    });
+
+    expect(card).toContain('Regenerate the Access Token');
+  });
+
   it('round-trips a decision through callback data', () => {
     expect(decisionFrom('ok:p1abc')).toEqual({ approve: true, id: 'p1abc' });
     expect(decisionFrom('no:p1abc')).toEqual({ approve: false, id: 'p1abc' });
