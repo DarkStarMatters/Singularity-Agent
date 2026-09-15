@@ -138,6 +138,20 @@ export class PostGate {
     return resolution;
   }
 
+  /**
+   * Re-issues a card for everything still waiting, and returns how many.
+   *
+   * An approval card is a message in a chat, and messages scroll away. Without
+   * this the only way to act on a draft from an hour ago is to find the
+   * original card, which in a busy group is the same as losing it.
+   */
+  async resend(): Promise<number> {
+    const waiting = this.pending();
+    for (const pending of waiting) await this.transport.request(pending);
+
+    return waiting.length;
+  }
+
   get(id: string): PendingPost | undefined {
     this.prune();
     return this.queue.get(id);

@@ -102,6 +102,7 @@ export async function main(): Promise<void> {
     });
 
     bot.xControl = controlFor(listener, gate);
+    if (controlChat !== null) bot.controlChatId = controlChat;
 
     console.error(
       gate
@@ -158,6 +159,8 @@ export function controlFor(listener: XListener, gate: PostGate | undefined): XCo
     },
 
     pending: () => gate?.pending() ?? [],
+
+    resend: async () => (gate ? gate.resend() : 0),
 
     async approve(id, by) {
       if (!gate) return 'Approval is not enabled, so there is nothing queued.';

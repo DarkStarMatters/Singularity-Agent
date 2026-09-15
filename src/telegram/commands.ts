@@ -8,7 +8,7 @@
 import * as ops from '../tools/operations.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
-import { runXCommand, type XControl } from './control.js';
+import { runDraftsCommand, runXCommand, type XControl } from './control.js';
 import {
   formatBalance,
   formatBlock,
@@ -43,6 +43,8 @@ export interface CommandContext {
   xControl?: XControl;
   /** Who sent the command, for the approval audit trail. */
   sender?: string;
+  /** True when this chat is the one approval cards are sent to. */
+  isControlChat?: boolean;
 }
 
 export interface Command {
@@ -239,6 +241,14 @@ const x: Command = {
   run: (ctx) => runXCommand(ctx.xControl, ctx.args, ctx.sender),
 };
 
+const drafts: Command = {
+  name: 'drafts',
+  aliases: ['queue', 'approve'],
+  usage: '/drafts',
+  summary: 'Review X posts waiting for approval',
+  run: (ctx) => runDraftsCommand(ctx.xControl, ctx.isControlChat === true),
+};
+
 const forget: Command = {
   name: 'forget',
   usage: '/forget',
@@ -306,6 +316,7 @@ const COMMAND_LIST: Command[] = [
   health,
   chat,
   x,
+  drafts,
   forget,
   chatid,
   help,

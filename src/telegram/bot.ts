@@ -109,6 +109,8 @@ export class SingularityBot {
 
   /** Set when the X bot shares this process; drives `/x` and the buttons. */
   xControl: XControl | undefined;
+  /** The chat approval cards are sent to, so `/drafts` can say where they went. */
+  controlChatId: number | undefined;
 
   constructor(private readonly config: TelegramConfig) {
     this.api = new TelegramApi(config.token);
@@ -400,6 +402,9 @@ export class SingularityBot {
       chatType: message.chat.type,
       config: this.config,
       ...(this.xControl ? { xControl: this.xControl } : {}),
+      ...(this.controlChatId !== undefined && message.chat.id === this.controlChatId
+        ? { isControlChat: true }
+        : {}),
       ...(message.from?.username ?? message.from?.first_name
         ? { sender: message.from?.username ?? message.from?.first_name }
         : {}),

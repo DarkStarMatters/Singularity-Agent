@@ -32,6 +32,8 @@ export interface XControl {
   /** Composes an update now; returns the text, or null if it declined. */
   composeNow(angle?: string): Promise<string | null>;
   pending(): PendingPost[];
+  /** Re-sends a tappable card for each pending post; returns how many. */
+  resend(): Promise<number>;
   approve(id: string, by?: string): Promise<string>;
   reject(id: string, by?: string): Promise<string>;
 }
@@ -40,7 +42,7 @@ const USAGE = [
   '<b>/x</b> — control the X bot',
   '',
   '<code>/x status</code> — what it is doing',
-  '<code>/x pending</code> — posts waiting for you',
+  '<code>/x pending</code> — posts waiting for you (see also /drafts)',
   '<code>/x post [angle]</code> — draft an update now',
   '<code>/x approve &lt;id&gt;</code> — publish a pending post',
   '<code>/x reject &lt;id&gt;</code> — discard one',
@@ -161,3 +163,41 @@ export async function runXCommand(
 }
 
 export const X_COMMAND_USAGE = USAGE;
+
+/**
+ * `/drafts` — re-send every pending post as a card you can act on.
+ *
+ * `/x pending` lists the queue as text, which is enough to know what is
+ * waiting but not to do anything about it: the buttons live on the original
+ * card, and in a busy chat that card is far above. This puts a fresh,
+ * tappable card for each draft at the bottom of the conversation, where you
+ * are already looking.
+ *
+ * The cards go to the control chat, which may not be where the command was
+ * typed — so the reply says how many were sent rather than pretending they
+ * appeared here.
+ */
+export async function runDraftsCommand(
+  control: XControl | undefined,
+  inControlChat: boolean,
+): Promise<string> {
+  if (!control) {
+    return 'The X bot is not running in this process. Start it with <code>npm run agent</code> to review drafts from here.';
+  }
+
+  const waiting = control.pending();
+  if (!waiting.length) {
+    const status = control.status();
+
+    return status.approvalRequired
+      ? 'No drafts waiting. Use <code>/x post</code> to write one now.'
+      : 'No drafts waiting — approval is off, so posts publish without one. Set TELEGRAM_CONTROL_CHAT to review them first.';
+  }
+
+  const count = await control.resend();
+  const plural = count === 1 ? 'draft' : 'drafts';
+
+  return inControlChat
+    ? `${count} ${plural} below — tap to publish or discard.`
+    : `${count} ${plural} sent to the control chat, where the buttons are.`;
+}

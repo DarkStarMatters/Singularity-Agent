@@ -109,12 +109,17 @@ its character count, with **Post it** / **Discard** buttons. Nothing reaches X
 until someone taps.
 
 ```
+/drafts       re-send every waiting post as a card you can tap
 /x status     what it is doing, what is pending, when it next posts
-/x pending    the queue, with ids
+/x pending    the queue, as text with ids
 /x post       draft an update now, without waiting for the timer
 /x approve <id> · /x reject <id>     the buttons, as commands
 /x pause · /x resume                 stop and restart answering mentions
 ```
+
+`/drafts` exists because an approval card is a message, and messages scroll
+away. `/x pending` tells you what is waiting; `/drafts` puts a fresh, tappable
+card for each one at the bottom of the chat, where you are already looking.
 
 Approval turns on when a control chat exists: `TELEGRAM_CONTROL_CHAT`, or the
 single allowlisted chat when `TELEGRAM_ALLOWED_CHATS` names exactly one. It

@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { PostGate, type ApprovalTransport, type PendingPost, type ResolvedPost } from '../src/x/approval.js';
 import { decisionFrom, renderPending, renderResolved } from '../src/telegram/approvals.js';
-import { runXCommand, type XControl, type XStatus } from '../src/telegram/control.js';
+import {
+  runDraftsCommand,
+  runXCommand,
+  type XControl,
+  type XStatus,
+} from '../src/telegram/control.js';
 import { resolveControlChat } from '../src/agent.js';
 import type { XClient } from '../src/x/client.js';
 
@@ -218,6 +223,7 @@ function stubControl(overrides: Partial<XControl> = {}): { control: XControl; ca
         return 'A drafted post.';
       },
       pending: () => [],
+      resend: async () => 0,
       approve: async (id) => `approved ${id}`,
       reject: async (id) => `rejected ${id}`,
       ...overrides,
@@ -294,6 +300,70 @@ describe('the /x control command', () => {
   it('shows usage for an unknown subcommand', async () => {
     const { control } = stubControl();
     expect(await runXCommand(control, ['frobnicate'])).toContain('/x status');
+  });
+});
+
+describe('the /drafts command', () => {
+  const draft: PendingPost = {
+    id: 'p1abc',
+    kind: 'update',
+    text: 'Reaches 23 chains.',
+    createdAt: NOW,
+  };
+
+  it('re-sends a tappable card for each draft', async () => {
+    let resent = 0;
+    const { control } = stubControl({
+      pending: () => [draft, { ...draft, id: 'p2def' }],
+      resend: async () => {
+        resent = 2;
+        return 2;
+      },
+    });
+
+    const out = await runDraftsCommand(control, true);
+
+    expect(resent).toBe(2);
+    expect(out).toContain('2 drafts below');
+  });
+
+  it('says where the cards went when asked from another chat', async () => {
+    const { control } = stubControl({ pending: () => [draft], resend: async () => 1 });
+
+    // The buttons live in the control chat, not wherever this was typed.
+    expect(await runDraftsCommand(control, false)).toContain('sent to the control chat');
+  });
+
+  it('uses the singular for one draft', async () => {
+    const { control } = stubControl({ pending: () => [draft], resend: async () => 1 });
+    expect(await runDraftsCommand(control, true)).toContain('1 draft below');
+  });
+
+  it('suggests writing one when the queue is empty', async () => {
+    const { control } = stubControl();
+    expect(await runDraftsCommand(control, true)).toContain('/x post');
+  });
+
+  it('explains an empty queue differently when approval is off', async () => {
+    const { control } = stubControl({
+      status: () => ({
+        account: '@a',
+        paused: false,
+        postingEnabled: true,
+        approvalRequired: false,
+        repliesThisHour: 0,
+        pendingApprovals: 0,
+        updateIntervalHours: 4,
+        nextUpdateInMinutes: 10,
+        lastAngle: null,
+      }),
+    });
+
+    expect(await runDraftsCommand(control, true)).toContain('approval is off');
+  });
+
+  it('points at npm run agent when the X bot is elsewhere', async () => {
+    expect(await runDraftsCommand(undefined, true)).toMatch(/npm run agent/);
   });
 });
 
