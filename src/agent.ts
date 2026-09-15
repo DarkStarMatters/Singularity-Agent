@@ -108,6 +108,15 @@ export async function main(): Promise<void> {
         ? `[singularity] approval required — drafts go to chat ${controlChat} for a decision.`
         : '[singularity] no control chat configured; the X bot publishes on its own switch. Set TELEGRAM_CONTROL_CHAT to review posts first.',
     );
+
+    // Approval is a second gate, not a replacement for the first. Saying so at
+    // startup avoids the confusing state where someone taps "Post it" and
+    // nothing appears on X.
+    if (gate && !xConfig.postingEnabled) {
+      console.error(
+        '[singularity] NOTE: X_POSTING_ENABLED is not "true", so even an approved post will not go out. Approvals will report that honestly rather than claiming success.',
+      );
+    }
   } else {
     console.error(
       '[singularity] X bot not started — ' +
@@ -156,9 +165,16 @@ export function controlFor(listener: XListener, gate: PostGate | undefined): XCo
       const resolved = await gate.approve(id, by);
       if (!resolved) return `No pending post with id ${id} — it may have expired.`;
 
-      return resolved.error
-        ? `Publishing failed: ${resolved.error}`
-        : `Posted. ${resolved.result?.url ?? ''}`.trim();
+      if (resolved.error) return `Publishing failed: ${resolved.error}`;
+
+      // Same rule as the card: approval does not override X_POSTING_ENABLED,
+      // and reporting "Posted" for something that never left the process is
+      // the one thing this agent must never do.
+      if (resolved.result && !resolved.result.published) {
+        return `Approved, but nothing was published — ${resolved.result.reason ?? 'posting is disabled'}. Set X_POSTING_ENABLED=true to publish for real.`;
+      }
+
+      return `Posted. ${resolved.result?.url ?? ''}`.trim();
     },
 
     async reject(id, by) {

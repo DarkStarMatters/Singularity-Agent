@@ -163,6 +163,21 @@ describe('approval cards', () => {
     expect(card).toContain('https://x.com/i/web/status/2');
   });
 
+  it('never claims a post went out when posting is disabled', () => {
+    // X_POSTING_ENABLED gates approval too, and a draft result comes back
+    // published: false. Rendering that as "Posted" would be a lie on the one
+    // surface the operator trusts.
+    const card = renderResolved({
+      pending,
+      approved: true,
+      result: { published: false, text: pending.text, reason: 'Posting is disabled.' },
+    });
+
+    expect(card).not.toContain('✅');
+    expect(card).toContain('nothing was published');
+    expect(card).toContain('X_POSTING_ENABLED');
+  });
+
   it('says plainly when publishing failed after approval', () => {
     const card = renderResolved({ pending, approved: true, error: 'rate limited' });
 

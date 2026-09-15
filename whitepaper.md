@@ -2,7 +2,7 @@
 
 **A normalization layer for agentic blockchain access**
 
-Version 0.0.2 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.0.3 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
 ---
 

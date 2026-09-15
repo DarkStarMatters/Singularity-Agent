@@ -75,6 +75,21 @@ export function renderResolved(resolution: ResolvedPost): string {
     ].join('\n');
   }
 
+  // Approval is not the only gate: X_POSTING_ENABLED still applies, and a
+  // dry-run result comes back `published: false`. Reporting that as "Posted"
+  // would be the exact failure the agent is told never to commit — claiming
+  // something went out when it did not.
+  if (result && !result.published) {
+    return [
+      `📝 <b>Approved${who} — but nothing was published</b>`,
+      '',
+      esc(pending.text),
+      '',
+      `<i>${esc(result.reason ?? 'Publishing is disabled.')}</i>`,
+      '<i>Set X_POSTING_ENABLED=true for an approval to actually post.</i>',
+    ].join('\n');
+  }
+
   return [
     `✅ <b>Posted</b>${who}`,
     '',
