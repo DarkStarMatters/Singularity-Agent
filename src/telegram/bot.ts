@@ -15,7 +15,7 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { COMMANDS, type CommandContext } from './commands.js';
+import { COMMANDS, commandMenu, type CommandContext } from './commands.js';
 import { esc, formatError } from './format.js';
 import { loadConfig, loadEnvFile, ConfigError, type TelegramConfig } from './config.js';
 import { TelegramApi, TelegramApiError, type TelegramMessage, type TelegramUpdate } from './api.js';
@@ -128,6 +128,15 @@ export class SingularityBot {
         : '[singularity-bot] no XAI_API_KEY — commands only, no conversation.',
     );
 
+    // Published from the runtime's own command list, so the "/" menu can never
+    // advertise something that is not there.
+    try {
+      await this.api.setMyCommands(commandMenu());
+      console.error(`[singularity-bot] published ${commandMenu().length} commands to the menu.`);
+    } catch (err) {
+      console.error(`[singularity-bot] could not publish the command menu: ${(err as Error).message}`);
+    }
+
     await this.poll();
   }
 
@@ -214,19 +223,32 @@ export class SingularityBot {
     }
     if (!text) return;
 
+    const body = await this.agentReply(message, text);
+    await this.reply(message, `${esc(pingFor(message))}${body}`);
+  }
+
+  /**
+   * One turn with Grok, rendered safe for Telegram.
+   *
+   * Shared by the mention/DM path and the `/chat` command so the two cannot
+   * answer differently — and so an RPC or model failure comes back as a
+   * formatted error rather than taking the poll loop down.
+   */
+  private async agentReply(message: TelegramMessage, text: string): Promise<string> {
+    if (!this.agent) {
+      return 'Conversation is unavailable — no xAI key is configured. Try /help.';
+    }
+
     // Typing shows up immediately; a tool-calling turn can take several seconds.
     await this.api.sendChatAction(message.chat.id, 'typing').catch(() => undefined);
 
-    let body: string;
     try {
       const speaker = message.from?.username ?? message.from?.first_name;
       const reply = await this.agent.respond(String(message.chat.id), text, speaker);
-      body = sanitizeModelHtml(reply.text);
+      return sanitizeModelHtml(reply.text);
     } catch (err) {
-      body = formatError(err);
+      return formatError(err);
     }
-
-    await this.reply(message, `${esc(pingFor(message))}${body}`);
   }
 
   /**
@@ -254,7 +276,12 @@ export class SingularityBot {
       chatId: message.chat.id,
       chatType: message.chat.type,
       config: this.config,
-      ...(this.agent ? { forget: () => this.agent!.forget(String(message.chat.id)) } : {}),
+      ...(this.agent
+        ? {
+            forget: () => this.agent!.forget(String(message.chat.id)),
+            converse: (text: string) => this.agentReply(message, text),
+          }
+        : {}),
     };
 
     let text: string;

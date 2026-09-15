@@ -174,6 +174,19 @@ export class TelegramApi {
     return this.call<boolean>('sendChatAction', { chat_id: chatId, action });
   }
 
+  /**
+   * Publishes the command menu clients show in the "/" picker.
+   *
+   * Registered for both the default scope and group chats: a menu entry that
+   * has no command behind it does nothing when tapped, with no error anywhere,
+   * so the menu is generated from the same list the runtime dispatches on.
+   */
+  async setMyCommands(commands: Array<{ command: string; description: string }>): Promise<void> {
+    for (const scope of [{ type: 'default' }, { type: 'all_group_chats' }]) {
+      await this.call<boolean>('setMyCommands', { commands, scope });
+    }
+  }
+
   leaveChat(chatId: number): Promise<boolean> {
     return this.call<boolean>('leaveChat', { chat_id: chatId });
   }

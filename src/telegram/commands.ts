@@ -30,12 +30,29 @@ export interface CommandContext {
   config: TelegramConfig;
   /** Drops this chat's conversational history. Absent when Grok is off. */
   forget?: () => void;
+  /**
+   * Puts a question to Grok and returns a reply, ready to send.
+   *
+   * Absent when no xAI key is configured. This is what `/chat` uses, and it
+   * matters most in groups: with Telegram privacy mode on, an @mention never
+   * reaches the bot, but a command always does.
+   */
+  converse?: (text: string) => Promise<string>;
 }
 
 export interface Command {
   name: string;
   usage: string;
   summary: string;
+  /**
+   * Other names that reach this command.
+   *
+   * The MCP tools are called `transaction`, `read_contract` and
+   * `build_transfer`, and anyone registering a command menu from the tool
+   * catalogue gets those names. They resolve here rather than being silently
+   * ignored, which is what "the bot does not answer" looked like.
+   */
+  aliases?: string[];
   run(ctx: CommandContext): Promise<string> | string;
 }
 
@@ -98,6 +115,7 @@ const portfolio: Command = {
 
 const tx: Command = {
   name: 'tx',
+  aliases: ['transaction'],
   usage: '/tx <hash> [chain]',
   summary: 'Look up a transaction',
   async run(ctx) {
@@ -128,6 +146,7 @@ const block: Command = {
 
 const transfer: Command = {
   name: 'transfer',
+  aliases: ['build_transfer'],
   usage: '/transfer <chain> <to> <amount> [token] [from]',
   summary: 'Build an UNSIGNED transfer to review',
   async run(ctx) {
@@ -157,6 +176,7 @@ const decode: Command = {
 
 const read: Command = {
   name: 'read',
+  aliases: ['read_contract'],
   usage: '/read <chain> <address> [method] [abi entry]',
   summary: 'Call a view function or read account data',
   async run(ctx) {
@@ -182,6 +202,28 @@ const health: Command = {
   async run(ctx) {
     const named = ctx.args[0]?.split(',').map((c) => c.trim()).filter(Boolean);
     return formatHealth(await ops.checkEndpoints(named));
+  },
+};
+
+const chat: Command = {
+  name: 'chat',
+  aliases: ['agent', 'ask'],
+  usage: '/chat <question>',
+  summary: 'Ask a question in plain English',
+  async run(ctx) {
+    if (!ctx.converse) {
+      return 'Conversation is unavailable — no xAI key is configured. The lookup commands still work; try /help.';
+    }
+
+    const question = ctx.args.join(' ').trim();
+    if (!question) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        '/chat needs a question.',
+        'Usage: /chat what is gas on base right now?',
+      );
+    }
+    return ctx.converse(question);
   },
 };
 
@@ -250,16 +292,37 @@ const COMMAND_LIST: Command[] = [
   read,
   decode,
   health,
+  chat,
   forget,
   chatid,
   help,
 ];
 
-export const COMMANDS = new Map<string, Command>(
-  [...COMMAND_LIST, start].map((command) => [command.name, command]),
-);
+/** Canonical names and aliases both resolve to the same command. */
+export const COMMANDS = new Map<string, Command>();
+
+for (const command of [...COMMAND_LIST, start]) {
+  COMMANDS.set(command.name, command);
+  for (const alias of command.aliases ?? []) COMMANDS.set(alias, command);
+}
 
 /** For BotFather's /setcommands, so the group command menu matches reality. */
 export function botFatherCommandList(): string {
   return COMMAND_LIST.map((c) => `${c.name} - ${c.summary}`).join('\n');
+}
+
+/**
+ * The menu the bot registers with Telegram on startup.
+ *
+ * Generated from the same list the runtime dispatches on, because the two
+ * getting out of step is not a cosmetic problem: a menu entry with no command
+ * behind it does nothing at all when tapped — no reply, no error, nothing to
+ * search the logs for. That is exactly how `/transaction` and `/read_contract`
+ * came to be advertised by a bot that only answers `/tx` and `/read`.
+ */
+export function commandMenu(): Array<{ command: string; description: string }> {
+  return COMMAND_LIST.map((command) => ({
+    command: command.name,
+    description: command.summary,
+  }));
 }

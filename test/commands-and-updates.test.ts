@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COMMANDS, botFatherCommandList } from '../src/telegram/commands.js';
+import { COMMANDS, botFatherCommandList, commandMenu } from '../src/telegram/commands.js';
 import { TOOLS } from '../src/tools/catalog.js';
 import { formatDecoded, formatHealth, formatReadResult } from '../src/telegram/format.js';
 import {
@@ -65,6 +65,32 @@ describe('telegram command surface', () => {
     for (const line of lines) expect(line).toMatch(/^[a-z]+ - .+/);
   });
 
+  it('publishes a menu where every entry is actually dispatchable', () => {
+    // A menu entry with no command behind it does nothing when tapped — no
+    // reply, no error. This is the guard for that whole class of bug.
+    for (const entry of commandMenu()) {
+      expect(COMMANDS.has(entry.command), `/${entry.command} is advertised but not handled`).toBe(
+        true,
+      );
+    }
+  });
+
+  it('answers the MCP tool names as aliases', () => {
+    // A menu registered from the tool catalogue uses these names, and a bot
+    // that silently ignores them looks broken.
+    expect(COMMANDS.get('transaction')).toBe(COMMANDS.get('tx'));
+    expect(COMMANDS.get('read_contract')).toBe(COMMANDS.get('read'));
+    expect(COMMANDS.get('build_transfer')).toBe(COMMANDS.get('transfer'));
+  });
+
+  it('routes every catalogue tool name straight to a command', () => {
+    for (const tool of TOOLS) {
+      expect(COMMANDS.has(tool.name), `tool "${tool.name}" is not reachable as a command`).toBe(
+        true,
+      );
+    }
+  });
+
   it('reports a missing argument as a usage hint, not a crash', async () => {
     const ctx = {
       args: [],
@@ -74,6 +100,37 @@ describe('telegram command surface', () => {
     };
 
     await expect(COMMANDS.get('read')!.run(ctx)).rejects.toMatchObject({
+      code: 'MISSING_ARGUMENT',
+    });
+  });
+
+  it('sends /chat to the model and returns what it said', async () => {
+    const ctx = {
+      args: ['what', 'is', 'gas', 'on', 'base?'],
+      chatId: 1,
+      chatType: 'private' as const,
+      config: {} as never,
+      converse: async (text: string) => `answered: ${text}`,
+    };
+
+    expect(await COMMANDS.get('chat')!.run(ctx)).toBe('answered: what is gas on base?');
+  });
+
+  it('says why /chat is unavailable rather than staying silent', async () => {
+    const ctx = { args: ['hello'], chatId: 1, chatType: 'private' as const, config: {} as never };
+    expect(await COMMANDS.get('chat')!.run(ctx)).toMatch(/no xAI key/i);
+  });
+
+  it('asks for a question when /chat is sent bare', async () => {
+    const ctx = {
+      args: [],
+      chatId: 1,
+      chatType: 'private' as const,
+      config: {} as never,
+      converse: async () => 'never reached',
+    };
+
+    await expect(COMMANDS.get('chat')!.run(ctx)).rejects.toMatchObject({
       code: 'MISSING_ARGUMENT',
     });
   });
