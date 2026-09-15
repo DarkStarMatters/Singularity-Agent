@@ -88,6 +88,20 @@ describe('MCP server', () => {
     expect(payload.hint).toBeTruthy();
   });
 
+  it('tells portfolio and balance to accept the same inputs', async () => {
+    // portfolio once advertised ENS support but never resolved a name, so every
+    // chain rejected it and the call failed with NO_MATCHING_CHAINS.
+    const client = await connect();
+    const { tools } = await client.listTools();
+
+    for (const name of ['balance', 'portfolio']) {
+      const tool = tools.find((t) => t.name === name);
+      const address = (tool?.inputSchema as { properties?: Record<string, { description?: string }> })
+        ?.properties?.address;
+      expect(address?.description, `${name} should document name support`).toMatch(/name/i);
+    }
+  });
+
   it('rejects an invalid address with a format hint rather than a crash', async () => {
     const client = await connect();
     const result = await client.callTool({

@@ -193,21 +193,39 @@ export async function getPortfolio(options: {
   chains?: string[];
   includeTokens?: boolean;
 }): Promise<PortfolioResult> {
-  const address = resolveAlias(options.address.trim());
+  const raw = resolveAlias(options.address.trim());
   const requested = options.chains?.length ? options.chains : portfolioChains();
+
+  // A name has to become an address before any chain can be asked about it —
+  // otherwise every chain rejects the name and the whole call looks unsupported.
+  const detection = detect(raw);
+  let address = raw;
+
+  if (detection.kind === 'name') {
+    const nameChain = getChain(detection.chains[0] ?? 'ethereum');
+    const resolved = await adapterFor(nameChain).resolveName?.(nameChain, raw);
+    if (!resolved) {
+      throw new SingularityError(
+        'NAME_NOT_RESOLVED',
+        `"${raw}" did not resolve to an address.`,
+        'The name may be unregistered, expired, or have no address record set.',
+      );
+    }
+    address = resolved;
+  }
 
   const candidates = requested
     .map((id) => getChain(id))
     .filter((chain) => adapterFor(chain).isValidAddress(chain, address));
 
   if (!candidates.length) {
-    const detection = detect(address);
+    const resolvedDetection = detect(address);
     throw new SingularityError(
       'NO_MATCHING_CHAINS',
-      `"${shortAddress(address, 10, 6)}" is not a valid address on any of the requested chains.`,
-      detection.chains.length
-        ? `That address format belongs to: ${detection.chains.slice(0, 6).join(', ')}.`
-        : detection.reason,
+      `"${shortAddress(address, 10, 6)}" is not a valid address on any of: ${requested.join(', ')}.`,
+      resolvedDetection.chains.length
+        ? `That address works on: ${resolvedDetection.chains.slice(0, 6).join(', ')}. Pass those as \`chains\`.`
+        : resolvedDetection.reason,
     );
   }
 
