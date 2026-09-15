@@ -8,6 +8,13 @@ import type {
   UnsignedTx,
 } from './types.js';
 
+/** A token scan that carries a caveat about its own completeness. */
+export interface TokenScan {
+  entries: BalanceEntry[];
+  /** Set when the list is not the address's full holdings. */
+  note?: string;
+}
+
 export interface TransferParams {
   /** Sender. Required on UTXO (coin selection) and Cosmos (account number). */
   from?: string;
@@ -48,7 +55,19 @@ export interface ChainAdapter {
   addressExpectation(chain: ChainSpec, address?: string): string;
 
   getNativeBalance(chain: ChainSpec, address: string): Promise<BalanceEntry>;
-  getTokenBalances(chain: ChainSpec, address: string, tokens?: string[]): Promise<BalanceEntry[]>;
+  /**
+   * Token holdings for an address.
+   *
+   * Return a bare array when the list is complete as-is. Return a {@link TokenScan}
+   * when the scan had to leave something out — a wallet with thousands of dust
+   * token accounts gets truncated, and the caller surfaces `note` so the list is
+   * never silently passed off as exhaustive.
+   */
+  getTokenBalances(
+    chain: ChainSpec,
+    address: string,
+    tokens?: string[],
+  ): Promise<BalanceEntry[] | TokenScan>;
   getTransaction(chain: ChainSpec, hash: string): Promise<NormalizedTx>;
   getBlock(chain: ChainSpec, ref: string | number): Promise<NormalizedBlock>;
   estimateFees(chain: ChainSpec): Promise<FeeEstimate>;

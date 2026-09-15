@@ -27,6 +27,13 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xW
 const BASE_SIGNATURE_FEE = 5_000n;
 /** SPL Token program instruction discriminator for TransferChecked. */
 const IX_TRANSFER_CHECKED = 12;
+/**
+ * Most mints an unfiltered scan will return. Solana lets anyone airdrop a token
+ * account onto any wallet, so an active address accumulates thousands of dust
+ * mints; returning all of them buries the real holdings and can overflow a
+ * model's tool-result budget outright.
+ */
+const TOKEN_SCAN_LIMIT = 50;
 
 const connections = new Map<string, Connection>();
 
@@ -150,34 +157,69 @@ export const solanaAdapter: ChainAdapter = {
           )
         : null;
 
-      const entries: BalanceEntry[] = [];
+      // A wallet can hold several token accounts for one mint — an exchange
+      // routinely does. They are one holding, so sum them; listing them
+      // separately invites double-counting.
+      const byMint = new Map<string, { decimals: number; total: bigint; accounts: number }>();
 
       for (const { account } of [...legacy.value, ...token2022.value]) {
         const info = (account.data as { parsed: { info: SplAccountInfo } }).parsed.info;
         const mint = info.mint;
         if (filter && !filter.has(mint.toLowerCase())) continue;
 
-        const raw = info.tokenAmount.amount;
-        if (raw === '0') continue;
+        const raw = BigInt(info.tokenAmount.amount);
+        if (raw === 0n) continue;
 
-        const decimals = info.tokenAmount.decimals;
-        const known = knownMintSymbol(chain.id, mint);
-
-        entries.push({
-          chain: chain.id,
-          address: owner.toBase58(),
-          token: {
-            address: mint,
-            symbol: known?.symbol ?? `${mint.slice(0, 4)}…${mint.slice(-4)}`,
-            name: known?.name,
-            decimals,
-            native: false,
-          },
-          amount: amount(raw, decimals, known?.symbol ?? 'tokens'),
-        });
+        const existing = byMint.get(mint);
+        if (existing) {
+          existing.total += raw;
+          existing.accounts += 1;
+        } else {
+          byMint.set(mint, { decimals: info.tokenAmount.decimals, total: raw, accounts: 1 });
+        }
       }
 
-      return entries;
+      const all = [...byMint].map(([mint, { decimals, total, accounts }]) => {
+        const known = knownMintSymbol(chain.id, mint);
+        return {
+          known: Boolean(known),
+          magnitude: Number(total) / 10 ** decimals,
+          entry: {
+            chain: chain.id,
+            address: owner.toBase58(),
+            token: {
+              address: mint,
+              symbol: known?.symbol ?? `${mint.slice(0, 4)}…${mint.slice(-4)}`,
+              name: known?.name,
+              decimals,
+              native: false,
+            },
+            amount: amount(total, decimals, known?.symbol ?? 'tokens'),
+            ...(accounts > 1 ? { tokenAccounts: accounts } : {}),
+          } satisfies BalanceEntry,
+        };
+      });
+
+      // An explicit `tokens` list is the caller asking for specific mints — give
+      // back every one of them, in the order they were requested.
+      if (filter) return all.map((t) => t.entry);
+
+      // Curated tokens first; within each group, larger balances first. Note that
+      // magnitude is not value — there is no pricing here, so a trillion units of
+      // dust outranks a thousand USDC. It is a stable, explicable order, not a
+      // ranking by worth.
+      all.sort((a, b) => Number(b.known) - Number(a.known) || b.magnitude - a.magnitude);
+
+      if (all.length <= TOKEN_SCAN_LIMIT) return all.map((t) => t.entry);
+
+      const omitted = all.length - TOKEN_SCAN_LIMIT;
+      return {
+        entries: all.slice(0, TOKEN_SCAN_LIMIT).map((t) => t.entry),
+        note:
+          `Showing ${TOKEN_SCAN_LIMIT} of ${all.length} mints held — curated tokens first, ` +
+          `then by raw balance. ${omitted} omitted, and because there is no pricing here that ` +
+          'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.',
+      };
     });
   },
 

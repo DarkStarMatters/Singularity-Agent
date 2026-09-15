@@ -153,7 +153,12 @@ export async function getBalance(options: {
 
   if (options.includeTokens !== false) {
     try {
-      tokens = await adapter.getTokenBalances(chain, address, options.tokens);
+      const scan = await adapter.getTokenBalances(chain, address, options.tokens);
+      // An adapter returns a bare array when the list stands on its own, or a
+      // TokenScan when it had to leave something out.
+      tokens = Array.isArray(scan) ? scan : scan.entries;
+      if (!Array.isArray(scan)) tokenScanNote = scan.note;
+
       if (chain.family === 'evm' && !options.tokens?.length) {
         tokenScanNote =
           'EVM chains cannot be enumerated without an indexer, so this covers a curated list of major tokens only. Pass `tokens` with contract addresses to check others.';

@@ -106,7 +106,14 @@ export function renderBalance(result: BalanceResult): string {
         result.tokens.map((t) => [
           bold(t.amount.formatted),
           t.token.symbol,
-          dim(t.token.address ? shorten(t.token.address) : ''),
+          dim(
+            [
+              t.token.address ? shorten(t.token.address) : '',
+              t.tokenAccounts ? `${t.tokenAccounts} accounts` : '',
+            ]
+              .filter(Boolean)
+              .join('  '),
+          ),
         ]),
       ),
     );

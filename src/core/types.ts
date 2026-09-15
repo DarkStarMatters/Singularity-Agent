@@ -59,6 +59,12 @@ export interface BalanceEntry {
   address: string;
   token: TokenRef;
   amount: Amount;
+  /**
+   * How many on-chain accounts this entry sums, when more than one. Solana
+   * wallets can hold several token accounts for a single mint; `amount` is the
+   * total across them.
+   */
+  tokenAccounts?: number;
 }
 
 export interface NormalizedTx {
