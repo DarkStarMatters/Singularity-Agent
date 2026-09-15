@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="web/assets/lockup.png" alt="Singularity-Agent — agentic blockchain, made practical" width="440">
+</p>
+
 # Singularity Agent
 
 A universal CLI and MCP plugin for interacting with blockchains — one interface across
@@ -252,6 +256,16 @@ Adding a chain family means implementing `ChainAdapter` (`src/core/adapter.ts`) 
 registering it in `src/adapters/index.ts`. Anything a family genuinely cannot do throws
 `UnsupportedOperationError` rather than returning an empty result — a silent `[]` reads as
 "no tokens" and gets repeated as fact.
+
+## Documentation site
+
+A beginner-facing guide lives in `web/` — a static, zero-build page deployed on Vercel.
+`vercel.json` at the repo root already points at it, so importing this repo into Vercel
+needs no further configuration. To preview it locally:
+
+```bash
+cd web && python -m http.server 8000
+```
 
 ## License
 

@@ -1,0 +1,1629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Singularity Agent</title>
+<meta name="description" content="Agentic blockchain, made practical. One command-line tool for Ethereum, Solana, Bitcoin and Cosmos — read-only, and it never holds your keys.">
+<meta property="og:title" content="Singularity Agent">
+<meta property="og:description" content="Agentic blockchain, made practical. One tool for Ethereum, Solana, Bitcoin and Cosmos. Read-only, and it never holds your keys.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/icon-64.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="/assets/mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+  /* =====================================================================
+     Tokens. Palette sampled from the logo: ring lime #84F024 / #54C024,
+     chrome #F0F0F0 -> #D8D8D8, ground pure black. Neutrals stay hue-neutral
+     to sit with the chrome rather than fight it.
+     ===================================================================== */
+  :root {
+    --bg:          #f5f6f5;
+    --surface:     #ffffff;
+    --surface-2:   #eceeec;
+    --ink:         #14171a;
+    --ink-2:       #4c5357;
+    --ink-3:       #78807f;
+    --line:        #dee1de;
+    --line-2:      #c5cac6;
+
+    --accent:      #2f7512;   /* deep lime, readable on a light ground */
+    --accent-deep: #245b0d;
+    --accent-soft: #e9f4e1;
+    --on-accent:   #ffffff;
+
+    --ok:          #2f7512;
+    --warn:        #8a5a10;
+    --crit:        #a3302f;
+    --warn-soft:   #fbf2e1;
+    --warn-line:   #e6d2a6;
+
+    /* The stage and terminal keep the logo's own ground in both themes. */
+    --stage-bg:    #000000;
+    --stage-edge:  #2a2f2c;
+    --term-bg:     #050706;
+    --term-bar:    #10130f;
+    --term-ink:    #d7ddd6;
+    --term-dim:    #8a928c;
+    --term-line:   #222723;
+    --term-accent: #84f024;
+    --term-ok:     #84f024;
+    --term-crit:   #e8736f;
+
+    --brand:       #84f024;
+    --chrome:      linear-gradient(180deg, #fcfcfc 0%, #dcdedd 44%, #9fa5a2 56%, #e8eae9 100%);
+
+    --measure: 68ch;
+    --radius: 10px;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Archivo", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:          #08090a;
+      --surface:     #111314;
+      --surface-2:   #181b1b;
+      --ink:         #e9ede9;
+      --ink-2:       #a6ada8;
+      --ink-3:       #79817c;
+      --line:        #222625;
+      --line-2:      #333937;
+
+      --accent:      #84f024;
+      --accent-deep: #9df249;
+      --accent-soft: #14210a;
+      --on-accent:   #08130a;
+
+      --ok:          #84f024;
+      --warn:        #d4a04a;
+      --crit:        #e8736f;
+      --warn-soft:   #1e180c;
+      --warn-line:   #453a22;
+
+      --stage-edge:  #232724;
+      --term-bg:     #000000;
+      --term-bar:    #0c0f0c;
+      --term-line:   #1b1f1c;
+
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg:          #08090a;
+    --surface:     #111314;
+    --surface-2:   #181b1b;
+    --ink:         #e9ede9;
+    --ink-2:       #a6ada8;
+    --ink-3:       #79817c;
+    --line:        #222625;
+    --line-2:      #333937;
+
+    --accent:      #84f024;
+    --accent-deep: #9df249;
+    --accent-soft: #14210a;
+    --on-accent:   #08130a;
+
+    --ok:          #84f024;
+    --warn:        #d4a04a;
+    --crit:        #e8736f;
+    --warn-soft:   #1e180c;
+    --warn-line:   #453a22;
+
+    --stage-edge:  #232724;
+    --term-bg:     #000000;
+    --term-bar:    #0c0f0c;
+    --term-line:   #1b1f1c;
+
+    color-scheme: dark;
+  }
+
+  /* ----------------------------------------------------------------- base */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--display);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.021em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+  ul, ol { margin: 0; padding-left: 1.15rem; max-width: var(--measure); }
+  li { margin-block: .3rem; }
+  li::marker { color: var(--ink-3); }
+
+  img { max-width: 100%; }
+
+  a { color: var(--accent); text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+  code { font-family: var(--mono); font-size: .875em; }
+
+  p code, li code, td code, dd code {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .08em .34em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .eyebrow {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .70rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0;
+  }
+
+  .lede { font-size: 1.0625rem; color: var(--ink-2); }
+
+  /* ------------------------------------------------------------ masthead */
+  .masthead {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .masthead-in {
+    max-width: 1180px;
+    margin-inline: auto;
+    padding-inline: 20px;
+    padding-block: .55rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .wordmark {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    text-decoration: none;
+    color: var(--ink);
+    min-width: 0;
+  }
+  /* The mark keeps its own black ground, so it reads as a product icon on
+     either theme rather than a black rectangle dropped on a light page. */
+  .wordmark .tile {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--stage-bg);
+    border: 1px solid var(--stage-edge);
+    overflow: hidden;
+    flex: none;
+    display: block;
+  }
+  .wordmark .tile picture,
+  .wordmark .tile img { width: 100%; height: 100%; display: block; }
+  .wordmark .name {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: .975rem;
+    letter-spacing: -0.012em;
+    white-space: nowrap;
+  }
+  .wordmark .name b { font-weight: 700; color: var(--accent); }
+
+  .masthead-tail { margin-left: auto; display: flex; align-items: center; gap: .6rem; }
+
+  .theme-toggle {
+    font: inherit;
+    font-size: .8125rem;
+    color: var(--ink-2);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: .26rem .72rem;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { border-color: var(--line-2); color: var(--ink); }
+
+  /* --------------------------------------------------------------- shell */
+  .shell {
+    max-width: 1180px;
+    margin-inline: auto;
+    padding-inline: 20px;
+    padding-block: 0 4rem;
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 3rem;
+    align-items: start;
+  }
+
+  .sidenav {
+    position: sticky;
+    top: 4.4rem;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+    padding-block: 2.5rem 1rem;
+  }
+  .sidenav ol { list-style: none; padding: 0; margin: .6rem 0 0; display: flex; flex-direction: column; gap: 1px; }
+  .sidenav a {
+    display: block;
+    padding: .3rem .6rem;
+    font-size: .875rem;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid var(--line);
+    border-radius: 0 5px 5px 0;
+  }
+  .sidenav a:hover { color: var(--ink); background: var(--surface-2); }
+  .sidenav a[aria-current="true"] {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+    font-weight: 500;
+  }
+
+  main { padding-block: 2.2rem 0; min-width: 0; }
+
+  /* ================================================== the logo stage ==== */
+  .stage {
+    position: relative;
+    isolation: isolate;
+    background: var(--stage-bg);
+    border: 1px solid var(--stage-edge);
+    border-radius: 14px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    padding-block: 2.2rem;
+    padding-inline: 1.5rem;
+  }
+
+  /* Ambient orbit, echoing the rings in the mark. Slow and low-contrast on
+     purpose — it should register as atmosphere, not as an animation. */
+  .stage .halo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 760px;
+    height: 760px;
+    margin: -380px 0 0 -380px;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(132, 240, 36, .20) 62deg,
+      transparent 140deg,
+      transparent 232deg,
+      rgba(84, 192, 36, .13) 300deg,
+      transparent 360deg
+    );
+    filter: blur(30px);
+    z-index: 0;
+    animation: orbit 52s linear infinite;
+  }
+  @keyframes orbit { to { transform: rotate(360deg); } }
+
+  .stage .lockup {
+    position: relative;
+    z-index: 2;
+    display: block;
+    width: min(440px, 100%);
+  }
+  /* The logo ships on black, so screen-blending drops that ground and lets the
+     halo through behind the chrome instead of boxing it in. */
+  .stage .lockup img {
+    display: block;
+    width: 100%;
+    height: auto;
+    mix-blend-mode: screen;
+  }
+
+  /* A single chrome highlight along the top edge, picking up the logo's metal. */
+  .stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, 0) 38%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .stage .tagline {
+    position: relative;
+    z-index: 2;
+    margin-top: 1rem;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .66rem;
+    letter-spacing: .26em;
+    text-transform: uppercase;
+    color: rgba(215, 221, 214, .62);
+    text-align: center;
+  }
+
+  /* ---------------------------------------------------------------- hero */
+  .hero { display: flex; flex-direction: column; gap: 1.1rem; }
+  .hero h1 { font-size: clamp(2rem, 5vw, 2.9rem); margin-top: .5rem; }
+  .hero .lede { font-size: 1.125rem; max-width: 60ch; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .15rem; }
+
+  .btn {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .9rem;
+    padding: .55rem 1.1rem;
+    border-radius: 7px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-deep); }
+  .btn-ghost { border-color: var(--line-2); color: var(--ink); background: var(--surface); }
+  .btn-ghost:hover { border-color: var(--ink-3); }
+
+  .keys-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+    background: var(--warn-soft);
+    border: 1px solid var(--warn-line);
+    border-radius: var(--radius);
+    padding: .75rem .9rem;
+    font-size: .9375rem;
+    color: var(--ink-2);
+    max-width: var(--measure);
+  }
+  .keys-note strong { color: var(--ink); font-weight: 600; }
+  .keys-note svg { flex: none; margin-top: .18rem; color: var(--warn); }
+
+  /* ------------------------------------------------------------ sections */
+  section { margin-top: 4rem; scroll-margin-top: 5.5rem; }
+  section > * + * { margin-top: 1rem; }
+  section h2 { font-size: 1.6rem; }
+  section h3 { font-size: 1.0625rem; letter-spacing: -0.012em; }
+
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  /* ------------------------------------------------------------ terminal */
+  .term {
+    margin: 0;
+    background: var(--term-bg);
+    border: 1px solid var(--term-line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    background: var(--term-bar);
+    border-bottom: 1px solid var(--term-line);
+    padding: .5rem .5rem .5rem .8rem;
+    min-width: 0;
+  }
+  .term-bar .prompt { color: var(--term-accent); font-family: var(--mono); font-size: .8125rem; flex: none; }
+  .term-bar .cmd {
+    font-family: var(--mono);
+    font-size: .8125rem;
+    color: var(--term-ink);
+    white-space: pre;
+    overflow-x: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    scrollbar-width: thin;
+  }
+  .copy {
+    flex: none;
+    font-family: var(--sans);
+    font-size: .75rem;
+    color: var(--term-dim);
+    background: transparent;
+    border: 1px solid var(--term-line);
+    border-radius: 5px;
+    padding: .2rem .55rem;
+    cursor: pointer;
+  }
+  .copy:hover { color: var(--term-ink); border-color: var(--term-dim); }
+  .copy[data-done="1"] { color: var(--term-ok); border-color: var(--term-ok); }
+
+  .term pre {
+    margin: 0;
+    padding: .85rem 1rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .8125rem;
+    line-height: 1.6;
+    color: var(--term-ink);
+    tab-size: 2;
+  }
+  .term .dim { color: var(--term-dim); }
+  .term .ok  { color: var(--term-ok); }
+  .term .bad { color: var(--term-crit); }
+  .term .acc { color: var(--term-accent); }
+
+  figcaption.sample {
+    font-size: .8125rem;
+    color: var(--ink-3);
+    margin-top: .45rem;
+    max-width: var(--measure);
+  }
+
+  /* --------------------------------------------------------------- steps */
+  .steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1.6rem; counter-reset: step; }
+  .steps > li { display: grid; grid-template-columns: 1.85rem minmax(0, 1fr); gap: .9rem; margin: 0; }
+  .steps > li::before {
+    counter-increment: step;
+    content: counter(step);
+    font-family: var(--mono);
+    font-size: .8125rem;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 6px;
+    width: 1.85rem;
+    height: 1.85rem;
+    display: grid;
+    place-items: center;
+  }
+  .steps .step-body { display: flex; flex-direction: column; gap: .55rem; min-width: 0; }
+  .steps h3 { margin: 0; padding-top: .18rem; }
+
+  /* ------------------------------------------------------------- recipes */
+  .recipes { display: flex; flex-direction: column; gap: 2.4rem; }
+  .recipe { display: flex; flex-direction: column; gap: .7rem; }
+  .recipe h3 .q { color: var(--ink-3); font-weight: 600; }
+
+  /* --------------------------------------------------------------- table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .7rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------------ families */
+  .families { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .family { background: var(--surface); padding: 1rem 1.05rem; display: flex; flex-direction: column; gap: .5rem; }
+  .family h3 { font-size: .95rem; }
+  .family .kind { font-family: var(--mono); font-size: .75rem; color: var(--accent); }
+  .family p { font-size: .875rem; color: var(--ink-2); }
+  .family ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .3rem; }
+  .family li { margin: 0; }
+  .chip {
+    font-family: var(--mono);
+    font-size: .75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .1rem .4rem;
+    color: var(--ink-2);
+    display: inline-block;
+  }
+
+  /* ------------------------------------------------------------ glossary */
+  .glossary { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; margin: 0; }
+  .glossary > div { padding: .85rem 1rem; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 1rem; }
+  .glossary > div:last-child { border-bottom: 0; }
+  .glossary dt { font-weight: 600; color: var(--ink); }
+  .glossary dt .alt { display: block; font-weight: 400; font-size: .8125rem; color: var(--ink-3); font-family: var(--mono); }
+  .glossary dd { margin: 0; color: var(--ink-2); font-size: .9375rem; }
+
+  /* ------------------------------------------------------------- callout */
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: .85rem 1rem;
+    font-size: .9375rem;
+    color: var(--ink-2);
+    max-width: var(--measure);
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+  .callout strong { color: var(--ink); }
+  .callout.caution { border-left-color: var(--warn); }
+
+  /* --------------------------------------------------------- can / can't */
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+  .split > div { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .55rem; }
+  .split h3 { display: flex; align-items: center; gap: .45rem; font-size: .95rem; }
+  .split .yes { color: var(--ok); }
+  .split .no { color: var(--crit); }
+  .split ul { font-size: .9375rem; color: var(--ink-2); padding-left: 1.05rem; }
+
+  /* ------------------------------------------------------------ trouble */
+  .qa { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+  .qa details { border-bottom: 1px solid var(--line); }
+  .qa details:last-child { border-bottom: 0; }
+  .qa summary {
+    cursor: pointer;
+    padding: .8rem 1rem;
+    font-weight: 500;
+    font-size: .9375rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  .qa summary::-webkit-details-marker { display: none; }
+  .qa summary::before { content: "+"; font-family: var(--mono); color: var(--accent); flex: none; width: 1ch; }
+  .qa details[open] summary::before { content: "\2212"; }
+  .qa summary:hover { background: var(--surface-2); }
+  .qa .answer { padding: 0 1rem 1rem 2.6rem; display: flex; flex-direction: column; gap: .7rem; font-size: .9375rem; color: var(--ink-2); }
+
+  /* -------------------------------------------------------------- footer */
+  footer {
+    border-top: 1px solid var(--line);
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.4rem;
+    align-items: center;
+    font-size: .875rem;
+    color: var(--ink-3);
+  }
+  footer .mark-sm { width: 20px; height: 20px; border-radius: 5px; background: var(--stage-bg); border: 1px solid var(--stage-edge); overflow: hidden; flex: none; }
+  footer .mark-sm picture,
+  footer .mark-sm img { width: 100%; height: 100%; display: block; }
+
+  /* -------------------------------------------------------------- narrow */
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .sidenav {
+      position: sticky;
+      top: 3.25rem;
+      z-index: 20;
+      max-height: none;
+      overflow: visible;
+      padding-block: 0;
+      margin-inline: -20px;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .sidenav .eyebrow { display: none; }
+    .sidenav ol {
+      flex-direction: row;
+      gap: .3rem;
+      overflow-x: auto;
+      padding: .5rem 20px;
+      margin: 0;
+      scrollbar-width: none;
+    }
+    .sidenav ol::-webkit-scrollbar { display: none; }
+    .sidenav a {
+      white-space: nowrap;
+      border-left: 0;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: .22rem .7rem;
+      font-size: .8125rem;
+    }
+    .sidenav a[aria-current="true"] { border-color: var(--accent); }
+    main { padding-block: 1.8rem 0; }
+    .stage { padding-block: 1.6rem; }
+    .stage .halo { width: 460px; height: 460px; margin: -230px 0 0 -230px; }
+    .glossary > div { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <a class="wordmark" href="#top">
+      <span class="tile">
+        <picture>
+          <source srcset="/assets/mark.webp" type="image/webp">
+          <img src="/assets/mark.png" alt="" width="30" height="30" decoding="async">
+        </picture>
+      </span>
+      <span class="name">Singularity<b>-Agent</b></span>
+    </a>
+    <div class="masthead-tail">
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-live="polite">Dark</button>
+    </div>
+  </div>
+</header>
+
+<div class="shell" id="top">
+
+  <nav class="sidenav" aria-label="Page sections">
+    <p class="eyebrow">On this page</p>
+    <ol>
+      <li><a href="#what">What it does</a></li>
+      <li><a href="#safety">Your keys</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#first">First command</a></li>
+      <li><a href="#claude">Use with Claude</a></li>
+      <li><a href="#do">What you can ask</a></li>
+      <li><a href="#chains">Chains</a></li>
+      <li><a href="#words">Vocabulary</a></li>
+      <li><a href="#config">Configuration</a></li>
+      <li><a href="#help">If it breaks</a></li>
+      <li><a href="#limits">Limits</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <div class="hero">
+      <div class="stage">
+        <div class="halo" aria-hidden="true"></div>
+        <picture class="lockup">
+          <source srcset="/assets/lockup.webp" type="image/webp">
+          <img src="/assets/lockup.png" width="880" height="615"
+               alt="Singularity-Agent — agentic blockchain, made practical" fetchpriority="high">
+        </picture>
+      </div>
+
+      <h1>Read any blockchain from your terminal.</h1>
+      <p class="lede">
+        One tool for Ethereum, Solana, Bitcoin and Cosmos. Check what is in a wallet, look up
+        what a transaction did, see what fees cost right now — and get the answer in the same
+        shape no matter which chain it came from.
+      </p>
+
+      <div class="keys-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span><strong>It never asks for your keys.</strong> Singularity can read the blockchain
+        and prepare a payment for you, but it cannot sign or send one. There is no code in it
+        that can move your money.</span>
+      </div>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#install">Install it</a>
+        <a class="btn btn-ghost" href="#do">See what it can do</a>
+      </div>
+    </div>
+
+    <!-- ================================================== what it does -->
+    <section id="what">
+      <p class="eyebrow">The idea</p>
+      <h2>One tool instead of four</h2>
+      <p>
+        A blockchain is a public ledger. Anyone can read it — you do not need an account, a
+        password, or anyone's permission. What you normally <em>do</em> need is the right tool
+        for the right chain: one for Ethereum, a different one for Solana, another for Bitcoin.
+        Each has its own address format, its own vocabulary, and its own way of telling you the
+        same thing.
+      </p>
+      <p>
+        Singularity-Agent is one tool for all of them. You ask a question, it goes and reads the
+        ledger, and it answers in a consistent format. A Bitcoin balance and a Cosmos balance
+        come back with the same field names, so you only have to learn them once.
+      </p>
+      <p>
+        It works in two places: as a <strong>command you type in a terminal</strong>, and as a
+        <strong>plugin for Claude</strong>, so you can ask questions in plain English instead.
+        Both run exactly the same code.
+      </p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================= safety -->
+    <section id="safety">
+      <p class="eyebrow">Safety</p>
+      <h2>What it can and can't do</h2>
+      <p>
+        Every crypto wallet is controlled by a <strong>private key</strong> — a long secret that
+        acts like the password to your money. Anyone who has it can spend everything. The single
+        most important thing to know about this tool is that it never touches yours.
+      </p>
+
+      <div class="split">
+        <div>
+          <h3><span class="yes" aria-hidden="true">●</span> It can read</h3>
+          <ul>
+            <li>Balances of any public address</li>
+            <li>What a past transaction did</li>
+            <li>Current network fees</li>
+            <li>Data stored in smart contracts</li>
+            <li>Prepare an unsigned payment for you</li>
+          </ul>
+        </div>
+        <div>
+          <h3><span class="no" aria-hidden="true">●</span> It cannot</h3>
+          <ul>
+            <li>Ask for, store, or read a private key</li>
+            <li>Sign a transaction</li>
+            <li>Send or broadcast anything</li>
+            <li>Move a single coin, in any circumstance</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>What "unsigned" means</strong>
+        <span>
+          Singularity can fill out the paperwork for a payment — who is sending, who is
+          receiving, how much, what it will cost. It hands that form to you. You sign it in your
+          own wallet, where your key lives. Think of it as a very well-informed assistant who
+          prepares the cheque but can never sign it.
+        </span>
+      </div>
+
+      <p>
+        The practical consequence: the worst thing a bug in this tool can do is give you a wrong
+        answer. It cannot lose your funds, because it was never able to reach them.
+      </p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ====================================================== install -->
+    <section id="install">
+      <p class="eyebrow">Setup</p>
+      <h2>Install it</h2>
+      <p>This takes about two minutes. You'll be typing into a terminal — Terminal on macOS, PowerShell or Git Bash on Windows, or any shell on Linux.</p>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <h3>Install Node.js</h3>
+            <p>Singularity runs on Node.js version 20.10 or newer. Get it from <a href="https://nodejs.org" rel="noopener">nodejs.org</a> if you don't have it, then check it worked:</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">node --version</code>
+                <button class="copy" type="button" data-copy="node --version">Copy</button>
+              </div>
+              <pre><code>v22.19.0</code></pre>
+            </figure>
+            <p>Any number 20.10 or higher is fine.</p>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-body">
+            <h3>Download the code</h3>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">git clone https://github.com/Deadsg/Singularity-Agent.git &amp;&amp; cd Singularity-Agent</code>
+                <button class="copy" type="button" data-copy="git clone https://github.com/Deadsg/Singularity-Agent.git &amp;&amp; cd Singularity-Agent">Copy</button>
+              </div>
+              <pre><code><span class="dim">Cloning into 'Singularity-Agent'...</span></code></pre>
+            </figure>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-body">
+            <h3>Install and build</h3>
+            <p>The first command downloads the libraries it depends on. The second turns the source code into something runnable.</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">npm install &amp;&amp; npm run build</code>
+                <button class="copy" type="button" data-copy="npm install &amp;&amp; npm run build">Copy</button>
+              </div>
+              <pre><code><span class="dim">added 214 packages in 18s</span></code></pre>
+            </figure>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-body">
+            <h3>Make <code>singularity</code> available everywhere</h3>
+            <p>This lets you type <code>singularity</code> from any folder instead of the full path.</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">npm link</code>
+                <button class="copy" type="button" data-copy="npm link">Copy</button>
+              </div>
+              <pre><code><span class="dim">added 1 package</span></code></pre>
+            </figure>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-body">
+            <h3>Check that it works</h3>
+            <p>This lists every network it knows about. No lookup, no account, no API key — if you see a table, you're ready.</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">singularity chains</code>
+                <button class="copy" type="button" data-copy="singularity chains">Copy</button>
+              </div>
+              <pre><code>  ID          NAME          FAMILY  CHAIN ID     ASSET  ALIASES
+  ethereum    Ethereum      evm     1            ETH    eth, mainnet, l1
+  base        Base          evm     8453         ETH
+  arbitrum    Arbitrum One  evm     42161        ETH    arb, arbitrum-one
+  solana      Solana        svm     —            SOL    sol
+  bitcoin     Bitcoin       utxo    —            BTC    btc
+  cosmoshub   Cosmos Hub    cosmos  cosmoshub-4  ATOM   cosmos, atom, gaia
+<span class="dim">  …</span>
+
+<span class="dim">  23 chain(s).</span></code></pre>
+            </figure>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ================================================ first command -->
+    <section id="first">
+      <p class="eyebrow">Getting started</p>
+      <h2>Your first real command</h2>
+      <p>
+        Let's look inside a wallet. This one belongs to Vitalik Buterin, a co-founder of
+        Ethereum — it's public, like every address on a blockchain.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity balance vitalik.eth --chain ethereum</code>
+          <button class="copy" type="button" data-copy="singularity balance vitalik.eth --chain ethereum">Copy</button>
+        </div>
+        <pre><code>ethereum
+<span class="dim">────────</span>
+  6.71259795 ETH  <span class="dim">(native)</span>
+
+  37.192124   USDC  <span class="dim">0xA0b86991…06eB48</span>
+  290.368219  USDT  <span class="dim">0xdAC17F95…831ec7</span>
+  4.57207827  DAI   <span class="dim">0x6B175474…271d0F</span>
+  1.46189817  WETH  <span class="dim">0xC02aaA39…756Cc2</span>
+
+<span class="dim">  EVM chains cannot be enumerated without an indexer, so this covers a curated
+  list of major tokens only. Pass `tokens` with contract addresses to check others.
+  https://etherscan.io/address/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</span></code></pre>
+      </figure>
+      <figcaption class="sample">Real output from a live run. Balances change constantly, so yours will differ.</figcaption>
+
+      <h3>Reading the command</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Part</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td><code>singularity</code></td><td>The tool itself.</td></tr>
+            <tr><td><code>balance</code></td><td>What you want — the question you're asking.</td></tr>
+            <tr><td><code>vitalik.eth</code></td><td>Who you're asking about. A name, an address, or a nickname you've saved.</td></tr>
+            <tr><td><code>--chain ethereum</code></td><td>Which network to look on. <code>-c</code> is the short form.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <strong>Notice what it told you</strong>
+        <span>
+          The grey note at the bottom is deliberate. On Ethereum there is no way to list every
+          token a wallet holds without a paid indexing service, so the tool checks a curated list
+          of major ones and says so. It would rather tell you the shape of the answer than let
+          you assume it found everything.
+        </span>
+      </div>
+
+      <p>Add <code>--json</code> to any command to get machine-readable output instead of a table.</p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================= claude -->
+    <section id="claude">
+      <p class="eyebrow">The other way to use it</p>
+      <h2>Ask Claude instead of typing commands</h2>
+      <p>
+        <strong>MCP</strong> (Model Context Protocol) is a standard way to give an AI assistant
+        real tools. Without it, an assistant answering “what's in this wallet?” is recalling
+        something from training data — possibly years stale, possibly invented. With it, Claude
+        runs the same commands you would and reads the actual, current answer off the chain.
+      </p>
+
+      <h3>Installing it as a Claude Code plugin</h3>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">&gt;</span>
+          <code class="cmd">/plugin install /path/to/Singularity-Agent</code>
+          <button class="copy" type="button" data-copy="/plugin install /path/to/Singularity-Agent">Copy</button>
+        </div>
+        <pre><code><span class="ok">✓</span> singularity-agent installed <span class="dim">— 10 tools registered</span></code></pre>
+      </figure>
+
+      <h3>Or wiring it into any MCP client</h3>
+      <p>Add this to your client's MCP configuration file:</p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">{}</span>
+          <code class="cmd">mcp config</code>
+          <button class="copy" type="button" data-copy='{"mcpServers":{"singularity":{"command":"node","args":["/path/to/Singularity-Agent/dist/mcp/server.js"]}}}'>Copy</button>
+        </div>
+        <pre><code>{
+  <span class="acc">"mcpServers"</span>: {
+    <span class="acc">"singularity"</span>: {
+      <span class="acc">"command"</span>: <span class="dim">"node"</span>,
+      <span class="acc">"args"</span>: [<span class="dim">"/path/to/Singularity-Agent/dist/mcp/server.js"</span>]
+    }
+  }
+}</code></pre>
+      </figure>
+
+      <h3>Then just ask</h3>
+      <ul>
+        <li>“What's in vitalik.eth right now?”</li>
+        <li>“What did transaction 0xc29d744… actually do?”</li>
+        <li>“Is it cheap to send Bitcoin at the moment?”</li>
+        <li>“Prepare a transfer of 25 USDC on Base to this address.”</li>
+      </ul>
+
+      <h3>The ten tools Claude gets</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>chains</code></td><td>List every supported network.</td></tr>
+            <tr><td><code>resolve</code></td><td>Identify what a piece of text is and which chains it belongs to.</td></tr>
+            <tr><td><code>balance</code></td><td>Holdings for one address on one chain.</td></tr>
+            <tr><td><code>portfolio</code></td><td>One address across many chains at once.</td></tr>
+            <tr><td><code>transaction</code></td><td>Look up and explain a transaction.</td></tr>
+            <tr><td><code>block</code></td><td>Fetch a block by height, hash, or latest.</td></tr>
+            <tr><td><code>fees</code></td><td>What a transfer costs right now.</td></tr>
+            <tr><td><code>read_contract</code></td><td>Read data out of a smart contract.</td></tr>
+            <tr><td><code>decode</code></td><td>Turn raw transaction data into a readable function call.</td></tr>
+            <tr><td><code>build_transfer</code></td><td>Prepare an <strong>unsigned</strong> payment.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:.9375rem;color:var(--ink-2)">
+        Every one of them is marked read-only, and <code>build_transfer</code> returns a payload
+        plus a list of warnings that Claude is instructed to show you before you sign anything.
+      </p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ====================================================== recipes -->
+    <section id="do">
+      <p class="eyebrow">Recipes</p>
+      <h2>What you can ask it</h2>
+      <p>Each of these is a real command with real output. Copy any of them and run it.</p>
+
+      <div class="recipes">
+
+        <div class="recipe">
+          <h3><span class="q">“</span>What even is this thing I pasted?<span class="q">”</span></h3>
+          <p>
+            You have a string of characters and no idea whether it's a wallet, a transaction, or
+            a typo. <code>resolve</code> works it out — and if it's a name, looks up the address
+            behind it.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity resolve vitalik.eth</code>
+              <button class="copy" type="button" data-copy="singularity resolve vitalik.eth">Copy</button>
+            </div>
+            <pre><code>  Input    vitalik.eth
+  Kind     name
+  Address  <span class="acc">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</span>
+  Name     vitalik.eth
+  Family   evm
+  Chains   ethereum
+
+<span class="dim">  Resolves through ENS on Ethereum mainnet; the resulting address works on
+  every EVM chain.</span></code></pre>
+          </figure>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>Show me everything, everywhere<span class="q">”</span></h3>
+          <p>
+            <code>portfolio</code> checks one address across many chains at once. It only queries
+            chains where that address format is actually valid, so an Ethereum address doesn't
+            produce a pile of Solana errors.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity portfolio vitalik.eth</code>
+              <button class="copy" type="button" data-copy="singularity portfolio vitalik.eth">Copy</button>
+            </div>
+            <pre><code>Portfolio for 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+<span class="dim">──────────────────────────────────────────────────────</span>
+<span class="dim">  Queried 5 chain(s).</span>
+
+ethereum
+<span class="dim">────────</span>
+  6.71259795 ETH  <span class="dim">(native)</span>
+  37.192124   USDC
+
+base
+<span class="dim">────</span>
+  0.04182 ETH  <span class="dim">(native)</span>
+
+<span class="dim">  Empty on: arbitrum, optimism, polygon</span></code></pre>
+          </figure>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>What did this transaction do?<span class="q">”</span></h3>
+          <p>
+            Paste a transaction hash with no chain and it searches the likely ones in parallel. It
+            also decodes the raw data into a readable function call where it recognises it.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5</code>
+              <button class="copy" type="button" data-copy="singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5">Copy</button>
+            </div>
+            <pre><code>base  <span class="ok">success</span>
+<span class="dim">─────────────</span>
+  Hash      0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5
+  From      0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001
+  To        0x4200000000000000000000000000000000000015
+  Value     0 ETH
+  Block     51344342
+  Time      2026-09-15T13:13:51.000Z
+
+  0xdead…0001 -&gt; 0x4200…0015 on Base.
+
+<span class="dim">  https://basescan.org/tx/0xc29d744…</span></code></pre>
+          </figure>
+          <figcaption class="sample">You never told it this was on Base — it found it.</figcaption>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>Is it expensive to send right now?<span class="q">”</span></h3>
+          <p>
+            Fees work completely differently on each chain. <code>fees</code> normalises them to
+            one comparable number, then shows you the chain's own units underneath.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity fees --chain bitcoin</code>
+              <button class="copy" type="button" data-copy="singularity fees --chain bitcoin">Copy</button>
+            </div>
+            <pre><code>Fees on bitcoin
+<span class="dim">───────────────</span>
+  Simple transfer  <span class="acc">~0.00000054 BTC</span>
+
+  nextBlock      1.1 sat/vB
+  within6Blocks  0.4 sat/vB
+  within24Hours  0.3 sat/vB
+  assumedTxSize  141 vB <span class="dim">(1 input, 2 outputs, P2WPKH)</span>
+
+<span class="dim">  Bitcoin fees are per-vbyte, so cost depends on how many UTXOs you spend,
+  not on the amount sent.</span></code></pre>
+          </figure>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>What is this wall of hex?<span class="q">”</span></h3>
+          <p>
+            When a wallet asks you to approve something, it often shows an unreadable blob.
+            <code>decode</code> tells you what it actually calls and with what arguments — worth
+            doing <em>before</em> you approve, not after.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity decode 0xa9059cbb000000000000000000000000d8da…0f4240</code>
+              <button class="copy" type="button" data-copy="singularity decode 0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f4240">Copy</button>
+            </div>
+            <pre><code>{
+  <span class="acc">"selector"</span>: "0xa9059cbb",
+  <span class="acc">"signature"</span>: "function transfer(address to, uint256 amount) returns (bool)",
+  <span class="acc">"name"</span>: "transfer",
+  <span class="acc">"args"</span>: [
+    { "name": "to",     "type": "address", "value": "0xd8dA6BF2…aA96045" },
+    { "name": "amount", "type": "uint256", "value": "1000000" }
+  ]
+}</code></pre>
+          </figure>
+          <figcaption class="sample">Translation: send 1,000,000 base units — 1 USDC, which has 6 decimals — to that address.</figcaption>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>Prepare a payment for me<span class="q">”</span></h3>
+          <p>
+            This is the one command that produces something you could eventually sign. Note that
+            nothing is sent, and no key is involved.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC</code>
+              <button class="copy" type="button" data-copy="singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC">Copy</button>
+            </div>
+            <pre><code>Unsigned transaction — base
+<span class="dim">───────────────────────────</span>
+  Send 25.5 USDC (0x8335…2913) to 0xd8dA…6045 on Base.
+
+  Payload
+    {
+      "to":      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "value":   "0x0",
+      "data":    "0xa9059cbb000000000000000000000000d8da…01851960",
+      "chainId": 8453
+    }
+
+  How to sign
+    This calls transfer() on the token contract. `to` is the TOKEN address, not
+    the recipient — the recipient is encoded in `data`. Sign with your own wallet.
+
+  <span class="bad">Warnings</span>
+    <span class="bad">!</span> This transaction is unsigned. Review every field before signing.
+    <span class="bad">!</span> Verify the token address belongs to the asset you mean. Fake tokens
+      reuse real symbols.
+
+<span class="dim">  Singularity holds no keys and has not signed or broadcast anything.</span></code></pre>
+          </figure>
+          <div class="callout caution">
+            <strong>Read the warnings, every time</strong>
+            <span>
+              That second warning is not boilerplate. Anyone can create a token called “USDC”.
+              The only thing that identifies a real one is its contract address — which is why
+              the tool prints it and asks you to check.
+            </span>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3><span class="q">“</span>Why is everything slow?<span class="q">”</span></h3>
+          <p>
+            Singularity talks to public servers that are free and therefore heavily rate-limited.
+            <code>doctor</code> tells you which ones are actually responding.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity doctor</code>
+              <button class="copy" type="button" data-copy="singularity doctor">Copy</button>
+            </div>
+            <pre><code>Endpoint health
+<span class="dim">───────────────</span>
+  <span class="ok">ok</span>  ethereum   <span class="num">440ms</span>
+  <span class="ok">ok</span>  base       <span class="num">216ms</span>
+  <span class="ok">ok</span>  arbitrum   <span class="num">212ms</span>
+  <span class="ok">ok</span>  solana     <span class="num">190ms</span>
+  <span class="ok">ok</span>  bitcoin    <span class="num">21403ms</span>
+  <span class="ok">ok</span>  cosmoshub  <span class="num">516ms</span>
+  <span class="ok">ok</span>  osmosis    <span class="num">513ms</span>
+  <span class="ok">ok</span>  celestia   <span class="num">723ms</span>
+
+  <span class="ok">All endpoints reachable.</span></code></pre>
+          </figure>
+          <figcaption class="sample">That 21-second Bitcoin result is a slow public server, not a broken one. <a href="#config">Configuration</a> shows how to use a faster one.</figcaption>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================== chains -->
+    <section id="chains">
+      <p class="eyebrow">Coverage</p>
+      <h2>23 chains, four families</h2>
+      <p>
+        A <em>family</em> is a group of chains that work the same way underneath. Learn one member
+        and you have effectively learned the rest. You can add any chain that isn't listed here
+        yourself — see <a href="#config">Configuration</a>.
+      </p>
+
+      <div class="families">
+        <div class="family">
+          <span class="kind">evm</span>
+          <h3>Ethereum &amp; friends</h3>
+          <p>Addresses start <code>0x</code>. Hundreds of chains share this design.</p>
+          <ul>
+            <li><span class="chip">ethereum</span></li><li><span class="chip">base</span></li>
+            <li><span class="chip">arbitrum</span></li><li><span class="chip">optimism</span></li>
+            <li><span class="chip">polygon</span></li><li><span class="chip">bsc</span></li>
+            <li><span class="chip">avalanche</span></li><li><span class="chip">gnosis</span></li>
+            <li><span class="chip">scroll</span></li><li><span class="chip">linea</span></li>
+            <li><span class="chip">zksync</span></li><li><span class="chip">sepolia</span></li>
+            <li><span class="chip">base-sepolia</span></li>
+          </ul>
+        </div>
+        <div class="family">
+          <span class="kind">svm</span>
+          <h3>Solana</h3>
+          <p>Addresses are base58 text with no prefix. Token holdings can be listed in full.</p>
+          <ul>
+            <li><span class="chip">solana</span></li><li><span class="chip">solana-devnet</span></li>
+          </ul>
+        </div>
+        <div class="family">
+          <span class="kind">utxo</span>
+          <h3>Bitcoin &amp; kin</h3>
+          <p>Addresses start <code>bc1</code>, <code>1</code> or <code>3</code>. No tokens — just coins.</p>
+          <ul>
+            <li><span class="chip">bitcoin</span></li><li><span class="chip">bitcoin-testnet</span></li>
+            <li><span class="chip">litecoin</span></li>
+          </ul>
+        </div>
+        <div class="family">
+          <span class="kind">cosmos</span>
+          <h3>Cosmos</h3>
+          <p>Each chain has its own address prefix, which makes them self-identifying.</p>
+          <ul>
+            <li><span class="chip">cosmoshub</span></li><li><span class="chip">osmosis</span></li>
+            <li><span class="chip">celestia</span></li><li><span class="chip">injective</span></li>
+            <li><span class="chip">dydx</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <p>
+        You can refer to a chain by its id, a nickname, or its numeric id — <code>eth</code>,
+        <code>ethereum</code>, <code>mainnet</code> and <code>1</code> all mean the same thing.
+        Get it wrong and it suggests what you probably meant.
+      </p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ==================================================== vocabulary -->
+    <section id="words">
+      <p class="eyebrow">Plain English</p>
+      <h2>Words you'll see</h2>
+      <p>Crypto has a lot of jargon. Here is the subset you actually need to use this tool.</p>
+
+      <dl class="glossary">
+        <div>
+          <dt>Address</dt>
+          <dd>A public account identifier — like a bank account number. Safe to share; that is what it is for. Every chain family writes them differently.</dd>
+        </div>
+        <div>
+          <dt>Private key</dt>
+          <dd>The secret that controls an address. Never share it, never type it into anything. Singularity never asks for one.</dd>
+        </div>
+        <div>
+          <dt>Transaction hash <span class="alt">txid · signature</span></dt>
+          <dd>The receipt number for something that happened on-chain. Paste one into <code>tx</code> to see what it did.</dd>
+        </div>
+        <div>
+          <dt>Native token</dt>
+          <dd>The coin a chain runs on, used to pay fees — ETH on Ethereum, SOL on Solana, BTC on Bitcoin, ATOM on Cosmos Hub.</dd>
+        </div>
+        <div>
+          <dt>Token</dt>
+          <dd>Anything else living on that chain, like USDC. Identified by a contract address, which differs on every chain — the same-named token has a different address on Ethereum and Base.</dd>
+        </div>
+        <div>
+          <dt>Base units <span class="alt">wei · satoshi · lamport</span></dt>
+          <dd>Chains store whole numbers only, so amounts are held in tiny units. 1 ETH is 10<sup>18</sup> wei; 1 BTC is 100,000,000 satoshi. Singularity shows you both, and refuses to quietly round.</dd>
+        </div>
+        <div>
+          <dt>Gas / fee <span class="alt">gwei · sat/vB</span></dt>
+          <dd>What you pay the network to process your transaction. It fluctuates with demand, which is why <code>fees</code> exists.</dd>
+        </div>
+        <div>
+          <dt>RPC endpoint</dt>
+          <dd>The server Singularity asks for data. Free public ones are included; they are slow and rate-limited. See <a href="#config">Configuration</a>.</dd>
+        </div>
+        <div>
+          <dt>ENS name</dt>
+          <dd>A human-readable name for an Ethereum address, like <code>vitalik.eth</code>. Use it anywhere an address is accepted.</dd>
+        </div>
+        <div>
+          <dt>Unsigned transaction</dt>
+          <dd>A prepared but unsigned instruction. Harmless on its own — it does nothing until a private key signs it, which happens in your wallet, not here.</dd>
+        </div>
+        <div>
+          <dt>Smart contract</dt>
+          <dd>A program stored on a chain. <code>read_contract</code> reads data out of one; it never writes to one.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ================================================= configuration -->
+    <section id="config">
+      <p class="eyebrow">Going further</p>
+      <h2>Configuration</h2>
+
+      <h3>Faster connections</h3>
+      <p>
+        The bundled public servers need no signup, which is why they're the default — but they
+        are throttled and sometimes just disappear. Providers like Alchemy and Infura give free
+        API keys with far better limits. Point Singularity at one:
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY</code>
+          <button class="copy" type="button" data-copy="export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY">Copy</button>
+        </div>
+        <pre><code><span class="dim"># The name is SINGULARITY_RPC_ + the chain id, uppercased, with - becoming _
+# So base-sepolia becomes SINGULARITY_RPC_BASE_SEPOLIA
+# Comma-separate several for automatic failover.</span></code></pre>
+      </figure>
+
+      <h3>Nicknames and custom chains</h3>
+      <p>Create <code>~/.singularity/config.json</code> to save addresses under names you'll remember, and to add chains that aren't built in:</p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">{}</span>
+          <code class="cmd">~/.singularity/config.json</code>
+          <button class="copy" type="button" data-copy='{"addressBook":{"savings":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"},"portfolioChains":["ethereum","base","solana"]}'>Copy</button>
+        </div>
+        <pre><code>{
+  <span class="acc">"addressBook"</span>: {
+    <span class="acc">"savings"</span>: <span class="dim">"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"</span>
+  },
+  <span class="acc">"portfolioChains"</span>: [<span class="dim">"ethereum"</span>, <span class="dim">"base"</span>, <span class="dim">"solana"</span>],
+  <span class="acc">"chains"</span>: [
+    {
+      <span class="acc">"id"</span>: <span class="dim">"my-rollup"</span>,
+      <span class="acc">"family"</span>: <span class="dim">"evm"</span>,
+      <span class="acc">"chainId"</span>: 123456,
+      <span class="acc">"nativeCurrency"</span>: { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+      <span class="acc">"rpc"</span>: [<span class="dim">"https://rpc.my-rollup.example"</span>]
+    }
+  ]
+}</code></pre>
+      </figure>
+      <p>Now <code>singularity balance savings -c base</code> works, and <code>my-rollup</code> is a chain like any other.</p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ================================================ troubleshooting -->
+    <section id="help">
+      <p class="eyebrow">Troubleshooting</p>
+      <h2>If something goes wrong</h2>
+      <p>Errors from this tool carry a code and a hint. The hint is usually the fix.</p>
+
+      <div class="qa">
+        <details>
+          <summary>“singularity: command not found”</summary>
+          <div class="answer">
+            <p>Step 4 of the install didn't take. Run <code>npm link</code> again inside the project folder. If that fails, you can always run it directly:</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">node dist/cli/index.js chains</code>
+                <button class="copy" type="button" data-copy="node dist/cli/index.js chains">Copy</button>
+              </div>
+            </figure>
+          </div>
+        </details>
+
+        <details>
+          <summary>“RPC call failed”, or everything is very slow</summary>
+          <div class="answer">
+            <p>A public server is rate-limiting you. Check which ones are alive with <code>singularity doctor</code>, then set your own endpoint — see <a href="#config">Configuration</a>. This is the single most common problem, and the fix is free.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>“is not a valid address on Osmosis”</summary>
+          <div class="answer">
+            <p>Cosmos chains each use their own address prefix, but they're all the same underlying account. The tool does the conversion for you rather than just complaining:</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">singularity balance cosmos1qypqx…lzv7xu -c osmosis</code>
+                <button class="copy" type="button" data-copy="singularity balance cosmos1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5lzv7xu -c osmosis">Copy</button>
+              </div>
+              <pre><code>  <span class="bad">INVALID_ADDRESS</span>  "cosmos1qypqx…lzv7xu" is not a valid address on Osmosis.
+  <span class="dim">That is a "cosmos" address. It is the same account on Osmosis, re-encoded:</span>
+  <span class="acc">osmo1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5helwsw</span></code></pre>
+            </figure>
+            <p>Copy the address it gives you. <code>singularity resolve</code> on any Cosmos address lists every equivalent at once.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>“Transaction was not found”</summary>
+          <div class="answer">
+            <p>Three likely reasons. It might be on a chain outside the default search set — name it with <code>--chain</code>. It might be too new and still pending. Or, on Solana, it might simply be too old: public Solana servers delete old history, and retrieving it needs an archival endpoint.</p>
+          </div>
+        </details>
+
+        <details>
+          <summary>A token I own isn't showing up</summary>
+          <div class="answer">
+            <p>Expected on Ethereum-style chains — see <a href="#limits">Limits</a>. Name the token explicitly by its contract address:</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">singularity balance 0xYourAddress -c base --token 0xTokenContractAddress</code>
+                <button class="copy" type="button" data-copy="singularity balance 0xYourAddress -c base --token 0xTokenContractAddress">Copy</button>
+              </div>
+            </figure>
+          </div>
+        </details>
+
+        <details>
+          <summary>“Unknown chain”</summary>
+          <div class="answer">
+            <p>Check the spelling against <code>singularity chains</code>. The error also guesses what you meant — typing <code>etherium</code> suggests <code>ethereum</code>.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================== limits -->
+    <section id="limits">
+      <p class="eyebrow">Honesty</p>
+      <h2>What it deliberately won't do</h2>
+      <p>
+        These are real boundaries, not bugs. They're listed here, and in the tool's own output,
+        because a confident wrong answer is worse than a clear “I can't”.
+      </p>
+      <ul>
+        <li><strong>Ethereum token lists aren't complete.</strong> Listing every token an address holds requires a paid indexing service. Without one, the tool checks a curated set of major tokens and says so. Solana and Cosmos <em>can</em> list everything, and do.</li>
+        <li><strong>No prices.</strong> It reports quantities, not dollar values.</li>
+        <li><strong>IBC tokens show as hashes.</strong> On Cosmos, a transferred token appears as <code>ibc/3EF74C…</code>. Identifying it needs a per-token lookup, so it shows the hash rather than guessing.</li>
+        <li><strong>Cosmos fees are an estimate.</strong> Gas prices there are set by individual validators, not the chain. Your wallet will usually re-quote.</li>
+        <li><strong>No CosmWasm contract queries.</strong> Contract reads cover Ethereum-style chains and Solana.</li>
+        <li><strong>It cannot send anything.</strong> By design, permanently.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <span class="mark-sm">
+        <picture>
+          <source srcset="/assets/mark.webp" type="image/webp">
+          <img src="/assets/mark.png" alt="" width="20" height="20" loading="lazy" decoding="async">
+        </picture>
+      </span>
+      <span>Singularity-Agent — MIT licensed</span>
+      <span>Read-only. No keys, ever.</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    "use strict";
+
+    /* -------------------------------------------------- theme toggle */
+    var root = document.documentElement;
+    var toggle = document.getElementById("theme-toggle");
+
+    function systemPrefersDark() {
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    function currentlyDark() {
+      var set = root.getAttribute("data-theme");
+      if (set === "dark") return true;
+      if (set === "light") return false;
+      return systemPrefersDark();
+    }
+    function syncLabel() {
+      // The button offers the theme you'd switch TO, which is what people expect.
+      toggle.textContent = currentlyDark() ? "Light" : "Dark";
+    }
+
+    try {
+      var saved = localStorage.getItem("sa-theme");
+      if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+    } catch (e) { /* private browsing — fall back to the system theme */ }
+
+    syncLabel();
+
+    toggle.addEventListener("click", function () {
+      var next = currentlyDark() ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("sa-theme", next); } catch (e) { /* not fatal */ }
+      syncLabel();
+    });
+
+    /* -------------------------------------------------- copy buttons */
+    document.querySelectorAll(".copy").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var text = button.getAttribute("data-copy") || "";
+
+        function done(okay) {
+          button.textContent = okay ? "Copied" : "Press Ctrl+C";
+          button.setAttribute("data-done", okay ? "1" : "0");
+          setTimeout(function () {
+            button.textContent = "Copy";
+            button.removeAttribute("data-done");
+          }, 1600);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+        } else {
+          done(false);
+        }
+      });
+    });
+
+    /* ------------------------------------------- nav section tracking */
+    var links = Array.prototype.slice.call(document.querySelectorAll(".sidenav a"));
+    var sections = links
+      .map(function (link) { return document.querySelector(link.getAttribute("href")); })
+      .filter(Boolean);
+
+    if ("IntersectionObserver" in window && sections.length) {
+      var visible = Object.create(null);
+
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) visible[entry.target.id] = true;
+          else delete visible[entry.target.id];
+        });
+
+        // Highlight the topmost section currently on screen.
+        var active = null;
+        for (var i = 0; i < sections.length; i++) {
+          if (visible[sections[i].id]) { active = sections[i].id; break; }
+        }
+
+        links.forEach(function (link) {
+          if (active && link.getAttribute("href") === "#" + active) {
+            link.setAttribute("aria-current", "true");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        });
+      }, { rootMargin: "-88px 0px -55% 0px", threshold: 0 });
+
+      sections.forEach(function (section) { observer.observe(section); });
+    }
+  })();
+</script>
+
+</body>
+</html>
