@@ -50,10 +50,22 @@ export interface TelegramMessage {
   new_chat_members?: TelegramUser[];
 }
 
+/** Membership change: the bot added to a chat, removed, or promoted. */
+export interface ChatMemberUpdated {
+  chat: TelegramChat;
+  from?: TelegramUser;
+  new_chat_member?: { status: string; user?: TelegramUser };
+  old_chat_member?: { status: string };
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
+  /** Posts in a channel. A separate update type from `message`. */
+  channel_post?: TelegramMessage;
+  /** The bot's own membership changing, in any chat. */
+  my_chat_member?: ChatMemberUpdated;
 }
 
 export interface SendMessageOptions {
@@ -129,9 +141,21 @@ export class TelegramApi {
   }
 
   /**
-   * `allowed_updates` is deliberately narrow: with Telegram's default group
-   * privacy mode the bot only receives commands anyway, and asking for less
-   * means the server sends less of other people's group chatter.
+   * The update types the bot asks for.
+   *
+   * `allowed_updates` is a filter, not a hint: anything left out is never
+   * delivered, and there is no error to notice. This list was once `['message']`
+   * alone, which silently discarded two things that matter —
+   *
+   *   - `channel_post`, which is how posts arrive in a channel. A bot in a
+   *     channel with only `message` subscribed receives absolutely nothing.
+   *   - `my_chat_member`, the bot being added to or removed from a chat. That
+   *     is the one event that answers "is it even in that group?", and without
+   *     it the bot cannot tell the difference between a chat it was never added
+   *     to and one where nobody has spoken.
+   *
+   * Everything else is still left out, so the server sends less of other
+   * people's group chatter.
    */
   getUpdates(offset: number, timeoutSeconds: number): Promise<TelegramUpdate[]> {
     return this.call<TelegramUpdate[]>(
@@ -139,7 +163,7 @@ export class TelegramApi {
       {
         offset,
         timeout: timeoutSeconds,
-        allowed_updates: ['message'],
+        allowed_updates: ['message', 'channel_post', 'my_chat_member'],
       },
       // Give the HTTP call headroom beyond the long poll it is holding open.
       (timeoutSeconds + 15) * 1000,

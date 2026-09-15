@@ -17,7 +17,7 @@ import {
 import { sanitizeModelHtml } from '../src/telegram/html.js';
 import { stripHandles, fitReply, REPLY_LIMIT } from '../src/x/listener.js';
 import { cursorFor } from '../src/x/state.js';
-import type { TelegramMessage } from '../src/telegram/api.js';
+import { TelegramApi, type TelegramMessage } from '../src/telegram/api.js';
 
 describe('zod to JSON Schema', () => {
   it('marks only non-optional arguments required', () => {
@@ -443,6 +443,29 @@ describe('telegram engagement', () => {
 
   it('falls back to a first name when there is no username', () => {
     expect(pingFor(tgMessage({ from: { id: 7, is_bot: false, first_name: 'Bob' } }))).toBe('Bob, ');
+  });
+});
+
+describe('update subscription', () => {
+  it('asks Telegram for the update types the bot actually needs', async () => {
+    // allowed_updates is a filter, not a hint: anything left out is never
+    // delivered and there is no error to notice. Subscribing to `message`
+    // alone made the bot deaf in channels and unable to tell whether it had
+    // even been added to a chat.
+    let sent: Record<string, unknown> | undefined;
+
+    const api = new TelegramApi('123456:test');
+    (api as unknown as { call: unknown }).call = async (
+      _method: string,
+      params: Record<string, unknown>,
+    ) => {
+      sent = params;
+      return [];
+    };
+
+    await api.getUpdates(0, 1);
+
+    expect(sent?.allowed_updates).toEqual(['message', 'channel_post', 'my_chat_member']);
   });
 });
 

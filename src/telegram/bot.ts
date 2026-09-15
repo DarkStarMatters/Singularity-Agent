@@ -199,8 +199,45 @@ export class SingularityBot {
     );
   }
 
+  /**
+   * The bot being added to or removed from a chat.
+   *
+   * Always logged, not only in debug: this is the single most useful line in
+   * the log when a group goes quiet, because it distinguishes "nobody has
+   * spoken" from "the bot is not in that chat at all" — which look identical
+   * from inside Telegram.
+   */
+  private noteMembershipChange(event: NonNullable<TelegramUpdate['my_chat_member']>): void {
+    const status = event.new_chat_member?.status ?? 'unknown';
+    const chat = event.chat;
+    const title = chat.title ? ` "${chat.title}"` : '';
+
+    console.error(
+      `[singularity-bot] membership change: now "${status}" in ${chat.type} ${chat.id}${title}` +
+        (event.from?.username ? ` (by @${event.from.username})` : ''),
+    );
+
+    if (chat.type !== 'private' && (status === 'member' || status === 'administrator')) {
+      console.error(
+        `[singularity-bot] add ${chat.id} to TELEGRAM_ALLOWED_CHATS to restrict the bot to this chat.`,
+      );
+      if (status === 'member' && chat.type !== 'channel') {
+        console.error(
+          '[singularity-bot] note: with BotFather privacy mode ON, only commands and replies to my own messages reach me here. /setprivacy → Disable, then re-add me, to see @mentions.',
+        );
+      }
+    }
+  }
+
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
-    const message = update.message;
+    if (update.my_chat_member) {
+      this.noteMembershipChange(update.my_chat_member);
+      return;
+    }
+
+    // A channel post is a separate update type carrying the same shape. Only
+    // commands are answered there — a channel has no conversation to join.
+    const message = update.message ?? update.channel_post;
 
     if (!message?.text || message.from?.is_bot) {
       if (this.debug && update.message) this.trace(update.message, 'IGNORED (no text, or from a bot)');
