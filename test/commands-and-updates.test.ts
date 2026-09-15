@@ -193,6 +193,8 @@ const FACTS: ProjectFacts = {
   toolCount: 10,
   capabilities: ['Get balances on one chain', 'Look up a transaction'],
   recentChanges: ['Fix Solana block lookups', 'Add the spam filter'],
+  shipped: ['Coverage: 3 chains across two families'],
+  planned: ['Historical state', 'Transaction history'],
 };
 
 describe('project update grounding', () => {
@@ -234,6 +236,29 @@ describe('project update grounding', () => {
     for (let i = 0; i < 10; i++) {
       expect(nextAngle(UPDATE_ANGLES.slice(0, i) as never, noCommits)).not.toBe('changelog');
     }
+  });
+
+  it('never picks the roadmap angle when the roadmap could not be read', () => {
+    // An installed copy of the package ships no roadmap.md.
+    const noRoadmap = { ...FACTS, shipped: [], planned: [] };
+
+    for (let i = 0; i < 10; i++) {
+      expect(nextAngle(UPDATE_ANGLES.slice(0, i) as never, noRoadmap)).not.toBe('roadmap');
+    }
+  });
+
+  it('separates what is shipped from what is only planned', () => {
+    const sheet = factSheet(FACTS, 'roadmap');
+
+    // An agent announcing a planned feature as a built one is the specific
+    // failure this labelling exists to prevent.
+    expect(sheet).toContain('exists today');
+    expect(sheet).toContain('NOT built yet');
+    expect(sheet.indexOf('Coverage: 3 chains')).toBeLessThan(sheet.indexOf('Historical state'));
+  });
+
+  it('keeps the roadmap out of angles that should not cite it', () => {
+    expect(factSheet(FACTS, 'coverage')).not.toContain('Historical state');
   });
 
   it('is due immediately, then not again until the interval passes', () => {

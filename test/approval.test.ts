@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { PostGate, type ApprovalTransport, type PendingPost, type ResolvedPost } from '../src/x/approval.js';
 import { decisionFrom, renderPending, renderResolved } from '../src/telegram/approvals.js';
 import {
+  pendingKeyboard,
   runDraftsCommand,
   runXCommand,
   type XControl,
@@ -232,9 +233,17 @@ function stubControl(overrides: Partial<XControl> = {}): { control: XControl; ca
 }
 
 describe('the /x control command', () => {
+  /** Commands may return text or text-plus-buttons. */
+  const textOf = (result: string | { text: string }) =>
+    typeof result === 'string' ? result : result.text;
+  const keyboardOf = (result: unknown) =>
+    typeof result === 'object' && result !== null && 'keyboard' in result
+      ? (result as { keyboard?: unknown[] }).keyboard
+      : undefined;
+
   it('reports status in terms an operator asks about', async () => {
     const { control } = stubControl();
-    const out = await runXCommand(control, ['status']);
+    const out = textOf(await runXCommand(control, ['status']));
 
     expect(out).toContain('@SingularityAgnt');
     expect(out).toContain('approval required');
@@ -244,7 +253,50 @@ describe('the /x control command', () => {
 
   it('defaults to status with no subcommand', async () => {
     const { control } = stubControl();
-    expect(await runXCommand(control, [])).toContain('@SingularityAgnt');
+    expect(textOf(await runXCommand(control, []))).toContain('@SingularityAgnt');
+  });
+
+  it('offers approve and reject buttons when something is waiting', async () => {
+    const draft: PendingPost = { id: 'p1abc', kind: 'update', text: 'A draft.', createdAt: NOW };
+    const { control } = stubControl({ pending: () => [draft] });
+
+    // The point: decide from the status bubble rather than going to find a card.
+    expect(keyboardOf(await runXCommand(control, ['status']))).toEqual([
+      [
+        { text: '✅ 1', callback_data: 'ok:p1abc' },
+        { text: '🗑 1', callback_data: 'no:p1abc' },
+      ],
+    ]);
+  });
+
+  it('offers no buttons when nothing is waiting', async () => {
+    const { control } = stubControl();
+    expect(keyboardOf(await runXCommand(control, ['status']))).toBeUndefined();
+  });
+
+  it('numbers the buttons to match the list', async () => {
+    const drafts: PendingPost[] = [1, 2, 3].map((n) => ({
+      id: `p${n}`,
+      kind: 'update' as const,
+      text: `Draft ${n}.`,
+      createdAt: NOW,
+    }));
+
+    const result = await runXCommand(stubControl({ pending: () => drafts }).control, ['pending']);
+
+    expect(textOf(result)).toContain('<b>1.</b>');
+    expect(keyboardOf(result)).toHaveLength(3);
+  });
+
+  it('caps the buttons and points at /drafts for the rest', () => {
+    const many: PendingPost[] = Array.from({ length: 9 }, (_, n) => ({
+      id: `p${n}`,
+      kind: 'update' as const,
+      text: 'x',
+      createdAt: NOW,
+    }));
+
+    expect(pendingKeyboard(many)).toHaveLength(4);
   });
 
   it('warns loudly when posting is live without approval', async () => {

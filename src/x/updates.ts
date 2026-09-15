@@ -35,6 +35,10 @@ export interface ProjectFacts {
   capabilities: string[];
   /** Recent commit subjects, when running from a git checkout. */
   recentChanges: string[];
+  /** Claims from the roadmap's "Shipped" section — what actually exists. */
+  shipped: string[];
+  /** Headings from the roadmap's later phases — what is planned, not promised. */
+  planned: string[];
 }
 
 /**
@@ -48,6 +52,7 @@ export const UPDATE_ANGLES = [
   'capability',
   'safety',
   'changelog',
+  'roadmap',
   'philosophy',
 ] as const;
 
@@ -62,6 +67,8 @@ const ANGLE_BRIEFS: Record<UpdateAngle, string> = {
     'That it is read-only and holds no keys: it can build an unsigned transfer for someone to sign themselves, and cannot sign or broadcast. Say why that is the right default.',
   changelog:
     'What changed recently, using only the listed commit subjects. If the list is empty, do not write about changes at all — pick nothing and return an empty line.',
+  roadmap:
+    'One thing the project has shipped, drawn from the Shipped list. You may mention a planned area, but say plainly that it is planned and not built. Never describe a planned item as if it exists.',
   philosophy:
     'Why a chain-agnostic, read-only tool is the right shape. No numbers unless they appear in the facts.',
 };
@@ -81,6 +88,8 @@ export function collectProjectFacts(repoRoot = process.cwd()): ProjectFacts {
     (byFamily[chain.family] ??= []).push(chain.id);
   }
 
+  const { shipped, planned } = readRoadmap(repoRoot);
+
   return {
     version: VERSION,
     chainCount: chains.length,
@@ -88,7 +97,52 @@ export function collectProjectFacts(repoRoot = process.cwd()): ProjectFacts {
     toolCount: TOOLS.length,
     capabilities: TOOLS.map((tool) => tool.title),
     recentChanges: recentCommits(repoRoot),
+    shipped,
+    planned,
   };
+}
+
+/**
+ * What the project says about itself, read from `roadmap.md`.
+ *
+ * Commit subjects describe changes; the roadmap describes capabilities, which
+ * is what a reader actually wants from a project update. Both are checkable
+ * text in the repository rather than anything the model supplies.
+ *
+ * The distinction between the two lists is the point. "Shipped" is what exists
+ * and may be stated flatly; the phase headings are intentions, and the prompt
+ * is told to label them as such — an agent announcing a planned feature as a
+ * built one is the specific failure this guards against.
+ */
+export function readRoadmap(repoRoot: string): { shipped: string[]; planned: string[] } {
+  const path = join(repoRoot, 'roadmap.md');
+  if (!existsSync(path)) return { shipped: [], planned: [] };
+
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return { shipped: [], planned: [] };
+  }
+
+  // Split rather than match: with the `m` flag `$` matches at every line end,
+  // so a lazy `[\s\S]*?` looking for `\n## ` or `$` stops at the first line
+  // break and captures nothing. Sections are a structural split, not a regex.
+  const sections = text.split(/^## /m);
+  const shippedSection = sections.find((section) => section.startsWith('Shipped')) ?? '';
+
+  // Bold lead-ins ("**Coverage.** 23 chains across…") are the section's own
+  // summary of each area, which is exactly the granularity of one post.
+  const shipped = [...shippedSection.matchAll(/\*\*([^*]+)\*\*\s*([^\n]*)/g)]
+    .map(([, label, rest]) => `${label!.replace(/\.$/, '')}: ${rest!.trim()}`.trim())
+    .filter((line) => line.length > 12)
+    .slice(0, 8);
+
+  const planned = [...text.matchAll(/^### \d+\.\d+ (.+)$/gm)]
+    .map((match) => match[1]!.trim())
+    .slice(0, 10);
+
+  return { shipped, planned };
 }
 
 /**
@@ -142,6 +196,19 @@ export function factSheet(facts: ProjectFacts, angle: UpdateAngle): string {
     );
   }
 
+  if (angle === 'roadmap') {
+    if (facts.shipped.length) {
+      lines.push('Shipped — this exists today:');
+      for (const item of facts.shipped) lines.push(`  - ${item}`);
+    }
+    // Labelled emphatically because announcing a planned feature as a built
+    // one is the specific way a project update becomes a false claim.
+    if (facts.planned.length) {
+      lines.push('Planned — NOT built yet, and must be described only as planned:');
+      for (const item of facts.planned) lines.push(`  - ${item}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -189,10 +256,14 @@ export interface UpdateSchedule {
  * things before any repeats.
  */
 export function nextAngle(recent: UpdateAngle[], facts: ProjectFacts): UpdateAngle {
-  const usable = UPDATE_ANGLES.filter(
+  const usable = UPDATE_ANGLES.filter((angle) => {
     // Nothing to say about a changelog with no commits in it.
-    (angle) => angle !== 'changelog' || facts.recentChanges.length > 0,
-  );
+    if (angle === 'changelog') return facts.recentChanges.length > 0;
+    // Nor about a roadmap that could not be read (an installed package has none).
+    if (angle === 'roadmap') return facts.shipped.length > 0 || facts.planned.length > 0;
+
+    return true;
+  });
 
   const unused = usable.filter((angle) => !recent.includes(angle));
   if (unused.length) return unused[0]!;

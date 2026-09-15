@@ -9,6 +9,7 @@ import * as ops from '../tools/operations.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
+import type { InlineKeyboard } from './api.js';
 import {
   formatBalance,
   formatBlock,
@@ -47,6 +48,15 @@ export interface CommandContext {
   isControlChat?: boolean;
 }
 
+/**
+ * What a command hands back.
+ *
+ * Most return a string. A command that offers a decision — approving a post —
+ * returns buttons with it, because a list of ids to retype is a worse
+ * interface than a tap for exactly the action you already decided on.
+ */
+export type CommandResult = string | { text: string; keyboard?: InlineKeyboard };
+
 export interface Command {
   name: string;
   usage: string;
@@ -60,7 +70,7 @@ export interface Command {
    * ignored, which is what "the bot does not answer" looked like.
    */
   aliases?: string[];
-  run(ctx: CommandContext): Promise<string> | string;
+  run(ctx: CommandContext): Promise<CommandResult> | CommandResult;
 }
 
 /** A missing argument is a user error, not a crash — reuse the hint channel. */

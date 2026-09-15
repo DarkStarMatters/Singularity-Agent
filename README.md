@@ -189,8 +189,14 @@ repository (the real version, the real chain registry, real commit subjects)
 and told that anything not in it does not exist.
 
 Each post is written from a rotating angle — coverage, capability, safety,
-changelog, philosophy — and angles used recently are excluded, so five posts
-cover five different things before any repeats. That rotation still comes round
+changelog, roadmap, philosophy — and angles used recently are excluded, so six
+posts cover six different things before any repeats.
+
+The roadmap angle reads `roadmap.md` and hands the model two clearly separated
+lists: what the Shipped section claims exists, and the phase headings that are
+only planned. The labelling is emphatic on purpose — an agent announcing a
+planned feature as a built one is the specific way a project update becomes a
+false claim. That rotation still comes round
 within a day, so the last dozen posts are also fed back into the prompt as "do
 not say these again", and a post that still overlaps a recent one by more than
 60% of its content words is dropped rather than published. The changelog angle is skipped

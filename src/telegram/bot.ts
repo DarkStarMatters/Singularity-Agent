@@ -15,10 +15,16 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { COMMANDS, commandMenu, type CommandContext } from './commands.js';
+import { COMMANDS, commandMenu, type CommandContext, type CommandResult } from './commands.js';
 import { esc, formatError } from './format.js';
 import { loadConfig, loadEnvFile, ConfigError, type TelegramConfig } from './config.js';
-import { TelegramApi, TelegramApiError, type TelegramMessage, type TelegramUpdate } from './api.js';
+import {
+  TelegramApi,
+  TelegramApiError,
+  type InlineKeyboard,
+  type TelegramMessage,
+  type TelegramUpdate,
+} from './api.js';
 import { decideEngagement, isAnonymousAdmin, isFromAnotherBot, pingFor } from './engage.js';
 import { sanitizeModelHtml } from './html.js';
 import { GrokAgent, createAgent } from '../grok/agent.js';
@@ -416,24 +422,30 @@ export class SingularityBot {
         : {}),
     };
 
-    let text: string;
+    let result: CommandResult;
     try {
-      text = await command.run(ctx);
+      result = await command.run(ctx);
     } catch (err) {
       // An RPC failure is routine on public endpoints; report it in-chat rather
       // than letting it take the poll loop down.
-      text = formatError(err);
+      result = formatError(err);
     }
 
-    await this.reply(message, text);
+    const { text, keyboard } = typeof result === 'string' ? { text: result, keyboard: undefined } : result;
+    await this.reply(message, text, keyboard);
   }
 
-  private async reply(message: TelegramMessage, text: string): Promise<void> {
+  private async reply(
+    message: TelegramMessage,
+    text: string,
+    keyboard?: InlineKeyboard,
+  ): Promise<void> {
     try {
       await this.api.sendMessage({
         chatId: message.chat.id,
         text,
         replyToMessageId: message.message_id,
+        ...(keyboard?.length ? { keyboard } : {}),
       });
     } catch (err) {
       console.error(`[singularity-bot] send failed in ${message.chat.id}: ${(err as Error).message}`);

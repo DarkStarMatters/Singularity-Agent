@@ -10,6 +10,8 @@
  * quietly reach past the control surface into the listener's internals.
  */
 import { esc } from './format.js';
+import { APPROVE_PREFIX, REJECT_PREFIX } from './approvals.js';
+import type { InlineKeyboard } from './api.js';
 import type { PendingPost } from '../x/approval.js';
 
 export interface XStatus {
@@ -85,24 +87,47 @@ function renderStatus(status: XStatus): string {
   return lines.join('\n');
 }
 
-function renderPendingList(pending: PendingPost[]): string {
-  if (!pending.length) return 'Nothing is waiting for approval.';
+/**
+ * Buttons for a list of drafts, one row per draft.
+ *
+ * Only the first few get buttons: a wall of them is unreadable, and `/drafts`
+ * re-sends full cards when there are more. The numbers match the list above so
+ * "✅ 2" is unambiguous without repeating the text on the button.
+ */
+export function pendingKeyboard(pending: PendingPost[], limit = 4): InlineKeyboard {
+  return pending.slice(0, limit).map((item, index) => [
+    { text: `✅ ${index + 1}`, callback_data: `${APPROVE_PREFIX}${item.id}` },
+    { text: `🗑 ${index + 1}`, callback_data: `${REJECT_PREFIX}${item.id}` },
+  ]);
+}
+
+function renderPendingList(pending: PendingPost[]): {
+  text: string;
+  keyboard?: InlineKeyboard;
+} {
+  if (!pending.length) return { text: 'Nothing is waiting for approval.' };
 
   const lines = [`<b>${pending.length} waiting</b>`, ''];
 
-  for (const item of pending) {
+  pending.forEach((item, index) => {
     const age = Math.round((Date.now() - item.createdAt) / 60_000);
     const label = item.kind === 'reply' ? `reply to @${item.author ?? '?'}` : 'update';
 
     lines.push(
-      `<code>${esc(item.id)}</code> — ${esc(label)}, ${age}m ago`,
+      `<b>${index + 1}.</b> ${esc(label)}, ${age}m ago — <code>${esc(item.id)}</code>`,
       esc(item.text),
       '',
     );
-  }
+  });
 
-  lines.push('<i>Approve with /x approve &lt;id&gt;, or use the buttons above.</i>');
-  return lines.join('\n');
+  const keyboard = pendingKeyboard(pending);
+  lines.push(
+    keyboard.length < pending.length
+      ? `<i>Buttons cover the first ${keyboard.length}. Use /drafts for the rest.</i>`
+      : '<i>Tap a number to publish or discard it.</i>',
+  );
+
+  return { text: lines.join('\n'), keyboard };
 }
 
 /**
@@ -115,7 +140,7 @@ export async function runXCommand(
   control: XControl | undefined,
   args: string[],
   by?: string,
-): Promise<string> {
+): Promise<string | { text: string; keyboard?: InlineKeyboard }> {
   if (!control) {
     return 'The X bot is not running in this process. Start it with <code>npm run agent</code> to control it from here.';
   }
@@ -123,8 +148,16 @@ export async function runXCommand(
   const [subcommand, ...rest] = args;
 
   switch ((subcommand ?? 'status').toLowerCase()) {
-    case 'status':
-      return renderStatus(control.status());
+    case 'status': {
+      const status = control.status();
+      const waiting = control.pending();
+
+      // Anything pending is something to decide, so decide it from here rather
+      // than being told a number and sent looking for the card.
+      return waiting.length
+        ? { text: renderStatus(status), keyboard: pendingKeyboard(waiting) }
+        : renderStatus(status);
+    }
 
     case 'pending':
       return renderPendingList(control.pending());
