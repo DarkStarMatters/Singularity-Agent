@@ -23,6 +23,8 @@ import { decideEngagement, isAnonymousAdmin, isFromAnotherBot, pingFor } from '.
 import { sanitizeModelHtml } from './html.js';
 import { GrokAgent, createAgent } from '../grok/agent.js';
 import { GrokClient, loadGrokConfig } from '../grok/client.js';
+import { decisionFrom } from './approvals.js';
+import type { XControl } from './control.js';
 
 /** `/name@bot args…` — the `@bot` part is present only in groups. */
 const COMMAND_PATTERN = /^\/([A-Za-z0-9_]{1,32})(?:@([A-Za-z0-9_]{1,32}))?(?:\s+([\s\S]*))?$/;
@@ -104,6 +106,9 @@ export class SingularityBot {
   private startedAt = 0;
   /** TELEGRAM_DEBUG=true logs every update and why it was or was not handled. */
   private readonly debug = process.env.TELEGRAM_DEBUG?.trim().toLowerCase() === 'true';
+
+  /** Set when the X bot shares this process; drives `/x` and the buttons. */
+  xControl: XControl | undefined;
 
   constructor(private readonly config: TelegramConfig) {
     this.api = new TelegramApi(config.token);
@@ -229,7 +234,37 @@ export class SingularityBot {
     }
   }
 
+  /**
+   * An approval button was tapped.
+   *
+   * Answered before anything slow happens: until the callback is answered the
+   * tapper sees a spinner, and publishing to X takes a moment.
+   */
+  private async handleCallback(query: NonNullable<TelegramUpdate['callback_query']>): Promise<void> {
+    const decision = query.data ? decisionFrom(query.data) : null;
+
+    if (!decision || !this.xControl) {
+      await this.api.answerCallbackQuery(query.id, 'That button is no longer active.');
+      return;
+    }
+
+    await this.api.answerCallbackQuery(
+      query.id,
+      decision.approve ? 'Posting…' : 'Discarded.',
+    );
+
+    const by = query.from.username ?? query.from.first_name;
+    // The gate rewrites its own card, so nothing is sent from here.
+    await (decision.approve
+      ? this.xControl.approve(decision.id, by)
+      : this.xControl.reject(decision.id, by));
+  }
+
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
+    if (update.callback_query) {
+      await this.handleCallback(update.callback_query);
+      return;
+    }
     if (update.my_chat_member) {
       this.noteMembershipChange(update.my_chat_member);
       return;
@@ -364,6 +399,10 @@ export class SingularityBot {
       chatId: message.chat.id,
       chatType: message.chat.type,
       config: this.config,
+      ...(this.xControl ? { xControl: this.xControl } : {}),
+      ...(message.from?.username ?? message.from?.first_name
+        ? { sender: message.from?.username ?? message.from?.first_name }
+        : {}),
       ...(this.agent
         ? {
             forget: () => this.agent!.forget(String(message.chat.id)),

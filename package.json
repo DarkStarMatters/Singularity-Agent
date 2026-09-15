@@ -32,7 +32,8 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build",
     "bot": "tsx src/telegram/bot.ts",
-    "x-bot": "tsx src/x/bot.ts"
+    "x-bot": "tsx src/x/bot.ts",
+    "agent": "tsx src/agent.ts"
   },
   "keywords": [
     "mcp",

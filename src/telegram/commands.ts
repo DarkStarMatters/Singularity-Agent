@@ -8,6 +8,7 @@
 import * as ops from '../tools/operations.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
+import { runXCommand, type XControl } from './control.js';
 import {
   formatBalance,
   formatBlock,
@@ -38,6 +39,10 @@ export interface CommandContext {
    * reaches the bot, but a command always does.
    */
   converse?: (text: string) => Promise<string>;
+  /** The X bot, when it runs in this process. Absent for the bot alone. */
+  xControl?: XControl;
+  /** Who sent the command, for the approval audit trail. */
+  sender?: string;
 }
 
 export interface Command {
@@ -227,6 +232,13 @@ const chat: Command = {
   },
 };
 
+const x: Command = {
+  name: 'x',
+  usage: '/x [status|pending|post|approve|reject|pause|resume]',
+  summary: 'Control the X bot and approve its posts',
+  run: (ctx) => runXCommand(ctx.xControl, ctx.args, ctx.sender),
+};
+
 const forget: Command = {
   name: 'forget',
   usage: '/forget',
@@ -293,6 +305,7 @@ const COMMAND_LIST: Command[] = [
   decode,
   health,
   chat,
+  x,
   forget,
   chatid,
   help,

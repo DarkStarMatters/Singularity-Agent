@@ -510,7 +510,14 @@ describe('update subscription', () => {
 
     await api.getUpdates(0, 1);
 
-    expect(sent?.allowed_updates).toEqual(['message', 'channel_post', 'my_chat_member']);
+    expect(sent?.allowed_updates).toEqual([
+      'message',
+      'channel_post',
+      'my_chat_member',
+      // Approval buttons arrive as callback queries; without this the buttons
+      // would spin forever and no post could ever be approved.
+      'callback_query',
+    ]);
   });
 });
 

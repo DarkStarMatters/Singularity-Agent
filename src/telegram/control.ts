@@ -1,0 +1,163 @@
+/**
+ * Telegram as the control terminal for the X bot.
+ *
+ * The X listener runs unattended and posts in public, which makes "what is it
+ * doing right now, and can I stop it" the question that matters most. This is
+ * the surface that answers it from a phone.
+ *
+ * Kept as an interface rather than a direct dependency on `XListener`, so the
+ * Telegram side stays testable without an X client, and so a command cannot
+ * quietly reach past the control surface into the listener's internals.
+ */
+import { esc } from './format.js';
+import type { PendingPost } from '../x/approval.js';
+
+export interface XStatus {
+  account: string;
+  paused: boolean;
+  postingEnabled: boolean;
+  approvalRequired: boolean;
+  repliesThisHour: number;
+  pendingApprovals: number;
+  updateIntervalHours: number;
+  nextUpdateInMinutes: number | null;
+  lastAngle: string | null;
+}
+
+/** What Telegram is allowed to do to the X bot. */
+export interface XControl {
+  status(): XStatus;
+  pause(): void;
+  resume(): void;
+  /** Composes an update now; returns the text, or null if it declined. */
+  composeNow(angle?: string): Promise<string | null>;
+  pending(): PendingPost[];
+  approve(id: string, by?: string): Promise<string>;
+  reject(id: string, by?: string): Promise<string>;
+}
+
+const USAGE = [
+  '<b>/x</b> — control the X bot',
+  '',
+  '<code>/x status</code> — what it is doing',
+  '<code>/x pending</code> — posts waiting for you',
+  '<code>/x post [angle]</code> — draft an update now',
+  '<code>/x approve &lt;id&gt;</code> — publish a pending post',
+  '<code>/x reject &lt;id&gt;</code> — discard one',
+  '<code>/x pause</code> / <code>/x resume</code> — stop or restart answering mentions',
+  '',
+  '<i>Angles: coverage, capability, safety, changelog, philosophy.</i>',
+].join('\n');
+
+function renderStatus(status: XStatus): string {
+  const lines = [
+    `<b>X bot</b> — ${esc(status.account)}`,
+    '',
+    `Mentions: ${status.paused ? '⏸ paused' : '▶️ answering'}`,
+    status.approvalRequired
+      ? 'Publishing: 🔒 approval required — nothing goes out until you tap it'
+      : status.postingEnabled
+        ? 'Publishing: ⚠️ LIVE — posts go straight out'
+        : 'Publishing: draft mode — nothing is sent',
+    '',
+    `Pending your approval: <b>${status.pendingApprovals}</b>`,
+    `Replies sent this hour: ${status.repliesThisHour}`,
+  ];
+
+  if (status.updateIntervalHours > 0) {
+    const next =
+      status.nextUpdateInMinutes === null
+        ? 'unknown'
+        : status.nextUpdateInMinutes === 0
+          ? 'due now'
+          : `in ${status.nextUpdateInMinutes} min`;
+
+    lines.push(
+      `Project updates: every ${status.updateIntervalHours}h — next ${esc(next)}`,
+      ...(status.lastAngle ? [`Last angle: ${esc(status.lastAngle)}`] : []),
+    );
+  } else {
+    lines.push('Project updates: off');
+  }
+
+  return lines.join('\n');
+}
+
+function renderPendingList(pending: PendingPost[]): string {
+  if (!pending.length) return 'Nothing is waiting for approval.';
+
+  const lines = [`<b>${pending.length} waiting</b>`, ''];
+
+  for (const item of pending) {
+    const age = Math.round((Date.now() - item.createdAt) / 60_000);
+    const label = item.kind === 'reply' ? `reply to @${item.author ?? '?'}` : 'update';
+
+    lines.push(
+      `<code>${esc(item.id)}</code> — ${esc(label)}, ${age}m ago`,
+      esc(item.text),
+      '',
+    );
+  }
+
+  lines.push('<i>Approve with /x approve &lt;id&gt;, or use the buttons above.</i>');
+  return lines.join('\n');
+}
+
+/**
+ * Runs one `/x …` invocation.
+ *
+ * Returns rendered HTML rather than sending anything, so the command behaves
+ * like every other one and the runtime owns delivery.
+ */
+export async function runXCommand(
+  control: XControl | undefined,
+  args: string[],
+  by?: string,
+): Promise<string> {
+  if (!control) {
+    return 'The X bot is not running in this process. Start it with <code>npm run agent</code> to control it from here.';
+  }
+
+  const [subcommand, ...rest] = args;
+
+  switch ((subcommand ?? 'status').toLowerCase()) {
+    case 'status':
+      return renderStatus(control.status());
+
+    case 'pending':
+      return renderPendingList(control.pending());
+
+    case 'pause':
+      control.pause();
+      return '⏸ Paused. Mentions will not be answered until <code>/x resume</code>.';
+
+    case 'resume':
+      control.resume();
+      return '▶️ Resumed. Answering mentions again.';
+
+    case 'post': {
+      const text = await control.composeNow(rest[0]);
+      return text
+        ? 'Drafted — sent for your approval above.'
+        : 'Nothing worth posting from that angle: the facts did not support one, or it repeated a recent post.';
+    }
+
+    case 'approve': {
+      const id = rest[0];
+      if (!id) return 'Which one? <code>/x approve &lt;id&gt;</code> — see <code>/x pending</code>.';
+      return control.approve(id, by);
+    }
+
+    case 'reject':
+    case 'discard': {
+      const id = rest[0];
+      if (!id) return 'Which one? <code>/x reject &lt;id&gt;</code> — see <code>/x pending</code>.';
+      return control.reject(id, by);
+    }
+
+    default:
+      return USAGE;
+  }
+}
+
+export const X_COMMAND_USAGE = USAGE;

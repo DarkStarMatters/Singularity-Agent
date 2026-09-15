@@ -95,9 +95,37 @@ tool catalogue (`src/tools/catalog.ts`) that MCP exposes — so Grok can answer 
 chain question by *calling the tools*, not by guessing at a number.
 
 ```bash
-npm run bot      # Telegram
-npm run x-bot    # X mentions and replies
+npm run agent    # both, with Telegram approving the X bot's posts
+npm run bot      # Telegram only
+npm run x-bot    # X only, publishing on its own switch
 ```
+
+### Telegram as the control terminal
+
+`npm run agent` runs both halves in one process, which is what lets Telegram
+hold the X bot's posts back. Every reply and every scheduled update is composed
+as usual and then sent to the control chat as a card showing the exact text and
+its character count, with **Post it** / **Discard** buttons. Nothing reaches X
+until someone taps.
+
+```
+/x status     what it is doing, what is pending, when it next posts
+/x pending    the queue, with ids
+/x post       draft an update now, without waiting for the timer
+/x approve <id> · /x reject <id>     the buttons, as commands
+/x pause · /x resume                 stop and restart answering mentions
+```
+
+Approval turns on when a control chat exists: `TELEGRAM_CONTROL_CHAT`, or the
+single allowlisted chat when `TELEGRAM_ALLOWED_CHATS` names exactly one. It
+refuses to guess between several, because guessing wrong would send drafts —
+and the power to publish — to the wrong room. Set `X_REQUIRE_APPROVAL=false` to
+let the bot post on its own switch again.
+
+Approval is a second gate, not a bypass of the first: a draft expires after six
+hours rather than being posted late, a decided card is rewritten in place so a
+double-tap cannot publish twice, and a publish that fails after approval says
+so on the card instead of vanishing.
 
 ### Telegram
 

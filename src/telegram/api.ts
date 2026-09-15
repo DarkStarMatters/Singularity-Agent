@@ -75,7 +75,18 @@ export interface TelegramUpdate {
   channel_post?: TelegramMessage;
   /** The bot's own membership changing, in any chat. */
   my_chat_member?: ChatMemberUpdated;
+  /** An inline button was tapped. */
+  callback_query?: CallbackQuery;
 }
+
+/** One tappable button. `callback_data` comes back as a callback_query. */
+export interface InlineButton {
+  text: string;
+  callback_data: string;
+}
+
+/** Rows of buttons attached under a message. */
+export type InlineKeyboard = InlineButton[][];
 
 export interface SendMessageOptions {
   chatId: number;
@@ -83,6 +94,16 @@ export interface SendMessageOptions {
   /** Threads the answer under the question — essential in a busy group. */
   replyToMessageId?: number;
   disableWebPagePreview?: boolean;
+  keyboard?: InlineKeyboard;
+}
+
+/** A button press. Answering it is mandatory or the client spins. */
+export interface CallbackQuery {
+  id: string;
+  from: TelegramUser;
+  /** Absent if the message is too old for Telegram to still have it. */
+  message?: TelegramMessage;
+  data?: string;
 }
 
 export class TelegramApiError extends Error {
@@ -172,7 +193,7 @@ export class TelegramApi {
       {
         offset,
         timeout: timeoutSeconds,
-        allowed_updates: ['message', 'channel_post', 'my_chat_member'],
+        allowed_updates: ['message', 'channel_post', 'my_chat_member', 'callback_query'],
       },
       // Give the HTTP call headroom beyond the long poll it is holding open.
       (timeoutSeconds + 15) * 1000,
@@ -185,6 +206,7 @@ export class TelegramApi {
       text: truncateForTelegram(options.text),
       parse_mode: 'HTML',
       link_preview_options: { is_disabled: options.disableWebPagePreview !== false },
+      ...(options.keyboard ? { reply_markup: { inline_keyboard: options.keyboard } } : {}),
       ...(options.replyToMessageId
         ? {
             reply_parameters: {
@@ -195,6 +217,42 @@ export class TelegramApi {
           }
         : {}),
     });
+  }
+
+  /**
+   * Rewrites a message in place — used to turn an approval card into its
+   * outcome, so the chat shows what was decided rather than a row of buttons
+   * that no longer do anything.
+   */
+  async editMessageText(options: {
+    chatId: number;
+    messageId: number;
+    text: string;
+    keyboard?: InlineKeyboard;
+  }): Promise<void> {
+    await this.call('editMessageText', {
+      chat_id: options.chatId,
+      message_id: options.messageId,
+      text: truncateForTelegram(options.text),
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+      // Passing an empty keyboard removes the buttons entirely.
+      reply_markup: { inline_keyboard: options.keyboard ?? [] },
+    }).catch((err) => {
+      // "message is not modified" is not worth surfacing.
+      if (!/not modified/i.test((err as Error).message)) throw err;
+    });
+  }
+
+  /**
+   * Every callback query must be answered, whether or not there is anything to
+   * say: until it is, the client shows a spinner on the button.
+   */
+  async answerCallbackQuery(id: string, text?: string): Promise<void> {
+    await this.call('answerCallbackQuery', {
+      callback_query_id: id,
+      ...(text ? { text, show_alert: false } : {}),
+    }).catch(() => undefined);
   }
 
   /**

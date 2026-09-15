@@ -21,6 +21,7 @@
 import { GrokAgent } from '../grok/agent.js';
 import { XClient, type Mention, type PostResult } from './client.js';
 import { classifyMention, ReplyBudget, type SpamOptions, type SpamVerdict } from './spam.js';
+import type { PostGate } from './approval.js';
 import { cursorFor, loadState, saveState, type XState } from './state.js';
 import {
   collectProjectFacts,
@@ -47,6 +48,14 @@ export interface ListenerOptions {
   spam?: SpamOptions;
   /** Hours between unprompted project updates. 0 disables them entirely. */
   updateIntervalHours?: number;
+  /**
+   * When set, nothing is published directly: composed posts go here for a
+   * human decision first. The listener's own posting switch still applies
+   * afterwards — approval is a second gate, never a bypass of the first.
+   */
+  gate?: PostGate;
+  /** Pause answering mentions without stopping the process. */
+  paused?: boolean;
   /** Test seam. */
   now?: () => number;
 }
@@ -77,11 +86,19 @@ export class XListener {
   private userId = '';
   private username = '';
 
+  /** Runtime pause, toggled from the control surface. */
+  private paused = false;
+
+  /** Set once at construction; see ListenerOptions.gate. */
+  private readonly gate: PostGate | undefined;
+
   constructor(
     private readonly client: XClient,
     private readonly agent: GrokAgent,
     private readonly options: ListenerOptions = {},
   ) {
+    this.gate = options.gate;
+    this.paused = options.paused ?? false;
     this.pollSeconds = Math.max(options.pollSeconds ?? 90, 15);
     this.budget = new ReplyBudget(
       options.maxRepliesPerHour ?? 12,
@@ -107,6 +124,82 @@ export class XListener {
 
   stop(): void {
     this.running = false;
+  }
+
+  // ---- Control surface, driven from Telegram -----------------------------
+
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+  }
+
+  /**
+   * A snapshot for the operator.
+   *
+   * Everything here answers a question someone actually asks of a bot that
+   * posts on their behalf: is it running, will anything go out, what has it
+   * spent, and when does it next speak unprompted.
+   */
+  status(): {
+    account: string;
+    paused: boolean;
+    postingEnabled: boolean;
+    approvalRequired: boolean;
+    repliesThisHour: number;
+    pendingApprovals: number;
+    updateIntervalHours: number;
+    nextUpdateInMinutes: number | null;
+    lastAngle: string | null;
+  } {
+    const intervalHours = this.options.updateIntervalHours ?? 0;
+    const now = this.options.now?.() ?? Date.now();
+
+    const nextUpdateInMinutes =
+      intervalHours <= 0
+        ? null
+        : this.state.lastUpdateAt
+          ? Math.max(
+              0,
+              Math.round((this.state.lastUpdateAt + intervalHours * 3_600_000 - now) / 60_000),
+            )
+          : 0;
+
+    return {
+      account: this.username ? `@${this.username}` : '(not connected)',
+      paused: this.paused,
+      postingEnabled: !this.options.dryRun,
+      approvalRequired: Boolean(this.gate),
+      repliesThisHour: this.budget.spentThisHour,
+      pendingApprovals: this.gate?.size ?? 0,
+      updateIntervalHours: intervalHours,
+      nextUpdateInMinutes,
+      lastAngle: this.state.recentAngles?.[0] ?? null,
+    };
+  }
+
+  /**
+   * Composes an update immediately, ignoring the schedule.
+   *
+   * Used by `/x post` so an operator can see what the agent would say without
+   * waiting hours for the timer.
+   */
+  async composeUpdateNow(angle?: UpdateAngle): Promise<ComposedUpdate | null> {
+    const facts = collectProjectFacts();
+    const recent = (this.state.recentAngles ?? []).filter((a): a is UpdateAngle =>
+      (UPDATE_ANGLES as readonly string[]).includes(a),
+    );
+
+    const chosen = angle ?? nextAngle(recent, facts);
+    const update = await postUpdate(this.client, this.agent, facts, chosen, {
+      ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
+      recentPosts: this.state.recentPosts ?? [],
+    });
+
+    if (update && this.gate) await this.gate.submit({ kind: 'update', text: update.text });
+    return update;
   }
 
   /**
@@ -155,10 +248,17 @@ export class XListener {
     const recentPosts = this.state.recentPosts ?? [];
 
     const update = await postUpdate(this.client, this.agent, facts, angle, {
-      ...(this.options.dryRun ? { dryRun: true } : {}),
+      // With a gate in place nothing is published here: the composed text is
+      // captured as a draft and handed to the reviewer below.
+      ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
       now: () => now,
       recentPosts,
     });
+
+    if (update && this.gate) {
+      await this.gate.submit({ kind: 'update', text: update.text });
+      console.error(`[singularity-x] awaiting approval: ${angle} update`);
+    }
 
     // The clock advances even when the model declined to write anything, or a
     // dry run would compose a fresh post on every single poll.
@@ -212,6 +312,8 @@ export class XListener {
 
   /** One poll. Exposed so a caller can drive a single pass in a test or a cron. */
   async pollOnce(): Promise<PollResult> {
+    if (this.options.paused || this.paused) return { handled: [], skipped: [] };
+
     const since = cursorFor(this.state, this.userId);
     const page = await this.client.mentions(this.userId, since, this.options.maxResults ?? 20);
 
@@ -293,11 +395,25 @@ export class XListener {
     );
 
     const body = fitReply(reply.text);
+    const who = mention.authorUsername ? `@${mention.authorUsername}` : mention.authorId;
+
+    if (this.gate) {
+      await this.gate.submit({
+        kind: 'reply',
+        text: body,
+        inReplyTo: mention.id,
+        context: mention.text,
+        ...(mention.authorUsername ? { author: mention.authorUsername } : {}),
+      });
+
+      console.error(`[singularity-x] awaiting approval: reply to ${who} (${mention.id})`);
+      return { published: false, text: body, reason: 'Waiting for approval.', inReplyTo: mention.id };
+    }
+
     const result = await this.client.reply(body, mention.id, {
       ...(this.options.dryRun ? { dryRun: true } : {}),
     });
 
-    const who = mention.authorUsername ? `@${mention.authorUsername}` : mention.authorId;
     console.error(
       result.published
         ? `[singularity-x] replied to ${who} (${mention.id}) -> ${result.url}`
