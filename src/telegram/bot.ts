@@ -102,6 +102,8 @@ export class SingularityBot {
   private running = false;
   /** Messages from before startup are stale; answering a backlog spams the group. */
   private startedAt = 0;
+  /** TELEGRAM_DEBUG=true logs every update and why it was or was not handled. */
+  private readonly debug = process.env.TELEGRAM_DEBUG?.trim().toLowerCase() === 'true';
 
   constructor(private readonly config: TelegramConfig) {
     this.api = new TelegramApi(config.token);
@@ -122,6 +124,9 @@ export class SingularityBot {
       ? `${this.config.allowedChats.size} allowlisted chat(s)`
       : 'any chat';
     console.error(`[singularity-bot] connected as @${this.username} — serving ${scope}`);
+    if (this.debug) {
+      console.error('[singularity-bot] TELEGRAM_DEBUG is on — every update will be logged with the reason it was or was not handled.');
+    }
     console.error(
       this.agent
         ? '[singularity-bot] Grok is configured — mentions, replies and DMs get conversational answers.'
@@ -174,30 +179,74 @@ export class SingularityBot {
     }
   }
 
+  /**
+   * Why a message was ignored.
+   *
+   * The bot drops most of what it sees, silently and correctly — but that makes
+   * "it is not replying" impossible to diagnose from outside, because a message
+   * that never arrived and a message that arrived and was dropped look
+   * identical. With TELEGRAM_DEBUG=true every update is logged with the reason,
+   * which turns that into a one-line answer.
+   */
+  private trace(message: TelegramMessage, outcome: string): void {
+    if (!this.debug) return;
+
+    console.error(
+      `[singularity-bot] ${outcome} | chat ${message.chat.id} (${message.chat.type}` +
+        `${message.chat.title ? ` "${message.chat.title}"` : ''}) | from ` +
+        `${message.from?.username ?? message.from?.first_name ?? '?'} | ` +
+        `${JSON.stringify((message.text ?? '').slice(0, 60))}`,
+    );
+  }
+
   private async handleUpdate(update: TelegramUpdate): Promise<void> {
     const message = update.message;
-    if (!message?.text || message.from?.is_bot) return;
-    if (message.date < this.startedAt) return;
+
+    if (!message?.text || message.from?.is_bot) {
+      if (this.debug && update.message) this.trace(update.message, 'IGNORED (no text, or from a bot)');
+      return;
+    }
+    if (message.date < this.startedAt) {
+      this.trace(message, 'IGNORED (sent before startup)');
+      return;
+    }
 
     const parsed = parseCommand(message.text);
     const isCommand = Boolean(parsed) && shouldHandle(parsed!, message.chat.type, this.username);
 
     // A command aimed at another bot is not ours, and neither is it plain
     // conversation we should answer — drop it outright.
-    if (parsed && !isCommand) return;
+    if (parsed && !isCommand) {
+      this.trace(
+        message,
+        parsed.addressedTo && parsed.addressedTo.toLowerCase() !== this.username.toLowerCase()
+          ? `IGNORED (addressed to @${parsed.addressedTo})`
+          : `IGNORED (no such command: /${parsed.name})`,
+      );
+      return;
+    }
 
     const engagement = decideEngagement(message, this.username, this.botId, isCommand);
-    if (!engagement.engage) return;
+    if (!engagement.engage) {
+      this.trace(message, 'IGNORED (not addressed to me — no command, mention or reply)');
+      return;
+    }
 
-    if (!(await this.chatIsAllowed(message))) return;
+    if (!(await this.chatIsAllowed(message))) {
+      this.trace(message, 'IGNORED (chat not on TELEGRAM_ALLOWED_CHATS)');
+      return;
+    }
 
     if (!this.limiter.take(message.chat.id)) {
+      this.trace(message, 'RATE LIMITED');
       await this.reply(
         message,
         `⏳ Rate limit reached for this chat (${this.config.rateLimitPerMinute}/min). Try again shortly.`,
       );
       return;
     }
+
+    this.trace(message, `HANDLING (${engagement.reason})`);
 
     if (isCommand) {
       await this.runCommand(parsed!, message);
