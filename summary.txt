@@ -1,0 +1,7 @@
+Singularity Agent: one MCP surface over EVM, Solana, Bitcoin & Cosmos.
+
+23 chains. 10 tools. No private keys — it builds unsigned txs your wallet signs.
+
+Demoing it found a real bug: a Solana balance returned 1.27MB and failed. Now 22KB.
+
+MIT: github.com/DarkStarMatters/Singularity-Agent
