@@ -152,9 +152,12 @@ export class XListener {
     const facts = collectProjectFacts();
     const angle = nextAngle(recent, facts);
 
+    const recentPosts = this.state.recentPosts ?? [];
+
     const update = await postUpdate(this.client, this.agent, facts, angle, {
       ...(this.options.dryRun ? { dryRun: true } : {}),
       now: () => now,
+      recentPosts,
     });
 
     // The clock advances even when the model declined to write anything, or a
@@ -163,6 +166,9 @@ export class XListener {
       ...this.state,
       lastUpdateAt: now,
       recentAngles: [angle, ...recent.filter((a) => a !== angle)].slice(0, UPDATE_ANGLES.length - 1),
+      // Kept whether or not it was published: a draft the model has already
+      // written is still something it should not write again.
+      ...(update ? { recentPosts: [update.text, ...recentPosts].slice(0, 12) } : {}),
     };
     saveState(this.state);
 
@@ -173,7 +179,9 @@ export class XListener {
           : `[singularity-x] DRAFT ${angle} update: ${update.text}`,
       );
     } else {
-      console.error(`[singularity-x] nothing worth saying for the ${angle} angle; skipped.`);
+      console.error(
+        `[singularity-x] nothing new to say from the ${angle} angle — either the facts did not support it or it repeated an earlier post; skipped.`,
+      );
     }
 
     return update;

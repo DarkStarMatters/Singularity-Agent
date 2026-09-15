@@ -7,6 +7,7 @@ import {
   collectProjectFacts,
   factSheet,
   isDue,
+  isTooSimilar,
   nextAngle,
   postUpdate,
   updatePrompt,
@@ -293,6 +294,44 @@ describe('posting a project update', () => {
     const update = await postUpdate(client, agent, FACTS, 'philosophy');
 
     expect(update!.text.length).toBeLessThanOrEqual(REPLY_LIMIT);
+  });
+
+  it('shows the model what it already posted', () => {
+    const prompt = updatePrompt(FACTS, 'coverage', ['Reaches 23 chains across four families.']);
+
+    expect(prompt).toContain('already posted these');
+    expect(prompt).toContain('Reaches 23 chains across four families.');
+  });
+
+  it('drops a post that restates a recent one', async () => {
+    // At one post an hour the five angles come round in five hours, so this is
+    // the guard that stops the second lap reading like the first.
+    const previous = 'Singularity reaches 23 chains across EVM, Solana, Bitcoin and Cosmos.';
+    const { client, agent, posted } = updateHarness(
+      'Singularity reaches 23 chains across Solana, Bitcoin, Cosmos and EVM.',
+    );
+
+    const update = await postUpdate(client, agent, FACTS, 'coverage', {
+      recentPosts: [previous],
+    });
+
+    expect(update).toBeNull();
+    expect(posted).toEqual([]);
+  });
+
+  it('still posts something genuinely different', async () => {
+    const { client, agent } = updateHarness('Holds no keys and cannot broadcast a transaction.');
+
+    const update = await postUpdate(client, agent, FACTS, 'safety', {
+      recentPosts: ['Reaches 23 chains across EVM, Solana, Bitcoin and Cosmos.'],
+    });
+
+    expect(update).not.toBeNull();
+  });
+
+  it('measures similarity on shared content words', () => {
+    expect(isTooSimilar('gas on base is cheap today', ['gas on base is cheap today'])).toBe(true);
+    expect(isTooSimilar('builds unsigned transfers only', ['reaches 23 chains'])).toBe(false);
   });
 
   it('honours a dry run', async () => {

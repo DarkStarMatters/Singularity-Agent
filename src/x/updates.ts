@@ -145,7 +145,11 @@ export function factSheet(facts: ProjectFacts, angle: UpdateAngle): string {
   return lines.join('\n');
 }
 
-export function updatePrompt(facts: ProjectFacts, angle: UpdateAngle): string {
+export function updatePrompt(
+  facts: ProjectFacts,
+  angle: UpdateAngle,
+  recentPosts: string[] = [],
+): string {
   return [
     'Write one post for X about the project below. You are posting as the project itself.',
     '',
@@ -153,6 +157,13 @@ export function updatePrompt(facts: ProjectFacts, angle: UpdateAngle): string {
     '',
     'Facts you may use. This is everything you know — anything not here does not exist:',
     factSheet(facts, angle),
+    ...(recentPosts.length
+      ? [
+          '',
+          'You have already posted these. Do not repeat them, reword them, or make the same point again:',
+          ...recentPosts.map((post) => `  - ${post}`),
+        ]
+      : []),
     '',
     'Rules:',
     `- Hard maximum ${REPLY_LIMIT} characters. Count them.`,
@@ -217,7 +228,7 @@ export async function postUpdate(
   agent: GrokAgent,
   facts: ProjectFacts,
   angle: UpdateAngle,
-  options: { dryRun?: boolean; now?: () => number } = {},
+  options: { dryRun?: boolean; now?: () => number; recentPosts?: string[] } = {},
 ): Promise<ComposedUpdate | null> {
   const stamp = (options.now?.() ?? Date.now()).toString(36);
 
@@ -226,7 +237,10 @@ export async function postUpdate(
   // empty completion means "nothing to say". Without the latter the agent's
   // chat fallback ("I could not put an answer together…") would be published.
   const writer = agent.variant({ tools: false, allowEmpty: true });
-  const reply = await writer.respond(`x-update:${angle}:${stamp}`, updatePrompt(facts, angle));
+  const reply = await writer.respond(
+    `x-update:${angle}:${stamp}`,
+    updatePrompt(facts, angle, options.recentPosts ?? []),
+  );
 
   const text = fitReply(stripQuotes(reply.text));
 
@@ -234,8 +248,35 @@ export async function postUpdate(
   // report, and an empty post is a refusal to make something up — honour it.
   if (!text || text.length < 20) return null;
 
+  // Last line of defence on repetition: the model was shown what it already
+  // said, but a near-identical post is worse than none, so it is dropped
+  // rather than published.
+  if (isTooSimilar(text, options.recentPosts ?? [])) return null;
+
   const result = await client.post(text, { ...(options.dryRun ? { dryRun: true } : {}) });
   return { angle, text, result };
+}
+
+/**
+ * Word-overlap similarity, which is enough here: the failure being caught is a
+ * model restating its own last post, not paraphrase in general.
+ */
+export function isTooSimilar(text: string, previous: string[], threshold = 0.6): boolean {
+  const words = (value: string) =>
+    new Set(value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 3));
+
+  const candidate = words(text);
+  if (candidate.size === 0) return false;
+
+  return previous.some((post) => {
+    const other = words(post);
+    if (other.size === 0) return false;
+
+    let shared = 0;
+    for (const word of candidate) if (other.has(word)) shared++;
+
+    return shared / Math.min(candidate.size, other.size) >= threshold;
+  });
 }
 
 function stripQuotes(text: string): string {

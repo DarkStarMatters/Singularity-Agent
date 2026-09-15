@@ -23,6 +23,15 @@ export interface XState {
   lastUpdateAt?: number;
   /** Angles used recently, newest first, so posts do not repeat themselves. */
   recentAngles?: string[];
+  /**
+   * The text of recent updates, newest first.
+   *
+   * Fed back into the prompt as "you already said this". Rotating angles alone
+   * stops being enough once posts are frequent: at one an hour the five angles
+   * come round in five hours, and without the actual wording to avoid, the
+   * second pass reads like the first.
+   */
+  recentPosts?: string[];
   updatedAt?: string;
 }
 
@@ -42,6 +51,9 @@ export function loadState(path = statePath()): XState {
       ...(typeof parsed.lastUpdateAt === 'number' ? { lastUpdateAt: parsed.lastUpdateAt } : {}),
       ...(Array.isArray(parsed.recentAngles)
         ? { recentAngles: parsed.recentAngles.filter((a): a is string => typeof a === 'string') }
+        : {}),
+      ...(Array.isArray(parsed.recentPosts)
+        ? { recentPosts: parsed.recentPosts.filter((p): p is string => typeof p === 'string') }
         : {}),
     };
   } catch {
