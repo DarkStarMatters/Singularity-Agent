@@ -19,7 +19,7 @@ import { COMMANDS, commandMenu, type CommandContext } from './commands.js';
 import { esc, formatError } from './format.js';
 import { loadConfig, loadEnvFile, ConfigError, type TelegramConfig } from './config.js';
 import { TelegramApi, TelegramApiError, type TelegramMessage, type TelegramUpdate } from './api.js';
-import { decideEngagement, pingFor } from './engage.js';
+import { decideEngagement, isAnonymousAdmin, isFromAnotherBot, pingFor } from './engage.js';
 import { sanitizeModelHtml } from './html.js';
 import { GrokAgent, createAgent } from '../grok/agent.js';
 import { GrokClient, loadGrokConfig } from '../grok/client.js';
@@ -329,7 +329,9 @@ export class SingularityBot {
     await this.api.sendChatAction(message.chat.id, 'typing').catch(() => undefined);
 
     try {
-      const speaker = message.from?.username ?? message.from?.first_name;
+      const speaker = isAnonymousAdmin(message)
+        ? 'admin'
+        : message.from?.username ?? message.from?.first_name;
       const reply = await this.agent.respond(String(message.chat.id), text, speaker);
       return sanitizeModelHtml(reply.text);
     } catch (err) {

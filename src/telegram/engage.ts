@@ -19,6 +19,37 @@
  */
 import type { TelegramMessage } from './api.js';
 
+/** Telegram's pseudo-account for anonymous group admins. */
+export const GROUP_ANONYMOUS_BOT_ID = 1087968824;
+
+/**
+ * Is this a person posting anonymously as the group?
+ *
+ * Group admins can post under the group's name instead of their own. Telegram
+ * represents that as `from` = the `GroupAnonymousBot` pseudo-user, which has
+ * `is_bot: true`, plus `sender_chat` = the group itself. There is a real person
+ * behind it, so it must not be filtered out with the actual bots.
+ */
+export function isAnonymousAdmin(message: TelegramMessage): boolean {
+  return (
+    message.from?.id === GROUP_ANONYMOUS_BOT_ID ||
+    message.from?.username === 'GroupAnonymousBot' ||
+    // A channel posting into its linked discussion group: also not a bot.
+    (message.sender_chat !== undefined && message.from?.is_bot === true)
+  );
+}
+
+/**
+ * Should this sender be ignored as an automated one?
+ *
+ * Only genuine other bots. Telegram does not deliver one bot's messages to
+ * another anyway, so this guard exists for loops involving our own output —
+ * and it must not swallow anonymous admins, who are people.
+ */
+export function isFromAnotherBot(message: TelegramMessage): boolean {
+  return message.from?.is_bot === true && !isAnonymousAdmin(message);
+}
+
 export type EngagementReason = 'private' | 'mention' | 'reply' | 'command' | null;
 
 export interface Engagement {
@@ -99,6 +130,10 @@ export function decideEngagement(
  */
 export function pingFor(message: TelegramMessage): string {
   if (message.chat.type === 'private') return '';
+
+  // An anonymous admin has no account to point at — "@GroupAnonymousBot" would
+  // be both wrong and a link to Telegram's own pseudo-account.
+  if (isAnonymousAdmin(message)) return '';
 
   const from = message.from;
   if (from?.username) return `@${from.username} `;

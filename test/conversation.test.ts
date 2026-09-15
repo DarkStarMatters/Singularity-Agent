@@ -9,10 +9,13 @@ import type { AssistantMessage, ChatMessage, GrokClient, ToolCall } from '../src
 import { systemPromptFor } from '../src/grok/persona.js';
 import {
   decideEngagement,
+  isAnonymousAdmin,
+  isFromAnotherBot,
   mentionsBot,
   repliesToBot,
   stripBotHandle,
   pingFor,
+  GROUP_ANONYMOUS_BOT_ID,
 } from '../src/telegram/engage.js';
 import { sanitizeModelHtml } from '../src/telegram/html.js';
 import { stripHandles, fitReply, REPLY_LIMIT } from '../src/x/listener.js';
@@ -443,6 +446,48 @@ describe('telegram engagement', () => {
 
   it('falls back to a first name when there is no username', () => {
     expect(pingFor(tgMessage({ from: { id: 7, is_bot: false, first_name: 'Bob' } }))).toBe('Bob, ');
+  });
+});
+
+describe('anonymous group admins', () => {
+  /** Exactly what Telegram sends when an admin posts as the group. */
+  const anonymous = tgMessage({
+    text: '/help',
+    from: { id: GROUP_ANONYMOUS_BOT_ID, is_bot: true, username: 'GroupAnonymousBot' },
+    sender_chat: { id: -1004313647053, type: 'supergroup', title: 'SingularityAgent' },
+  });
+
+  it('recognizes an anonymous admin as a person', () => {
+    expect(isAnonymousAdmin(anonymous)).toBe(true);
+    // This is the bug: is_bot is true, so a naive guard dropped the message.
+    expect(anonymous.from?.is_bot).toBe(true);
+    expect(isFromAnotherBot(anonymous)).toBe(false);
+  });
+
+  it('still ignores a genuine bot', () => {
+    const realBot = tgMessage({
+      text: '/help',
+      from: { id: 555, is_bot: true, username: 'SomeOtherBot' },
+    });
+
+    expect(isFromAnotherBot(realBot)).toBe(true);
+  });
+
+  it('treats a normal user as a person', () => {
+    expect(isFromAnotherBot(tgMessage({ text: 'hi' }))).toBe(false);
+    expect(isAnonymousAdmin(tgMessage({ text: 'hi' }))).toBe(false);
+  });
+
+  it('does not ping back the pseudo-account Telegram invented', () => {
+    // "@GroupAnonymousBot" would be wrong and would link to Telegram's own account.
+    expect(pingFor(anonymous)).toBe('');
+  });
+
+  it('engages with a command from an anonymous admin', () => {
+    expect(decideEngagement(anonymous, 'Singularityagenticbot', 99, true)).toMatchObject({
+      engage: true,
+      reason: 'command',
+    });
   });
 });
 

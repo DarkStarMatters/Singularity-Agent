@@ -42,6 +42,15 @@ export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
+  /**
+   * Set when a message is sent on behalf of a chat rather than a person: an
+   * anonymous group admin, or a channel posting into its discussion group.
+   *
+   * For an anonymous admin Telegram puts the pseudo-user `GroupAnonymousBot`
+   * in `from` — with `is_bot: true` — and the real group here. A naive
+   * "ignore bots" check therefore discards messages from human admins.
+   */
+  sender_chat?: TelegramChat;
   date: number;
   text?: string;
   entities?: TelegramEntity[];
