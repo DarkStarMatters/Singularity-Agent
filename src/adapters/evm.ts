@@ -451,6 +451,7 @@ async function buildTokenTransfer(
       'This calls transfer() on the token contract. `to` is the TOKEN address, not the recipient — the recipient is encoded in `data`. Sign with your own wallet.',
     warnings: [
       ...warningsFor(chain, params.amount, symbol),
+      ...recipientWarnings(params.to, tokenAddress, params.from, symbol),
       'Verify the token address belongs to the asset you mean. Fake tokens reuse real symbols.',
     ],
   };
@@ -482,4 +483,30 @@ function summarizeTx(
 function formatGwei(wei: bigint): string {
   const gwei = Number(wei) / 1e9;
   return gwei < 0.01 ? gwei.toExponential(2) : gwei.toFixed(3).replace(/\.?0+$/, '');
+}
+
+// `transfer()` to the token's own contract is almost always a mistake: those tokens
+// are unrecoverable unless the contract happens to expose a sweep. Worth flagging
+// loudly, since the recipient is buried in calldata where a human won't check it.
+function recipientWarnings(
+  to: string,
+  tokenAddress: string,
+  from: string | undefined,
+  symbol: string,
+): string[] {
+  const warnings: string[] = [];
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+  if (same(to, tokenAddress)) {
+    warnings.push(
+      `Recipient is the ${symbol} contract itself. Tokens sent there are normally unrecoverable — this is very likely a mistake.`,
+    );
+  }
+  if (same(to, '0x0000000000000000000000000000000000000000')) {
+    warnings.push(`Recipient is the zero address. This burns the ${symbol}.`);
+  }
+  if (from && same(to, from)) {
+    warnings.push('Sender and recipient are the same address — this transfer does nothing but cost gas.');
+  }
+  return warnings;
 }
