@@ -11,6 +11,7 @@
  * The caller is still expected to get human sign-off before flipping either.
  */
 import { buildAuthHeader, type OAuthCredentials } from './oauth.js';
+import { OAuth2Tokens, loadOAuth2Config, type OAuth2Config } from './oauth2.js';
 import { SingularityError } from '../core/errors.js';
 
 const API_ROOT = 'https://api.x.com/2';
@@ -20,8 +21,16 @@ const VERIFY_ENDPOINT = `${API_ROOT}/users/me`;
 /** The standard limit. Premium accounts allow more, but assume the floor. */
 export const DEFAULT_POST_LIMIT = 280;
 
-export interface XConfig extends OAuthCredentials {
+export interface XConfig extends Partial<OAuthCredentials> {
   postingEnabled: boolean;
+  /**
+   * OAuth 2.0 user context, preferred when present.
+   *
+   * Both schemes can post, but they fail differently: a 1.0a access token
+   * minted while the app was read-only stays read-only no matter what the app
+   * settings later say, while a 2.0 token carries the scopes it was granted.
+   */
+  oauth2?: OAuth2Config;
 }
 
 export interface PostResult {
@@ -67,7 +76,7 @@ export class XApiError extends SingularityError {
       status === 401
         ? 'Check X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_SECRET, and that the app has Read and Write permission. Access tokens issued before Write was enabled stay read-only until regenerated.'
         : status === 403
-          ? 'The app is read-only, or the post duplicates a recent one. Fixing the permissions takes TWO steps in the X developer portal, and the second is the one people miss: (1) the app → User authentication settings → App permissions → "Read and write"; (2) Keys and tokens → REGENERATE the Access Token and Secret. A token minted while the app was read-only stays read-only forever — changing the permission does not upgrade it. Then put the new X_ACCESS_TOKEN and X_ACCESS_SECRET in .env.'
+          ? 'The app is read-only, or the post duplicates a recent one. Fixing the permissions takes TWO steps in the X developer portal, and the second is the one people miss: (1) the app → User authentication settings → App permissions → "Read and write"; (2) Keys and tokens → REGENERATE the Access Token and Secret. A token minted while the app was read-only stays read-only forever — changing the permission does not upgrade it. Then put the new X_ACCESS_TOKEN and X_ACCESS_SECRET in .env. Alternatively use OAuth 2.0, which carries its own scopes: set X_CLIENT_ID, X_CLIENT_SECRET, X_OAUTH2_ACCESS_TOKEN and X_OAUTH2_REFRESH_TOKEN and it is preferred automatically.'
           : status === 429
             ? 'Rate limited. The free tier allows very few posts per day.'
             : undefined,
@@ -85,13 +94,15 @@ export function loadXConfig(env: NodeJS.ProcessEnv = process.env): XConfig | nul
   const accessToken = env.X_ACCESS_TOKEN?.trim();
   const accessSecret = env.X_ACCESS_SECRET?.trim();
 
-  if (!apiKey || !apiSecret || !accessToken || !accessSecret) return null;
+  const oauth1Complete = Boolean(apiKey && apiSecret && accessToken && accessSecret);
+  const oauth2 = loadOAuth2Config(env);
+
+  // Either scheme alone is enough to work.
+  if (!oauth1Complete && !oauth2) return null;
 
   return {
-    apiKey,
-    apiSecret,
-    accessToken,
-    accessSecret,
+    ...(oauth1Complete ? { apiKey, apiSecret, accessToken, accessSecret } : {}),
+    ...(oauth2 ? { oauth2 } : {}),
     // Anything other than exactly "true" is off. No truthy-string guessing on a
     // switch whose failure mode is publishing by accident.
     postingEnabled: env.X_POSTING_ENABLED?.trim().toLowerCase() === 'true',
@@ -99,13 +110,62 @@ export function loadXConfig(env: NodeJS.ProcessEnv = process.env): XConfig | nul
 }
 
 export class XClient {
-  constructor(private readonly config: XConfig) {}
+  private readonly tokens: OAuth2Tokens | null;
+
+  constructor(private readonly config: XConfig) {
+    this.tokens = config.oauth2 ? new OAuth2Tokens(config.oauth2) : null;
+  }
+
+  /** Which scheme is in use, for status output and error messages. */
+  get scheme(): 'oauth2' | 'oauth1' {
+    return this.tokens ? 'oauth2' : 'oauth1';
+  }
+
+  private authHeader(method: 'GET' | 'POST' | 'DELETE', url: string): string {
+    if (this.tokens) return this.tokens.header();
+
+    const { apiKey, apiSecret, accessToken, accessSecret } = this.config;
+    if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
+      throw new SingularityError(
+        'X_NOT_CONFIGURED',
+        'No usable X credentials.',
+        'Set either the four OAuth 1.0a values or X_CLIENT_ID plus X_OAUTH2_ACCESS_TOKEN.',
+      );
+    }
+
+    return buildAuthHeader(method, url, { apiKey, apiSecret, accessToken, accessSecret });
+  }
+
+  /**
+   * Performs a request, refreshing an expired OAuth 2.0 token once.
+   *
+   * Only a 401 is retried. A 403 means the account or app is not allowed to do
+   * this at all, and retrying with a fresher token changes nothing.
+   */
+  private async request(
+    method: 'GET' | 'POST',
+    url: string,
+    init: { body?: string; contentType?: string } = {},
+  ): Promise<Response> {
+    const send = () =>
+      fetch(url, {
+        method,
+        headers: {
+          authorization: this.authHeader(method, url),
+          ...(init.contentType ? { 'content-type': init.contentType } : {}),
+        },
+        ...(init.body !== undefined ? { body: init.body } : {}),
+      });
+
+    const response = await send();
+    if (response.status !== 401 || !this.tokens?.canRefresh) return response;
+
+    return (await this.tokens.refresh()) ? send() : response;
+  }
 
   /** Confirms the credentials work and returns the acting account. */
   async verify(): Promise<{ id: string; username: string; name: string }> {
-    const response = await fetch(VERIFY_ENDPOINT, {
-      headers: { authorization: buildAuthHeader('GET', VERIFY_ENDPOINT, this.config) },
-    });
+    const response = await this.request('GET', VERIFY_ENDPOINT);
 
     const body = (await response.json().catch(() => ({}))) as {
       data?: { id: string; username: string; name: string };
@@ -138,9 +198,7 @@ export class XClient {
     if (sinceId) url.searchParams.set('since_id', sinceId);
 
     const href = url.toString();
-    const response = await fetch(href, {
-      headers: { authorization: buildAuthHeader('GET', href, this.config) },
-    });
+    const response = await this.request('GET', href);
 
     const body = (await response.json().catch(() => ({}))) as {
       data?: Array<{
@@ -242,14 +300,10 @@ export class XClient {
       };
     }
 
-    // JSON bodies are not part of the OAuth signature base string, so no body
-    // params are passed here — see buildAuthHeader.
-    const response = await fetch(TWEETS_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        authorization: buildAuthHeader('POST', TWEETS_ENDPOINT, this.config),
-        'content-type': 'application/json',
-      },
+    // JSON bodies are not part of the OAuth 1.0a signature base string, so no
+    // body params reach buildAuthHeader — see its doc comment.
+    const response = await this.request('POST', TWEETS_ENDPOINT, {
+      contentType: 'application/json',
       body: JSON.stringify({
         text: trimmed,
         ...(options.inReplyTo ? { reply: { in_reply_to_tweet_id: options.inReplyTo } } : {}),
