@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "singularity": {
+      "command": "npx",
+      "args": ["-y", "singularity-agent", "mcp"],
+      "env": {}
+    }
+  }
+}

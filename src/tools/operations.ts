@@ -1,0 +1,396 @@
+import { adapterFor } from '../adapters/index.js';
+import { allChains, getChain, portfolioChains, resolveAlias } from '../core/registry.js';
+import { detect } from '../core/detect.js';
+import { SingularityError } from '../core/errors.js';
+import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
+import { explorerUrl, shortAddress } from '../core/format.js';
+import { convertBech32Prefix } from '../core/address-codec.js';
+import type { TransferParams } from '../core/adapter.js';
+import type {
+  BalanceEntry,
+  ChainSpec,
+  DecodedCall,
+  FeeEstimate,
+  NormalizedBlock,
+  NormalizedTx,
+  ResolvedIdentity,
+  UnsignedTx,
+} from '../core/types.js';
+
+export interface ChainSummary {
+  id: string;
+  name: string;
+  family: string;
+  chainId?: number | string;
+  nativeSymbol: string;
+  testnet: boolean;
+  explorer?: string;
+  aliases?: string[];
+  rpcCount: number;
+}
+
+export function listChains(query?: string, family?: string): ChainSummary[] {
+  const needle = query?.trim().toLowerCase();
+
+  return allChains()
+    .filter((c) => !family || c.family === family)
+    .filter((c) => {
+      if (!needle) return true;
+      return (
+        c.id.includes(needle) ||
+        c.name.toLowerCase().includes(needle) ||
+        c.nativeCurrency.symbol.toLowerCase().includes(needle) ||
+        c.aliases?.some((a) => a.includes(needle)) ||
+        String(c.chainId ?? '').toLowerCase().includes(needle)
+      );
+    })
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      family: c.family,
+      chainId: c.chainId,
+      nativeSymbol: c.nativeCurrency.symbol,
+      testnet: c.testnet ?? false,
+      explorer: c.explorer,
+      aliases: c.aliases,
+      rpcCount: c.rpc.length,
+    }));
+}
+
+/**
+ * Work out what an arbitrary string is, resolving names to addresses where we can.
+ */
+export async function resolve(input: string, chainHint?: string): Promise<ResolvedIdentity> {
+  const raw = resolveAlias(input.trim());
+  const detection = detect(raw);
+
+  const base: ResolvedIdentity = {
+    input,
+    kind: detection.kind,
+    chains: chainHint ? [getChain(chainHint).id] : detection.chains,
+    family: detection.families[0],
+    note: detection.reason,
+  };
+
+  if (detection.kind === 'address') {
+    base.address = raw;
+
+    // One Cosmos key is one account across every Cosmos chain, just re-encoded.
+    // Listing the equivalents turns a confusing "wrong prefix" error into a
+    // copy-pasteable answer.
+    if (detection.families[0] === 'cosmos') {
+      const equivalents: Record<string, string> = {};
+      for (const candidate of allChains()) {
+        if (candidate.family !== 'cosmos' || !candidate.bech32Prefix) continue;
+        const converted = convertBech32Prefix(raw, candidate.bech32Prefix);
+        if (converted) equivalents[candidate.id] = converted;
+      }
+      if (Object.keys(equivalents).length > 1) base.equivalents = equivalents;
+    }
+
+    // A reverse ENS lookup turns a bare address into something a human
+    // recognizes. It is a nicety, so a failure here must not sink the whole
+    // resolve — the address itself is still a valid answer.
+    if (detection.families[0] === 'evm') {
+      const chain = getChain(chainHint ?? 'ethereum');
+      const name = await adapterFor(chain).lookupName?.(chain, raw).catch(() => null);
+      if (name) {
+        base.name = name;
+        base.note = `${detection.reason} Primary ENS name: ${name}.`;
+      }
+    }
+    return base;
+  }
+
+  if (detection.kind === 'name') {
+    const chain = getChain(chainHint ?? detection.chains[0] ?? 'ethereum');
+    const adapter = adapterFor(chain);
+
+    if (!adapter.resolveName) {
+      return { ...base, note: `${detection.reason} No name resolver is wired up for ${chain.name}.` };
+    }
+
+    // No catch here: an RPC failure must surface as an RPC failure, not be
+    // reported back to the user as "that name does not exist".
+    const address = await adapter.resolveName(chain, raw);
+    if (!address) {
+      return {
+        ...base,
+        name: raw,
+        note: `${detection.reason} The name did not resolve — it may be unregistered or have no address record set.`,
+      };
+    }
+    return { ...base, address, name: raw };
+  }
+
+  return base;
+}
+
+export interface BalanceResult {
+  address: string;
+  chain: string;
+  native: BalanceEntry;
+  tokens: BalanceEntry[];
+  /** Set when the token list is a scan of known tokens rather than exhaustive. */
+  tokenScanNote?: string;
+  explorerUrl?: string;
+}
+
+export async function getBalance(options: {
+  address: string;
+  chain: string;
+  tokens?: string[];
+  includeTokens?: boolean;
+}): Promise<BalanceResult> {
+  const chain = getChain(options.chain);
+  const adapter = adapterFor(chain);
+  const address = await toAddress(options.address, chain);
+
+  const native = await adapter.getNativeBalance(chain, address);
+
+  let tokens: BalanceEntry[] = [];
+  let tokenScanNote: string | undefined;
+
+  if (options.includeTokens !== false) {
+    try {
+      tokens = await adapter.getTokenBalances(chain, address, options.tokens);
+      if (chain.family === 'evm' && !options.tokens?.length) {
+        tokenScanNote =
+          'EVM chains cannot be enumerated without an indexer, so this covers a curated list of major tokens only. Pass `tokens` with contract addresses to check others.';
+      }
+    } catch (err) {
+      // A chain with no token concept (Bitcoin) is not a failure of the balance call.
+      tokenScanNote = err instanceof SingularityError ? err.message : String(err);
+    }
+  }
+
+  return {
+    address,
+    chain: chain.id,
+    native,
+    tokens,
+    tokenScanNote,
+    explorerUrl: explorerUrl(chain, 'address', address),
+  };
+}
+
+export interface PortfolioResult {
+  address: string;
+  chainsQueried: string[];
+  balances: BalanceResult[];
+  errors: Array<{ chain: string; error: string; hint?: string }>;
+  note: string;
+}
+
+/**
+ * Query one address across many chains at once.
+ *
+ * Chains are filtered to those the address format is actually valid on, so an
+ * EVM address does not produce twenty Solana errors.
+ */
+export async function getPortfolio(options: {
+  address: string;
+  chains?: string[];
+  includeTokens?: boolean;
+}): Promise<PortfolioResult> {
+  const address = resolveAlias(options.address.trim());
+  const requested = options.chains?.length ? options.chains : portfolioChains();
+
+  const candidates = requested
+    .map((id) => getChain(id))
+    .filter((chain) => adapterFor(chain).isValidAddress(chain, address));
+
+  if (!candidates.length) {
+    const detection = detect(address);
+    throw new SingularityError(
+      'NO_MATCHING_CHAINS',
+      `"${shortAddress(address, 10, 6)}" is not a valid address on any of the requested chains.`,
+      detection.chains.length
+        ? `That address format belongs to: ${detection.chains.slice(0, 6).join(', ')}.`
+        : detection.reason,
+    );
+  }
+
+  const settled = await Promise.allSettled(
+    candidates.map((chain) =>
+      getBalance({ address, chain: chain.id, includeTokens: options.includeTokens }),
+    ),
+  );
+
+  const balances: BalanceResult[] = [];
+  const errors: PortfolioResult['errors'] = [];
+
+  settled.forEach((result, index) => {
+    const chain = candidates[index]!;
+    if (result.status === 'fulfilled') {
+      balances.push(result.value);
+      return;
+    }
+    const err = result.reason;
+    errors.push({
+      chain: chain.id,
+      error: err instanceof Error ? err.message : String(err),
+      hint: err instanceof SingularityError ? err.hint : undefined,
+    });
+  });
+
+  return {
+    address,
+    chainsQueried: candidates.map((c) => c.id),
+    balances,
+    errors,
+    note: 'Balances only — no fiat pricing. Chains where the address format does not apply were skipped, not queried and failed.',
+  };
+}
+
+/**
+ * Fetch a transaction. Without a chain hint, search the chains the hash format
+ * allows, in parallel, and report every chain it was found on.
+ */
+export async function getTransaction(options: {
+  hash: string;
+  chain?: string;
+}): Promise<{ found: NormalizedTx[]; searched: string[]; note?: string }> {
+  const hash = options.hash.trim();
+
+  if (options.chain) {
+    const chain = getChain(options.chain);
+    const tx = await adapterFor(chain).getTransaction(chain, hash);
+    return { found: [tx], searched: [chain.id] };
+  }
+
+  const detection = detect(hash);
+  if (detection.kind !== 'tx') {
+    throw new SingularityError(
+      'NOT_A_TX_HASH',
+      `"${shortAddress(hash, 12, 8)}" does not look like a transaction hash.`,
+      detection.reason,
+    );
+  }
+
+  // Searching every EVM chain would hammer a dozen public RPCs; the common
+  // chains cover nearly everything anyone pastes.
+  const searchSet = detection.chains.filter((id) => SEARCH_CHAINS.includes(id));
+  const candidates = (searchSet.length ? searchSet : detection.chains.slice(0, 6)).map(getChain);
+
+  const settled = await Promise.allSettled(
+    candidates.map((chain) => adapterFor(chain).getTransaction(chain, hash)),
+  );
+
+  const found = settled
+    .filter((r): r is PromiseFulfilledResult<NormalizedTx> => r.status === 'fulfilled')
+    .map((r) => r.value);
+
+  if (!found.length) {
+    throw new SingularityError(
+      'TX_NOT_FOUND',
+      `Transaction ${shortAddress(hash, 12, 8)} was not found on any of: ${candidates.map((c) => c.id).join(', ')}.`,
+      'Pass `chain` explicitly if it is on a chain outside the default search set, or the transaction may not exist.',
+    );
+  }
+
+  return {
+    found,
+    searched: candidates.map((c) => c.id),
+    note:
+      found.length > 1
+        ? 'This hash exists on more than one chain. That is normal for deterministic deployments and replayed transactions — check the chain field on each.'
+        : undefined,
+  };
+}
+
+/** Chains searched when a tx hash arrives with no chain specified. */
+const SEARCH_CHAINS = [
+  'ethereum',
+  'base',
+  'arbitrum',
+  'optimism',
+  'polygon',
+  'bsc',
+  'bitcoin',
+  'cosmoshub',
+  'osmosis',
+];
+
+export async function getBlock(options: {
+  chain: string;
+  ref?: string | number;
+}): Promise<NormalizedBlock> {
+  const chain = getChain(options.chain);
+  return adapterFor(chain).getBlock(chain, options.ref ?? 'latest');
+}
+
+export async function getFees(chainRef: string): Promise<FeeEstimate> {
+  const chain = getChain(chainRef);
+  return adapterFor(chain).estimateFees(chain);
+}
+
+export async function buildTransfer(options: TransferParams & { chain: string }): Promise<UnsignedTx> {
+  const chain = getChain(options.chain);
+  const adapter = adapterFor(chain);
+
+  const to = await toAddress(options.to, chain);
+  const from = options.from ? await toAddress(options.from, chain) : undefined;
+
+  return adapter.buildTransfer(chain, { ...options, to, from });
+}
+
+export async function readContract(options: {
+  chain: string;
+  address: string;
+  method?: string;
+  abi?: string;
+  args?: unknown[];
+}): Promise<unknown> {
+  const chain = getChain(options.chain);
+  const adapter = adapterFor(chain);
+
+  if (!adapter.readContract) {
+    throw new SingularityError(
+      'UNSUPPORTED',
+      `Contract reads are not supported on ${chain.name}.`,
+    );
+  }
+
+  const address = await toAddress(options.address, chain);
+  return adapter.readContract(chain, { ...options, address });
+}
+
+export function decode(data: string, abi?: string[]): DecodedCall {
+  if (abi?.length) {
+    try {
+      return decodeWithAbi(data, abi);
+    } catch (err) {
+      throw new SingularityError(
+        'DECODE_FAILED',
+        `Calldata did not match the supplied ABI: ${(err as Error).message}`,
+        'Check the ABI entry matches the selector in the first 4 bytes of the data.',
+      );
+    }
+  }
+  return decodeCalldata(data);
+}
+
+/** Accept a name, an address-book alias, or a raw address; always return an address. */
+async function toAddress(input: string, chain: ChainSpec): Promise<string> {
+  const raw = resolveAlias(input.trim());
+  const adapter = adapterFor(chain);
+
+  if (adapter.isValidAddress(chain, raw)) return raw;
+
+  if (raw.includes('.') && adapter.resolveName) {
+    const resolved = await adapter.resolveName(chain, raw);
+    if (resolved) return resolved;
+    throw new SingularityError(
+      'NAME_NOT_RESOLVED',
+      `"${raw}" did not resolve to an address.`,
+      'The name may be unregistered, expired, or have no address record set.',
+    );
+  }
+
+  throw new SingularityError(
+    'INVALID_ADDRESS',
+    `"${shortAddress(raw, 12, 6)}" is not a valid address on ${chain.name}.`,
+    adapter.addressExpectation(chain, raw),
+  );
+}

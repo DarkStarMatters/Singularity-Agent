@@ -1,0 +1,41 @@
+{
+  "name": "singularity-agent",
+  "version": "0.1.0",
+  "description": "Universal CLI + MCP plugin for practical blockchain interaction across EVM, Solana, Bitcoin and Cosmos.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "singularity": "./dist/cli/index.js",
+    "singularity-mcp": "./dist/mcp/server.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "README.md", "LICENSE", ".claude-plugin", ".mcp.json"],
+  "engines": { "node": ">=20.10.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/index.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "blockchain", "evm", "solana", "bitcoin", "cosmos", "cli", "claude", "web3"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "commander": "^14.0.1",
+    "viem": "^2.56.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "singularity-agent",
+  "description": "Universal blockchain client for EVM, Solana, Bitcoin and Cosmos. Read-only: resolves addresses and names, reads balances and transactions, decodes calldata, and builds unsigned transactions for you to sign in your own wallet. Holds no keys.",
+  "version": "0.1.0",
+  "keywords": ["blockchain", "web3", "evm", "solana", "bitcoin", "cosmos", "ethereum"],
+  "mcpServers": {
+    "singularity": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"]
+    }
+  }
+}
