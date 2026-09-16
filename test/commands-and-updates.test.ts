@@ -5,10 +5,10 @@ import { formatDecoded, formatHealth, formatReadResult } from '../src/telegram/f
 import {
   UPDATE_ANGLES,
   collectProjectFacts,
-  factSheet,
+  updateBriefs,
   isDue,
   isTooSimilar,
-  nextAngle,
+  nextUpdate,
   postUpdate,
   updatePrompt,
   type ProjectFacts,
@@ -195,7 +195,25 @@ const FACTS: ProjectFacts = {
   recentChanges: ['Fix Solana block lookups', 'Add the spam filter'],
   shipped: ['Coverage: 3 chains across two families'],
   planned: ['Historical state', 'Transaction history'],
+  chains: [
+    { id: 'ethereum', name: 'Ethereum', family: 'evm', details: ['a', 'b', 'c', 'd'] },
+    { id: 'solana', name: 'Solana', family: 'svm', details: ['e', 'f', 'g', 'h'] },
+  ],
+  tools: [
+    { name: 'balance', title: 'Get balances on one chain', description: 'Native and token balances.' },
+  ],
+  limits: [{ label: 'No fiat pricing', detail: 'Balances only, because pricing needs an oracle.' }],
+  recipes: [
+    { purpose: 'Balances on one chain', command: 'singularity balance vitalik.eth --chain ethereum' },
+  ],
 };
+
+/** The first brief for an angle, for tests that care about one angle's shape. */
+function briefFor(angle: string) {
+  const found = updateBriefs(FACTS).find((brief) => brief.angle === angle);
+  if (!found) throw new Error(`no brief for angle ${angle}`);
+  return found;
+}
 
 describe('project update grounding', () => {
   it('reads real facts out of the repository', () => {
@@ -206,59 +224,126 @@ describe('project update grounding', () => {
     expect(facts.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('only shows the angle the facts it may use', () => {
-    // A coverage post must not be handed the commit log to embellish with.
-    expect(factSheet(FACTS, 'coverage')).toContain('ethereum');
-    expect(factSheet(FACTS, 'coverage')).not.toContain('Fix Solana block lookups');
-    expect(factSheet(FACTS, 'changelog')).toContain('Fix Solana block lookups');
+  it('gives each post only the facts about its own subject', () => {
+    // A post about one chain must not be handed the commit log to embellish
+    // with, nor the other chains to turn back into a coverage boast.
+    const chain = updateBriefs(FACTS).find((b) => b.subject === 'chain:ethereum')!;
+
+    expect(chain.facts.join(' ')).not.toContain('Fix Solana block lookups');
+    expect(chain.facts.join(' ')).not.toContain('solana');
+    expect(briefFor('changelog').facts.join(' ')).toContain('Fix Solana block lookups');
+  });
+
+  it('builds one post per concrete subject, not per angle', () => {
+    const briefs = updateBriefs(FACTS);
+    const subjects = new Set(briefs.map((b) => b.subject));
+
+    // Every subject is distinct, and there are far more of them than angles —
+    // which is the whole fix: rotating angles over unchanging facts gives one
+    // post per angle, rotating subjects gives one per chain, tool and limit.
+    expect(subjects.size).toBe(briefs.length);
+    expect(briefs.length).toBeGreaterThan(UPDATE_ANGLES.length);
+  });
+
+  it('grows the post space when the project grows', () => {
+    const before = updateBriefs(FACTS).length;
+    const after = updateBriefs({
+      ...FACTS,
+      limits: [
+        ...FACTS.limits,
+        { label: 'No CosmWasm', detail: 'read_contract covers EVM and Solana only.' },
+      ],
+    }).length;
+
+    // Add a Known Limit to the README and there is a new post about it, with
+    // nobody maintaining a list of things to say.
+    expect(after).toBe(before + 1);
+  });
+
+  it('reads the real README for limits and runnable recipes', () => {
+    const facts = collectProjectFacts();
+
+    expect(facts.limits.length).toBeGreaterThan(3);
+    expect(facts.recipes.length).toBeGreaterThan(3);
+    // A recipe must be pasteable, so it is copied verbatim from documentation
+    // that is kept working rather than invented by the model.
+    for (const recipe of facts.recipes) {
+      expect(recipe.command.startsWith('singularity ')).toBe(true);
+      expect(recipe.command.endsWith(String.fromCharCode(92))).toBe(false);
+    }
   });
 
   it('tells the model that anything outside the facts does not exist', () => {
-    const prompt = updatePrompt(FACTS, 'coverage');
+    const prompt = updatePrompt(FACTS, briefFor('chainnote'));
 
     expect(prompt).toContain('anything not here does not exist');
     expect(prompt).toContain('Do not invent');
     expect(prompt).toContain(String(REPLY_LIMIT));
   });
 
-  it('rotates through every angle before repeating one', () => {
-    const used: string[] = [];
-    for (let i = 0; i < UPDATE_ANGLES.length; i++) {
-      used.unshift(nextAngle(used as never, FACTS));
+  it('never repeats a subject until every other one has had a turn', () => {
+    // The actual complaint this fixes: the account said the same few things
+    // over and over. Walk the whole space and nothing may come round twice.
+    const briefs = updateBriefs(FACTS);
+    const subjects: string[] = [];
+    const angles: string[] = [];
+
+    for (let i = 0; i < briefs.length; i++) {
+      const next = nextUpdate(briefs, angles, subjects);
+      if (!next) throw new Error('ran out of material early');
+      subjects.unshift(next.subject);
+      angles.unshift(next.angle);
     }
 
-    expect(new Set(used).size).toBe(UPDATE_ANGLES.length);
+    expect(new Set(subjects).size).toBe(briefs.length);
   });
 
-  it('never picks the changelog angle with no commits to report', () => {
+  it('leads with the practical angles rather than talking about itself', () => {
+    const first = nextUpdate(updateBriefs(FACTS), [], []);
+
+    // `philosophy` and `roadmap` are the least useful things to post, so they
+    // sort last; a reader should meet a command or a gotcha first.
+    expect(['howto', 'gotcha', 'chainnote', 'limitation']).toContain(first?.angle);
+  });
+
+  it('keeps going once everything has been posted, oldest subject first', () => {
+    const briefs = updateBriefs(FACTS);
+    const allSubjects = briefs.map((b) => b.subject);
+
+    // Exhausted rather than stuck: it must not go silent, and it must not
+    // pick the thing it posted most recently.
+    const next = nextUpdate(briefs, [], allSubjects);
+    expect(next).not.toBeNull();
+    expect(next!.subject).not.toBe(allSubjects[0]);
+  });
+
+  it('has no changelog posts with no commits to report', () => {
     const noCommits = { ...FACTS, recentChanges: [] };
-
-    for (let i = 0; i < 10; i++) {
-      expect(nextAngle(UPDATE_ANGLES.slice(0, i) as never, noCommits)).not.toBe('changelog');
-    }
+    expect(updateBriefs(noCommits).some((b) => b.angle === 'changelog')).toBe(false);
   });
 
-  it('never picks the roadmap angle when the roadmap could not be read', () => {
+  it('has no roadmap posts when the roadmap could not be read', () => {
     // An installed copy of the package ships no roadmap.md.
     const noRoadmap = { ...FACTS, shipped: [], planned: [] };
-
-    for (let i = 0; i < 10; i++) {
-      expect(nextAngle(UPDATE_ANGLES.slice(0, i) as never, noRoadmap)).not.toBe('roadmap');
-    }
+    expect(updateBriefs(noRoadmap).some((b) => b.angle === 'roadmap')).toBe(false);
   });
 
   it('separates what is shipped from what is only planned', () => {
-    const sheet = factSheet(FACTS, 'roadmap');
+    const sheet = briefFor('roadmap').facts.join('\n');
 
     // An agent announcing a planned feature as a built one is the specific
     // failure this labelling exists to prevent.
     expect(sheet).toContain('exists today');
     expect(sheet).toContain('NOT built yet');
-    expect(sheet.indexOf('Coverage: 3 chains')).toBeLessThan(sheet.indexOf('Historical state'));
+    // Both are present and both are labelled; the order between them is not
+    // the guarantee, the labels are.
+    expect(sheet).toContain('Coverage: 3 chains');
+    expect(sheet).toContain('Historical state');
   });
 
-  it('keeps the roadmap out of angles that should not cite it', () => {
-    expect(factSheet(FACTS, 'coverage')).not.toContain('Historical state');
+  it('keeps the roadmap out of posts that should not cite it', () => {
+    expect(briefFor('chainnote').facts.join(' ')).not.toContain('Historical state');
+    expect(briefFor('howto').facts.join(' ')).not.toContain('Historical state');
   });
 
   it('is due immediately, then not again until the interval passes', () => {
@@ -292,7 +377,7 @@ function updateHarness(reply: string): { client: XClient; agent: GrokAgent; post
 describe('posting a project update', () => {
   it('publishes the composed post', async () => {
     const { client, agent, posted } = updateHarness('Singularity reads 3 chains across two families.');
-    const update = await postUpdate(client, agent, FACTS, 'coverage');
+    const update = await postUpdate(client, agent, FACTS, briefFor('chainnote'));
 
     expect(update?.result.published).toBe(true);
     expect(posted).toEqual(['Singularity reads 3 chains across two families.']);
@@ -300,7 +385,7 @@ describe('posting a project update', () => {
 
   it('strips quotes a model wrapped the post in', async () => {
     const { client, agent } = updateHarness('"Singularity reads 3 chains across two families."');
-    const update = await postUpdate(client, agent, FACTS, 'coverage');
+    const update = await postUpdate(client, agent, FACTS, briefFor('chainnote'));
 
     expect(update?.text.startsWith('"')).toBe(false);
   });
@@ -308,7 +393,7 @@ describe('posting a project update', () => {
   it('posts nothing when the model declines to invent something', async () => {
     // The changelog angle is told to return nothing if it has nothing.
     const { client, agent, posted } = updateHarness('');
-    const update = await postUpdate(client, agent, FACTS, 'changelog');
+    const update = await postUpdate(client, agent, FACTS, briefFor('changelog'));
 
     expect(update).toBeNull();
     expect(posted).toEqual([]);
@@ -316,13 +401,15 @@ describe('posting a project update', () => {
 
   it('trims an over-long post rather than letting X reject it', async () => {
     const { client, agent } = updateHarness('word '.repeat(200));
-    const update = await postUpdate(client, agent, FACTS, 'philosophy');
+    const update = await postUpdate(client, agent, FACTS, briefFor('philosophy'));
 
     expect(update!.text.length).toBeLessThanOrEqual(REPLY_LIMIT);
   });
 
   it('shows the model what it already posted', () => {
-    const prompt = updatePrompt(FACTS, 'coverage', ['Reaches 23 chains across four families.']);
+    const prompt = updatePrompt(FACTS, briefFor('chainnote'), [
+      'Reaches 23 chains across four families.',
+    ]);
 
     expect(prompt).toContain('already posted these');
     expect(prompt).toContain('Reaches 23 chains across four families.');
@@ -336,7 +423,7 @@ describe('posting a project update', () => {
       'Singularity reaches 23 chains across Solana, Bitcoin, Cosmos and EVM.',
     );
 
-    const update = await postUpdate(client, agent, FACTS, 'coverage', {
+    const update = await postUpdate(client, agent, FACTS, briefFor('chainnote'), {
       recentPosts: [previous],
     });
 
@@ -347,7 +434,7 @@ describe('posting a project update', () => {
   it('still posts something genuinely different', async () => {
     const { client, agent } = updateHarness('Holds no keys and cannot broadcast a transaction.');
 
-    const update = await postUpdate(client, agent, FACTS, 'safety', {
+    const update = await postUpdate(client, agent, FACTS, briefFor('philosophy'), {
       recentPosts: ['Reaches 23 chains across EVM, Solana, Bitcoin and Cosmos.'],
     });
 
@@ -367,7 +454,7 @@ describe('posting a project update', () => {
     } as unknown as XClient;
 
     const { agent } = updateHarness('Singularity reads 3 chains across two families.');
-    const update = await postUpdate(dryClient, agent, FACTS, 'coverage', { dryRun: true });
+    const update = await postUpdate(dryClient, agent, FACTS, briefFor('chainnote'), { dryRun: true });
 
     expect(update?.result.published).toBe(false);
   });

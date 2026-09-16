@@ -24,6 +24,16 @@ export interface XState {
   /** Angles used recently, newest first, so posts do not repeat themselves. */
   recentAngles?: string[];
   /**
+   * The specific subjects posted about recently, newest first.
+   *
+   * Angles alone were never enough: six angles over a fact sheet that does not
+   * change is six posts, after which the rotation just sets how often they
+   * repeat. A subject is one chain, one tool, one limit, one recipe — so this
+   * list is what actually stops the account saying the same thing twice, and
+   * it is kept long because the candidate space is large.
+   */
+  recentSubjects?: string[];
+  /**
    * The text of recent updates, newest first.
    *
    * Fed back into the prompt as "you already said this". Rotating angles alone
@@ -51,6 +61,11 @@ export function loadState(path = statePath()): XState {
       ...(typeof parsed.lastUpdateAt === 'number' ? { lastUpdateAt: parsed.lastUpdateAt } : {}),
       ...(Array.isArray(parsed.recentAngles)
         ? { recentAngles: parsed.recentAngles.filter((a): a is string => typeof a === 'string') }
+        : {}),
+      ...(Array.isArray(parsed.recentSubjects)
+        ? {
+            recentSubjects: parsed.recentSubjects.filter((s): s is string => typeof s === 'string'),
+          }
         : {}),
       ...(Array.isArray(parsed.recentPosts)
         ? { recentPosts: parsed.recentPosts.filter((p): p is string => typeof p === 'string') }

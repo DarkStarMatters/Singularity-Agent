@@ -22,8 +22,9 @@ import { XClient, loadXConfig } from '../x/client.js';
 import {
   UPDATE_ANGLES,
   collectProjectFacts,
-  nextAngle,
+  nextUpdate,
   postUpdate,
+  updateBriefs,
   type UpdateAngle,
 } from '../x/updates.js';
 import { GrokAgent } from '../grok/agent.js';
@@ -43,8 +44,12 @@ export function angleFrom(text: string): UpdateAngle | null {
   for (const angle of UPDATE_ANGLES) {
     if (lower.includes(angle)) return angle;
   }
-  if (/\bchains?\b|\bcoverage\b|\bsupport\b/.test(lower)) return 'coverage';
-  if (/\bsafe|\bkeys?\b|\bsign|\bcustody\b/.test(lower)) return 'safety';
+  // "coverage" and "safety" were angles once; they are now the chain and
+  // limitation angles, so the words people still use keep working.
+  if (/\bchains?\b|\bcoverage\b|\bsupport\b/.test(lower)) return 'chainnote';
+  if (/\bsafe|\bkeys?\b|\bsign|\bcustody\b|\blimit/.test(lower)) return 'limitation';
+  if (/\bhow do|\bhow to|\bcommand|\bexample/.test(lower)) return 'howto';
+  if (/\bgotcha|\btrap|\bmistake/.test(lower)) return 'gotcha';
   if (/\bchange|\bshipped|\brelease|\bcommit/.test(lower)) return 'changelog';
   if (/\bwhy\b|\bphilosoph|\bdesign\b/.test(lower)) return 'philosophy';
 
@@ -101,8 +106,15 @@ export const postProjectUpdateAction: Action = {
       const requested = typeof options?.angle === 'string' ? (options.angle as UpdateAngle) : null;
       const angle =
         (requested && UPDATE_ANGLES.includes(requested) ? requested : null) ??
-        angleFrom(messageText(message)) ??
-        nextAngle([], facts);
+        angleFrom(messageText(message));
+
+      // Narrow to the requested angle when there is one, then let nextUpdate
+      // pick the subject — otherwise "post about chains" would say the same
+      // thing about the same chain every time anyone asked.
+      const briefs = updateBriefs(facts);
+      const pool = angle ? briefs.filter((candidate) => candidate.angle === angle) : briefs;
+      const brief = nextUpdate(pool.length ? pool : briefs, [], []);
+      if (!brief) throw new Error('No update material is available to write from.');
 
       // A fresh agent rather than the conversation's own: an update is written
       // from the fact sheet, and chat history would only bias it. postUpdate
@@ -111,19 +123,19 @@ export const postProjectUpdateAction: Action = {
         system: systemPromptFor('x'),
       });
 
-      const update = await postUpdate(new XClient(config), writer, facts, angle, {
+      const update = await postUpdate(new XClient(config), writer, facts, brief, {
         ...(options?.dryRun === true ? { dryRun: true } : {}),
       });
 
       if (!update) {
-        const text = `Nothing worth posting for the ${angle} angle — the facts did not support a post, so I wrote none.`;
+        const text = `Nothing worth posting for the ${brief.angle} angle — the facts did not support a post, so I wrote none.`;
         await callback?.({ text, actions: [POST_PROJECT_UPDATE] });
-        return { success: true, text, data: { angle, posted: false } };
+        return { success: true, text, data: { angle: brief.angle, subject: brief.subject, posted: false } };
       }
 
       const rendered = update.result.published
-        ? `Posted a ${angle} update.\n\n${update.text}\n\n${update.result.url ?? ''}`.trimEnd()
-        : `Drafted a ${angle} update — not published.\n\n${update.text}\n\nReason: ${update.result.reason ?? 'posting disabled'}`;
+        ? `Posted a ${brief.angle} update.\n\n${update.text}\n\n${update.result.url ?? ''}`.trimEnd()
+        : `Drafted a ${brief.angle} update — not published.\n\n${update.text}\n\nReason: ${update.result.reason ?? 'posting disabled'}`;
 
       await callback?.({
         text: rendered,
@@ -131,7 +143,7 @@ export const postProjectUpdateAction: Action = {
         ...(update.result.url ? { url: update.result.url } : {}),
       });
 
-      return { success: true, text: rendered, data: { angle, update: update.result } };
+      return { success: true, text: rendered, data: { angle: brief.angle, subject: brief.subject, update: update.result } };
     } catch (err) {
       const rendered = toPlainText(formatError(err));
       await callback?.({ text: rendered, actions: [POST_PROJECT_UPDATE] });

@@ -27,8 +27,9 @@ import { evidenceFrom, reviewReply } from './honesty.js';
 import {
   collectProjectFacts,
   isDue,
-  nextAngle,
+  nextUpdate,
   postUpdate,
+  updateBriefs,
   UPDATE_ANGLES,
   type ComposedUpdate,
   type UpdateAngle,
@@ -193,7 +194,13 @@ export class XListener {
       (UPDATE_ANGLES as readonly string[]).includes(a),
     );
 
-    const chosen = angle ?? nextAngle(recent, facts);
+    const briefs = updateBriefs(facts);
+    // An operator naming an angle wants that angle; they still get the least
+    // recently used subject within it rather than whatever comes first.
+    const pool = angle ? briefs.filter((brief) => brief.angle === angle) : briefs;
+    const chosen = nextUpdate(pool.length ? pool : briefs, recent, this.state.recentSubjects ?? []);
+    if (!chosen) return null;
+
     const update = await postUpdate(this.client, this.agent, facts, chosen, {
       ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
       recentPosts: this.state.recentPosts ?? [],
@@ -244,17 +251,39 @@ export class XListener {
     }
 
     const facts = collectProjectFacts();
-    const angle = nextAngle(recent, facts);
-
+    const briefs = updateBriefs(facts);
     const recentPosts = this.state.recentPosts ?? [];
 
-    const update = await postUpdate(this.client, this.agent, facts, angle, {
-      // With a gate in place nothing is published here: the composed text is
-      // captured as a draft and handed to the reviewer below.
-      ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
-      now: () => now,
-      recentPosts,
-    });
+    let recentSubjects = this.state.recentSubjects ?? [];
+    let brief = nextUpdate(briefs, recent, recentSubjects);
+    let update: ComposedUpdate | null = null;
+
+    // A brief the model declines — nothing to say, or too close to something
+    // already posted — should cost the next subject, not the next four hours.
+    // Otherwise tightening the repetition guard buys variety at the price of
+    // silence, which is the same problem wearing different clothes.
+    for (let attempt = 0; attempt < 3 && brief; attempt++) {
+      update = await postUpdate(this.client, this.agent, facts, brief, {
+        // With a gate in place nothing is published here: the composed text is
+        // captured as a draft and handed to the reviewer below.
+        ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
+        now: () => now,
+        recentPosts,
+      });
+
+      if (update) break;
+
+      // Burn the subject so the next attempt — and the next poll — move on.
+      console.error(`[singularity-x] nothing to say about ${brief.subject}; trying another.`);
+      recentSubjects = [brief.subject, ...recentSubjects.filter((s) => s !== brief!.subject)];
+      brief = nextUpdate(briefs, recent, recentSubjects);
+    }
+
+    if (!brief) {
+      console.error('[singularity-x] no update material available; skipped.');
+      return null;
+    }
+    const angle = brief.angle;
 
     if (update && this.gate) {
       await this.gate.submit({ kind: 'update', text: update.text });
@@ -267,6 +296,14 @@ export class XListener {
       ...this.state,
       lastUpdateAt: now,
       recentAngles: [angle, ...recent.filter((a) => a !== angle)].slice(0, UPDATE_ANGLES.length - 1),
+      // The subject is recorded even when the model wrote nothing, so a brief
+      // it could not make a post out of is not retried on every poll. Kept far
+      // longer than the angle list: the whole point is that a chain or a limit
+      // does not come round again until everything else has had a turn.
+      recentSubjects: [brief.subject, ...recentSubjects.filter((s) => s !== brief.subject)].slice(
+        0,
+        200,
+      ),
       // Kept whether or not it was published: a draft the model has already
       // written is still something it should not write again.
       ...(update ? { recentPosts: [update.text, ...recentPosts].slice(0, 12) } : {}),
@@ -281,7 +318,7 @@ export class XListener {
       );
     } else {
       console.error(
-        `[singularity-x] nothing new to say from the ${angle} angle — either the facts did not support it or it repeated an earlier post; skipped.`,
+        `[singularity-x] nothing new to say about ${brief.subject} — either the facts did not support it or it repeated an earlier post; skipped.`,
       );
     }
 
