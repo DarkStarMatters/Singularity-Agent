@@ -1,4 +1,5 @@
 import { parseAbi, decodeFunctionData, toFunctionSelector, type Abi } from 'viem';
+import { sanitizeOnchainDeep } from './envelope.js';
 import type { DecodedCall } from './types.js';
 
 /**
@@ -88,11 +89,7 @@ export function decodeCalldata(data: string): DecodedCall {
       selector,
       signature,
       name: functionName,
-      args: (args ?? []).map((value, i) => ({
-        name: inputs[i]?.name,
-        type: inputs[i]?.type,
-        value: stringify(value),
-      })),
+      args: toArgs(args ?? [], inputs),
     };
   } catch (err) {
     return {
@@ -101,6 +98,46 @@ export function decodeCalldata(data: string): DecodedCall {
       note: `Selector matches ${signature} but the arguments did not decode: ${(err as Error).message}`,
     };
   }
+}
+
+/**
+ * Turn decoded values into arguments, marking the ones that carry text.
+ *
+ * Both decoders funnel through here so the mark cannot be applied in one path
+ * and forgotten in the other — which is the shape of every bug this file's
+ * neighbours exist to prevent.
+ */
+function toArgs(
+  values: readonly unknown[],
+  inputs: Array<{ name?: string; type?: string }>,
+): NonNullable<DecodedCall['args']> {
+  return values.map((value, i) => {
+    const type = inputs[i]?.type;
+    return {
+      name: inputs[i]?.name,
+      type,
+      value: stringify(value),
+      ...(carriesText(type) ? { untrusted: true as const } : {}),
+    };
+  });
+}
+
+/**
+ * Can an argument of this type hold prose?
+ *
+ * `string` can, at any depth — `string`, `string[]`, and the tuple
+ * `(address,string,uint256)` all reduce to the same question. `bytes` renders
+ * as hex and `uint256` as digits; neither can be read as an instruction, and
+ * marking them would train a reader to ignore the mark.
+ *
+ * An **unknown** type is marked. That is the whole point of writing this as a
+ * question about the type rather than about the value: when `decode` is handed
+ * an ABI whose signature does not match the call, there are no types at all,
+ * and the safe default there is to distrust everything rather than to wave
+ * through a decode nobody could name.
+ */
+export function carriesText(type: string | undefined): boolean {
+  return type === undefined || type.includes('string');
 }
 
 /** Decode against a caller-supplied human-readable ABI. */
@@ -114,11 +151,7 @@ export function decodeWithAbi(data: string, abiSignatures: string[]): DecodedCal
     selector: hex.slice(0, 10).toLowerCase(),
     signature: matched,
     name: functionName,
-    args: (args ?? []).map((value, i) => ({
-      name: inputs[i]?.name,
-      type: inputs[i]?.type,
-      value: stringify(value),
-    })),
+    args: toArgs(args ?? [], inputs),
   };
 }
 
@@ -169,11 +202,23 @@ function splitTopLevel(input: string): string[] {
   return parts;
 }
 
+/**
+ * Render a decoded value, with any text in it defanged first.
+ *
+ * The sanitizing happens at the leaves rather than on the finished string,
+ * because a tuple serializes to JSON and stripping *that* of braces and control
+ * characters would leave something neither readable nor parseable. Addresses,
+ * numbers and hex pass through the sanitizer untouched, so this costs nothing
+ * on the arguments that make up almost every call.
+ */
 function stringify(value: unknown): string {
   if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'string') return sanitizeOnchainDeep(value);
   if (Array.isArray(value)) return `[${value.map(stringify).join(', ')}]`;
   if (value && typeof value === 'object') {
-    return JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+    return JSON.stringify(sanitizeOnchainDeep(value), (_k, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    );
   }
   return String(value);
 }

@@ -7,6 +7,7 @@
  */
 
 import type { Impersonation } from './impersonation.js';
+import type { UntrustedText } from './envelope.js';
 
 export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos';
 
@@ -111,10 +112,39 @@ export interface NormalizedTx {
   to?: string;
   value?: Amount;
   fee?: Amount;
-  /** Human-readable summary line, e.g. "Transfer 1.5 ETH -> 0xabc…". */
+  /**
+   * Human-readable summary line, e.g. "Transfer 1.5 ETH -> 0xabc…".
+   *
+   * Written entirely by this tool. Nothing read off the chain is interpolated
+   * into it — that is what `memo`, `failureLog` and `logs` below are for. The
+   * rule is worth stating because breaking it is invisible: a summary with a
+   * sender's memo spliced into the middle still type-checks, still reads
+   * fluently, and is the tool putting an attacker's sentence in its own voice.
+   */
   summary: string;
   /** Decoded call, when we could work it out. */
   decoded?: DecodedCall;
+  /**
+   * Free text the sender attached to the transaction (Cosmos memo).
+   *
+   * Whoever sent the transaction wrote this and chose every character of it.
+   * Absent means the transaction carried none.
+   */
+  memo?: UntrustedText;
+  /**
+   * The chain's own account of why this transaction failed.
+   *
+   * A revert string is written by the contract that reverted, which on a failed
+   * transaction is very often the contract the user was warned about.
+   */
+  failureLog?: UntrustedText;
+  /**
+   * Log output the executing programs emitted (Solana).
+   *
+   * A program may log anything it likes, at whatever length it likes, including
+   * text shaped exactly like this tool's own output.
+   */
+  logs?: UntrustedText[];
   explorerUrl?: string;
   /** Anything chain-specific that did not fit the normalized shape. */
   raw?: Record<string, unknown>;
@@ -125,7 +155,22 @@ export interface DecodedCall {
   signature?: string;
   name?: string;
   selector?: string;
-  args?: Array<{ name?: string; type?: string; value: string }>;
+  args?: Array<{
+    name?: string;
+    type?: string;
+    value: string;
+    /**
+     * This argument's value is text somebody chose, not a number or an address.
+     *
+     * Most decoded arguments cannot carry prose — a `uint256` is digits and an
+     * `address` is twenty bytes of hex, and neither can be made to read as an
+     * instruction. A `string` can, and calldata is authored by whoever sent the
+     * transaction. Set whenever the argument's type carries text *or the type
+     * is unknown*, because an argument whose provenance cannot be established
+     * is exactly the one to distrust.
+     */
+    untrusted?: true;
+  }>;
   /** Set when we could not identify the call. */
   note?: string;
 }

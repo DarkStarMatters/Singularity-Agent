@@ -143,6 +143,11 @@ lead-in to Phase 2. Concretely, on Solana it must ship with the 2.2 impersonatio
 wired into the same code path: the reason Solana carries no collision findings today is
 that it reads no deployer-chosen string, and this is the change that starts.
 
+Unblocked as of 2.1 closing: this was held behind the `transaction` and `decode` paths
+being marked, because it widens exactly that surface. The machinery it needs — the mark,
+the free-text sanitizer, the provenance clause — now exists, so what remains here is the
+reads themselves and the Solana impersonation wiring. **This is the next thing to build.**
+
 ---
 
 ## Phase 2 — Trust boundaries
@@ -152,14 +157,50 @@ that it reads no deployer-chosen string, and this is the change that starts.
 This phase is ranked above new chains deliberately. It is the one category where the tool
 being wrong causes harm rather than inconvenience.
 
-### 2.1 Provenance marking — **shipped for token metadata**
+### 2.1 Provenance marking — **shipped**
 Token symbols read from a contract, and Cosmos denoms, are marked and defanged; see "the
-answer envelope" above.
+answer envelope" above. Transactions now carry the rest of it.
 
-Still open: **Cosmos memos**, and the **contract-sourced strings that surface through
-`transaction` and `decode`** — a decoded argument carries an attacker's string just as a
-symbol does, and those paths mark nothing yet. Phase 1.4 (reading `name` off unknown
-contracts) must not ship before they do: it widens exactly this surface.
+**Free text stops being spliced into prose.** A symbol is a label, and marking the field
+was enough. A memo, a revert string and a program log are *prose* — already shaped like an
+instruction — and all three used to be interpolated straight into `summary` and
+`decoded.note`, the two fields whose entire job is to read as the tool's own narration. For
+the price of a Cosmos memo, a stranger could put a sentence in Singularity's mouth and hand
+it to a model composing a public reply, with no seam anywhere marking where the tool
+stopped talking.
+
+So they become values: `memo`, `failureLog` and `logs`, each an `UntrustedText` carrying
+its own provenance clause, defanged at construction, found by the same walk that attaches
+`UNTRUSTED_NOTE`. `summary` now names where the text is instead of quoting it, and the
+invariant is written down on the type: **nothing read off the chain is interpolated into
+`summary`.** That rule needed stating precisely because breaking it is invisible — a
+summary with a sender's memo in the middle still type-checks and still reads fluently.
+
+**Decoded arguments are marked by type, and fail closed.** A `uint256` is digits and an
+`address` is twenty bytes of hex; neither can be made to read as an instruction, and
+marking them would train a reader to skip the mark. A `string` at any depth — `string[]`,
+`(address,string,uint256)` — is marked and defanged, at the leaves rather than on the
+serialized blob, so a decoded tuple stays valid JSON instead of becoming something neither
+readable nor parseable. An argument whose type is *unknown* is marked, which is the point
+of asking the question about the type rather than the value: when `decode` is handed an ABI
+that does not match the call there are no types at all, and that is exactly the argument to
+distrust.
+
+Two consequences worth recording. **No duplicate escapes the mark**: `raw.memo` and
+`raw.logMessages` are gone, because an unmarked second copy in the field most likely to be
+handed to a model wholesale is the mark being bypassed. And **every Cosmos message body is
+marked, unconditionally** — the one place in this repo where the mark fires on ordinary
+traffic. There is no subset of message types that is safe by construction:
+`MsgExecuteContract` carries JSON the sender wrote outright, and even a bank send carries a
+`denom`, which on any chain with tokenfactory is a string somebody minted and chose the
+wording of. A whitelist there would be a guess about schemas this tool does not model.
+
+The free-text limit is 256 rather than the symbol cap of 48, and the number is not
+arbitrary: Cosmos caps memos at 256 characters by consensus, so nothing an honest sender
+can write is ever truncated. Half the tests in this area are on that side of the gate —
+an ordinary memo, a real revert reason, a normal program log, a plain `transfer` decode —
+because by Contributing §3 a gate measured only against what it should block is how the X
+filter shipped dropping three quarters of the questions put to it.
 
 ### 2.2 Impersonation signals — **shipped**
 Fake tokens reuse real symbols; that is the entire mechanic of the most common retail
@@ -269,5 +310,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (558 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (581 tests); `npm run typecheck`
 must pass clean.

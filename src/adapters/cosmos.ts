@@ -7,7 +7,12 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
-import { completeness, sanitizeOnchainText } from '../core/envelope.js';
+import {
+  completeness,
+  sanitizeOnchainDeep,
+  sanitizeOnchainText,
+  untrustedText,
+} from '../core/envelope.js';
 import { checkImpersonation } from '../core/impersonation.js';
 import {
   HistoricalStateUnavailableError,
@@ -294,6 +299,17 @@ export const cosmosAdapter: ChainAdapter = {
       }
     }
 
+    const memo = untrustedText(
+      tx.body.memo,
+      "the transaction's memo, free text chosen by whoever sent it",
+    );
+    const failureLog = failed
+      ? untrustedText(
+          receipt.raw_log,
+          "the chain's error log for this transaction; a contract chooses its own revert text",
+        )
+      : undefined;
+
     return {
       chain: chain.id,
       hash: receipt.txhash,
@@ -304,22 +320,41 @@ export const cosmosAdapter: ChainAdapter = {
       to: recipient,
       value: nativeAmount(sendTotal, chain),
       fee: feeCoin ? nativeAmount(feeCoin.amount, chain) : nativeAmount('0', chain),
+      // Neither line below quotes the chain. The memo and the failure log used
+      // to be interpolated here, which put a sentence the sender wrote inside a
+      // sentence the tool wrote, with no seam between them. Both now travel as
+      // marked values, and `summary` says where to find them rather than saying
+      // what they contain.
       summary: failed
-        ? `Failed transaction on ${chain.name} (code ${receipt.code}): ${receipt.raw_log.slice(0, 200)}`
+        ? `Failed transaction on ${chain.name} (code ${receipt.code}). The chain's own explanation is in \`failureLog\`, written by the contract that reverted.`
         : `${messages.length} message(s) [${types.join(', ')}] on ${chain.name}, ${receipt.gas_used}/${receipt.gas_wanted} gas used.`,
       decoded: {
-        note: `Message types: ${types.join(', ')}${tx.body.memo ? `. Memo: "${tx.body.memo}"` : ''}`,
+        // Message *types* are protobuf type URLs from the chain's own schema —
+        // a sender picks which one, never what it is called — so these are safe
+        // to name in prose. The message bodies are not.
+        note: `Message types: ${types.join(', ')}`,
+        // Every body, unconditionally. There is no subset of message types
+        // that is safe by construction: `MsgExecuteContract` carries JSON the
+        // sender wrote outright, and even a bank send carries a `denom`, which
+        // on a chain with tokenfactory is a string somebody minted and chose
+        // the wording of. A whitelist here would be a guess about schemas this
+        // tool does not model, which is the kind of guess that ships quiet.
         args: messages.slice(0, 5).map((m) => ({
           type: String(m['@type'] ?? 'unknown'),
-          value: JSON.stringify(m).slice(0, 300),
+          value: JSON.stringify(sanitizeOnchainDeep(m)).slice(0, 300),
+          untrusted: true as const,
         })),
       },
+      ...(memo ? { memo } : {}),
+      ...(failureLog ? { failureLog } : {}),
       explorerUrl: explorerUrl(chain, 'tx', receipt.txhash),
       raw: {
         gasUsed: receipt.gas_used,
         gasWanted: receipt.gas_wanted,
         code: receipt.code,
-        memo: tx.body.memo,
+        // The memo is deliberately *not* repeated here. An unmarked second copy
+        // of a marked value is the mark being bypassed, and `raw` is the field
+        // most likely to be splatted into a prompt wholesale.
       },
     } satisfies NormalizedTx;
   },

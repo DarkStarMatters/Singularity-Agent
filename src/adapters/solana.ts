@@ -21,7 +21,12 @@ import {
   RpcError,
   SingularityError,
 } from '../core/errors.js';
-import { completeness, sanitizeOnchainText } from '../core/envelope.js';
+import {
+  completeness,
+  sanitizeOnchainText,
+  untrustedText,
+  type UntrustedText,
+} from '../core/envelope.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 
@@ -302,6 +307,16 @@ export const solanaAdapter: ChainAdapter = {
 
       const failed = tx.meta?.err != null;
 
+      // Anything a program chose to say. `msg!()` costs a program nothing and
+      // accepts any string, so these lines are the single largest piece of
+      // attacker-authored text this tool returns — and until now they rode out
+      // in `raw` unmarked and uncapped, where a model reading the result had
+      // no way to tell a program's log from the tool's own words.
+      const logs = (tx.meta?.logMessages ?? [])
+        .slice(0, 20)
+        .map((line) => untrustedText(line, 'a log line emitted by an executing program'))
+        .filter((line): line is UntrustedText => line !== undefined);
+
       return {
         chain: chain.id,
         hash,
@@ -312,17 +327,22 @@ export const solanaAdapter: ChainAdapter = {
         value: nativeAmount(delta < 0n ? -delta : delta, chain),
         fee: nativeAmount(fee, chain),
         summary: failed
-          ? `Failed transaction from ${shortAddress(feePayer ?? '?')} on ${chain.name}: ${JSON.stringify(tx.meta?.err)}`
+          ? `Failed transaction from ${shortAddress(feePayer ?? '?')} on ${chain.name}: ${sanitizeOnchainText(JSON.stringify(tx.meta?.err), 'the RPC gave no reason')}`
           : `${shortAddress(feePayer ?? '?')} ran ${tx.transaction.message.instructions.length} instruction(s) across ${programs.length} program(s) on ${chain.name}.`,
         decoded: {
+          // Program ids are base58 pubkeys: 32 bytes, no text, nothing a
+          // program author gets to choose the reading of. Safe in prose.
           note: `Programs invoked: ${programs.join(', ') || 'none'}`,
         },
+        ...(logs.length ? { logs } : {}),
         explorerUrl: explorerUrl(chain, 'tx', hash),
         raw: {
           slot: tx.slot,
           computeUnitsConsumed: tx.meta?.computeUnitsConsumed,
           instructionCount: tx.transaction.message.instructions.length,
-          logMessages: tx.meta?.logMessages?.slice(0, 20),
+          // `logMessages` moved to `logs` above, marked. Leaving the raw copy
+          // here would be the mark bypassed by whoever reads `raw` first.
+          logCount: tx.meta?.logMessages?.length ?? 0,
         },
       } satisfies NormalizedTx;
     });

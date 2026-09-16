@@ -202,10 +202,26 @@ export function renderTx(tx: NormalizedTx): string {
   if (tx.decoded?.signature) {
     lines.push(`\n  ${bold('Decoded')}   ${green(tx.decoded.signature)}`);
     for (const arg of tx.decoded.args ?? []) {
-      lines.push(`    ${dim(`${arg.name ?? '?'} (${arg.type ?? '?'})`)}  ${arg.value}`);
+      // The mark has to survive the trip to a terminal too. Someone scanning
+      // output cannot tell an address from a sentence a stranger wrote unless
+      // something says so, and the field carrying it is no help at a terminal.
+      const label = dim(`${arg.name ?? '?'} (${arg.type ?? '?'})`);
+      lines.push(`    ${label}  ${arg.untrusted ? yellow(arg.value) : arg.value}`);
     }
   } else if (tx.decoded?.note) {
     lines.push(`\n  ${dim(tx.decoded.note)}`);
+  }
+
+  if (tx.memo) lines.push(`\n  ${bold('Memo')}      ${yellow(tx.memo.text)}`);
+  if (tx.failureLog) lines.push(`\n  ${bold('Reverted')}  ${yellow(tx.failureLog.text)}`);
+
+  if (tx.logs?.length) {
+    lines.push(`\n  ${bold('Logs')}`);
+    for (const log of tx.logs) lines.push(`    ${yellow(log.text)}`);
+  }
+
+  if (tx.memo || tx.failureLog || tx.logs?.length || tx.decoded?.args?.some((a) => a.untrusted)) {
+    lines.push(`\n  ${dim('Yellow text was written by someone on the chain, not by this tool.')}`);
   }
 
   if (tx.explorerUrl) lines.push(`\n  ${dim(tx.explorerUrl)}`);
