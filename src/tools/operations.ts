@@ -5,7 +5,7 @@ import { SingularityError } from '../core/errors.js';
 import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
 import { explorerUrl, shortAddress } from '../core/format.js';
 import { convertBech32Prefix } from '../core/address-codec.js';
-import type { TransferParams } from '../core/adapter.js';
+import type { StateOptions, TransferParams } from '../core/adapter.js';
 import type {
   BalanceEntry,
   ChainSpec,
@@ -126,6 +126,36 @@ export async function resolve(input: string, chainHint?: string): Promise<Resolv
   return base;
 }
 
+/**
+ * Normalize a caller-supplied block reference.
+ *
+ * "latest" and an empty string collapse to `undefined` — current state — so
+ * every layer below this can treat "has an atBlock" as "this must be
+ * historical or fail". Anything else has to be a plain height: a block *hash*
+ * is rejected here rather than passed down, because only some families could
+ * honour it and a partial answer to "as of" is worse than none.
+ */
+export function parseAtBlock(value: string | number | undefined | null): number | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'latest') return undefined;
+
+  if (!/^\d+$/.test(text)) {
+    throw new SingularityError(
+      'BAD_BLOCK_REF',
+      `"${shortAddress(text, 12, 6)}" is not a block height.`,
+      'Pass a decimal height, or "latest" for current state. Block hashes and tags like "safe" are not accepted for state reads.',
+    );
+  }
+
+  const height = Number(text);
+  if (!Number.isSafeInteger(height)) {
+    throw new SingularityError('BAD_BLOCK_REF', `Block height ${text} is out of range.`);
+  }
+  return height;
+}
+
 export interface BalanceResult {
   address: string;
   chain: string;
@@ -133,6 +163,12 @@ export interface BalanceResult {
   tokens: BalanceEntry[];
   /** Set when the token list is a scan of known tokens rather than exhaustive. */
   tokenScanNote?: string;
+  /**
+   * The height this was read at. Present only on a historical read that was
+   * actually served — never echoed back for a call that fell through to
+   * current state.
+   */
+  atBlock?: number;
   explorerUrl?: string;
 }
 
@@ -141,19 +177,23 @@ export async function getBalance(options: {
   chain: string;
   tokens?: string[];
   includeTokens?: boolean;
+  atBlock?: string | number;
 }): Promise<BalanceResult> {
   const chain = getChain(options.chain);
   const adapter = adapterFor(chain);
   const address = await toAddress(options.address, chain);
 
-  const native = await adapter.getNativeBalance(chain, address);
+  const atBlock = parseAtBlock(options.atBlock);
+  const state: StateOptions | undefined = atBlock === undefined ? undefined : { atBlock };
+
+  const native = await adapter.getNativeBalance(chain, address, state);
 
   let tokens: BalanceEntry[] = [];
   let tokenScanNote: string | undefined;
 
   if (options.includeTokens !== false) {
     try {
-      const scan = await adapter.getTokenBalances(chain, address, options.tokens);
+      const scan = await adapter.getTokenBalances(chain, address, options.tokens, state);
       // An adapter returns a bare array when the list stands on its own, or a
       // TokenScan when it had to leave something out.
       tokens = Array.isArray(scan) ? scan : scan.entries;
@@ -163,8 +203,20 @@ export async function getBalance(options: {
         tokenScanNote =
           'EVM chains cannot be enumerated without an indexer, so this covers a curated list of major tokens only. Pass `tokens` with contract addresses to check others.';
       }
+      if (atBlock !== undefined) {
+        tokenScanNote = [
+          tokenScanNote,
+          `Token metadata was read at block ${atBlock} too, so a token whose contract did not exist yet is absent from this list rather than shown as zero.`,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
     } catch (err) {
       // A chain with no token concept (Bitcoin) is not a failure of the balance call.
+      // A refused historical read is different: the native balance came back at
+      // a past height, and pairing it with a current-state token list would be a
+      // silent mix of two points in time.
+      if (atBlock !== undefined) throw err;
       tokenScanNote = err instanceof SingularityError ? err.message : String(err);
     }
   }
@@ -175,6 +227,7 @@ export async function getBalance(options: {
     native,
     tokens,
     tokenScanNote,
+    atBlock,
     explorerUrl: explorerUrl(chain, 'address', address),
   };
 }
@@ -364,6 +417,7 @@ export async function readContract(options: {
   method?: string;
   abi?: string;
   args?: unknown[];
+  atBlock?: string | number;
 }): Promise<unknown> {
   const chain = getChain(options.chain);
   const adapter = adapterFor(chain);
@@ -376,7 +430,11 @@ export async function readContract(options: {
   }
 
   const address = await toAddress(options.address, chain);
-  return adapter.readContract(chain, { ...options, address });
+  return adapter.readContract(chain, {
+    ...options,
+    address,
+    atBlock: parseAtBlock(options.atBlock),
+  });
 }
 
 export function decode(data: string, abi?: string[]): DecodedCall {

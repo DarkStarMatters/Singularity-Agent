@@ -31,6 +31,14 @@ async function once(url: string, options: FetchOptions): Promise<Response> {
   }
 }
 
+export interface FetchResult<T> {
+  data: T | null;
+  /** Headers from the endpoint that actually answered. */
+  headers: Headers;
+  /** Which endpoint answered — the caller may need to name it in an error. */
+  url: string;
+}
+
 /**
  * Try each endpoint in order and return the first success.
  *
@@ -43,6 +51,21 @@ export async function fetchWithFailover<T>(
   path: string,
   options: FetchOptions = {},
 ): Promise<T | null> {
+  return (await fetchWithFailoverDetail<T>(chain, path, options)).data;
+}
+
+/**
+ * The same call, keeping the response headers.
+ *
+ * Needed where the body alone cannot be trusted to answer the question that was
+ * asked: a Cosmos LCD echoes the height it served in a header, and without it
+ * there is no way to tell a real historical answer from a current-state one.
+ */
+export async function fetchWithFailoverDetail<T>(
+  chain: ChainSpec,
+  path: string,
+  options: FetchOptions = {},
+): Promise<FetchResult<T>> {
   const failures: string[] = [];
 
   for (const endpoint of chain.rpc) {
@@ -50,7 +73,9 @@ export async function fetchWithFailover<T>(
     try {
       const response = await once(url, options);
 
-      if (response.status === 404 && options.nullOn404) return null;
+      if (response.status === 404 && options.nullOn404) {
+        return { data: null, headers: response.headers, url };
+      }
 
       if (!response.ok) {
         const text = await response.text().catch(() => '');
@@ -59,12 +84,12 @@ export async function fetchWithFailover<T>(
       }
 
       const text = await response.text();
-      if (!text) return null;
+      if (!text) return { data: null, headers: response.headers, url };
       try {
-        return JSON.parse(text) as T;
+        return { data: JSON.parse(text) as T, headers: response.headers, url };
       } catch {
         // Esplora returns bare strings (block hashes, heights) with no JSON quoting.
-        return text.trim() as unknown as T;
+        return { data: text.trim() as unknown as T, headers: response.headers, url };
       }
     } catch (err) {
       const reason = (err as Error).name === 'AbortError' ? 'timed out' : (err as Error).message;

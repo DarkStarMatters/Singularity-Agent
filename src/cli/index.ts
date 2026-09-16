@@ -53,16 +53,18 @@ program
   .requiredOption('-c, --chain <chain>', 'Chain id or alias.')
   .option('-t, --token <token...>', 'Specific token addresses, mints, or denoms.')
   .option('--no-tokens', 'Fetch only the native balance.')
+  .option('--at-block <height>', 'Read as of this block height (EVM and Cosmos archive endpoints).')
   .action(
     async (
       address: string,
-      options: { chain: string; token?: string[]; tokens: boolean },
+      options: { chain: string; token?: string[]; tokens: boolean; atBlock?: string },
     ) => {
       const result = await ops.getBalance({
         address,
         chain: options.chain,
         tokens: options.token,
         includeTokens: options.tokens,
+        atBlock: options.atBlock,
       });
       emit(result, render.renderBalance);
     },
@@ -128,6 +130,7 @@ program
     'Human-readable ABI entry, e.g. "function balanceOf(address) view returns (uint256)".',
   )
   .option('--arg <arg...>', 'Arguments for the call, in order.')
+  .option('--at-block <height>', 'Call against this block height instead of the chain tip.')
   .action(
     async (options: {
       chain: string;
@@ -135,6 +138,7 @@ program
       method?: string;
       abi?: string;
       arg?: string[];
+      atBlock?: string;
     }) => {
       const result = await ops.readContract({
         chain: options.chain,
@@ -142,6 +146,7 @@ program
         method: options.method,
         abi: options.abi,
         args: options.arg,
+        atBlock: options.atBlock,
       });
       console.log(toJson(result));
     },

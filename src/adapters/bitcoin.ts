@@ -6,7 +6,12 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
-import { InvalidAddressError, SingularityError, UnsupportedOperationError } from '../core/errors.js';
+import {
+  HistoricalStateUnsupportedError,
+  InvalidAddressError,
+  SingularityError,
+  UnsupportedOperationError,
+} from '../core/errors.js';
 import { explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { fetchWithFailover } from '../core/http.js';
 import {
@@ -100,7 +105,17 @@ export const bitcoinAdapter: ChainAdapter = {
       : 'Expected a bech32 or base58 UTXO address.';
   },
 
-  async getNativeBalance(chain, address) {
+  async getNativeBalance(chain, address, options) {
+    if (options?.atBlock !== undefined) {
+      // Esplora reports an address's running totals and its transaction list;
+      // there is no balance-at-height query. The balance at a past height is
+      // derivable by replaying that history up to the height — which is the
+      // indexer work in roadmap 1.2, not something to fake here.
+      throw new HistoricalStateUnsupportedError(
+        chain.name,
+        'Esplora exposes an address\'s current funded/spent totals, with no balance-at-height query. Deriving one means replaying the address history to that height, which needs the transaction-history work this tool has not shipped yet.',
+      );
+    }
     const owner = requireAddress(chain, address);
     const stats = await fetchWithFailover<EsploraAddressStats>(chain, `/address/${owner}`);
 

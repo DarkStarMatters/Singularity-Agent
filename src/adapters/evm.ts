@@ -13,7 +13,12 @@ import {
 } from 'viem';
 import { normalize } from 'viem/ens';
 import * as viemChains from 'viem/chains';
-import type { ChainAdapter, ContractReadParams, TransferParams } from '../core/adapter.js';
+import type {
+  ChainAdapter,
+  ContractReadParams,
+  StateOptions,
+  TransferParams,
+} from '../core/adapter.js';
 import type {
   BalanceEntry,
   ChainSpec,
@@ -22,7 +27,12 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
-import { InvalidAddressError, RpcError, SingularityError } from '../core/errors.js';
+import {
+  HistoricalStateUnavailableError,
+  InvalidAddressError,
+  RpcError,
+  SingularityError,
+} from '../core/errors.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { decodeCalldata, ERC20_ABI } from '../core/abi.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
@@ -106,6 +116,59 @@ function wrapRpc(chain: ChainSpec, operation: string, err: unknown): never {
   throw new RpcError(chain.id, `${operation}: ${(err as Error).message}`);
 }
 
+/** viem takes the block as a bigint, or omits the field entirely for "latest". */
+function atBlockArg(options?: StateOptions): { blockNumber?: bigint } {
+  return options?.atBlock === undefined ? {} : { blockNumber: BigInt(options.atBlock) };
+}
+
+/**
+ * How each EVM client says "I threw that state away".
+ *
+ * Geth prunes and reports a missing trie node; Erigon and Nethermind report the
+ * header or block as not found; hosted providers (Alchemy, Infura, QuickNode)
+ * answer with a sentence about archive tiers. None of them are transport
+ * failures, and none should be retried against the same endpoint.
+ */
+const PRUNED_STATE =
+  /missing trie node|state (?:is )?not available|state (?:is )?unavailable|state pruning|archive|header not found|block not found|old block|historical state/i;
+
+/**
+ * Turn a failed historical read into an answer about *why*.
+ *
+ * "Header not found" means two very different things — a block the chain has
+ * not reached yet, and a block this endpoint stopped keeping state for — and
+ * the fix differs (wait vs. switch endpoints). Resolving that needs the chain
+ * tip, so it is fetched here, on the failure path only.
+ */
+async function historicalFailure(
+  chain: ChainSpec,
+  atBlock: number,
+  operation: string,
+  err: unknown,
+): Promise<never> {
+  if (err instanceof SingularityError) throw err;
+  const message = (err as Error)?.message ?? '';
+  if (!PRUNED_STATE.test(message)) wrapRpc(chain, operation, err);
+
+  const head = await clientFor(chain)
+    .getBlockNumber()
+    .catch(() => null);
+
+  if (head !== null && BigInt(atBlock) > head) {
+    throw new SingularityError(
+      'BLOCK_NOT_YET_MINED',
+      `Block ${atBlock} does not exist on ${chain.name} yet — the chain tip is ${head}.`,
+      'Check the block number. Nothing was read; this is not an empty balance.',
+    );
+  }
+
+  throw new HistoricalStateUnavailableError(
+    chain.id,
+    atBlock,
+    `The endpoint answered "${message.split('\n')[0]?.slice(0, 160)}".`,
+  );
+}
+
 export const evmAdapter: ChainAdapter = {
   family: 'evm',
 
@@ -117,24 +180,32 @@ export const evmAdapter: ChainAdapter = {
     return 'Expected 0x followed by 40 hex characters.';
   },
 
-  async getNativeBalance(chain, address) {
+  async getNativeBalance(chain, address, options) {
     const owner = requireAddress(chain, address);
     try {
-      const raw = await clientFor(chain).getBalance({ address: owner });
+      const raw = await clientFor(chain).getBalance({
+        address: owner,
+        ...atBlockArg(options),
+      });
       return {
         chain: chain.id,
         address: owner,
         token: { ...chain.nativeCurrency, native: true },
         amount: nativeAmount(raw, chain),
+        atBlock: options?.atBlock,
       };
     } catch (err) {
+      if (options?.atBlock !== undefined) {
+        await historicalFailure(chain, options.atBlock, 'eth_getBalance', err);
+      }
       wrapRpc(chain, 'eth_getBalance', err);
     }
   },
 
-  async getTokenBalances(chain, address, tokens) {
+  async getTokenBalances(chain, address, tokens, options) {
     const owner = requireAddress(chain, address);
     const client = clientFor(chain);
+    const at = atBlockArg(options);
 
     // Resolve the caller's list (addresses or symbols) or fall back to the
     // curated set for this chain. Metadata we already know saves two RPC calls
@@ -162,6 +233,7 @@ export const evmAdapter: ChainAdapter = {
             abi: ERC20_ABI,
             functionName: 'balanceOf',
             args: [owner],
+            ...at,
           }) as Promise<bigint>,
           target.decimals !== undefined
             ? Promise.resolve(target.decimals)
@@ -169,6 +241,7 @@ export const evmAdapter: ChainAdapter = {
                 address: target.address,
                 abi: ERC20_ABI,
                 functionName: 'decimals',
+                ...at,
               }) as Promise<number>),
           target.symbol !== undefined
             ? Promise.resolve(target.symbol)
@@ -176,6 +249,7 @@ export const evmAdapter: ChainAdapter = {
                 address: target.address,
                 abi: ERC20_ABI,
                 functionName: 'symbol',
+                ...at,
               }) as Promise<string>),
         ]);
 
@@ -190,9 +264,24 @@ export const evmAdapter: ChainAdapter = {
             native: false,
           },
           amount: amount(balance, Number(decimals), symbol),
+          atBlock: options?.atBlock,
         };
       }),
     );
+
+    // Dropping failures is safe for a current-state scan, but at a past block
+    // it is not: a non-archive endpoint rejects *every* target, and the dropped
+    // failures would come back as an empty list reading "held no tokens then".
+    // A pruning error escapes the filter for exactly that reason.
+    if (options?.atBlock !== undefined) {
+      for (const result of results) {
+        if (result.status !== 'rejected') continue;
+        const message = (result.reason as Error)?.message ?? '';
+        if (PRUNED_STATE.test(message)) {
+          await historicalFailure(chain, options.atBlock, 'eth_call balanceOf', result.reason);
+        }
+      }
+    }
 
     // A token contract that fails to answer is dropped rather than failing the
     // whole balance call — one dead contract should not hide the other nine.
@@ -390,9 +479,13 @@ export const evmAdapter: ChainAdapter = {
         abi,
         functionName: params.method,
         args: (params.args ?? []) as unknown[],
+        ...atBlockArg(params),
       });
       return result;
     } catch (err) {
+      if (params.atBlock !== undefined) {
+        await historicalFailure(chain, params.atBlock, `eth_call ${params.method}`, err);
+      }
       wrapRpc(chain, `eth_call ${params.method}`, err);
     }
   },

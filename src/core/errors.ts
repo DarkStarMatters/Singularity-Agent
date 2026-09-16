@@ -51,6 +51,39 @@ export class RpcError extends SingularityError {
   }
 }
 
+/**
+ * The chain family has no way to address past state at all.
+ *
+ * Distinct from {@link HistoricalStateUnavailableError}: this one no endpoint
+ * can fix, so the caller should stop asking rather than swap RPCs.
+ */
+export class HistoricalStateUnsupportedError extends SingularityError {
+  constructor(chain: string, detail: string) {
+    super(
+      'HISTORICAL_STATE_UNSUPPORTED',
+      `${chain} cannot read state at a past block.`,
+      `${detail} Drop \`atBlock\` to read current state — this call returns nothing rather than passing current state off as historical.`,
+    );
+  }
+}
+
+/**
+ * The chain can address past state, but this endpoint does not retain it.
+ *
+ * Always an error, never a fallback to current state: a pruned answer silently
+ * downgraded to "now" is the one failure that corrupts every conclusion drawn
+ * from it, and does so invisibly.
+ */
+export class HistoricalStateUnavailableError extends SingularityError {
+  constructor(chain: string, atBlock: number, detail: string) {
+    super(
+      'HISTORICAL_STATE_UNAVAILABLE',
+      `State at block ${atBlock} is not available from the configured ${chain} endpoints.`,
+      `${detail} Point SINGULARITY_RPC_${chain.toUpperCase().replace(/-/g, '_')} at an archive node.`,
+    );
+  }
+}
+
 export class UnsupportedOperationError extends SingularityError {
   constructor(operation: string, family: string, hint?: string) {
     super(

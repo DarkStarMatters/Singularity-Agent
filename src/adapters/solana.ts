@@ -15,7 +15,12 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
-import { InvalidAddressError, RpcError, SingularityError } from '../core/errors.js';
+import {
+  HistoricalStateUnsupportedError,
+  InvalidAddressError,
+  RpcError,
+  SingularityError,
+} from '../core/errors.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 
@@ -132,7 +137,8 @@ export const solanaAdapter: ChainAdapter = {
     return 'Expected a base58-encoded 32-byte public key (typically 32-44 characters).';
   },
 
-  async getNativeBalance(chain, address) {
+  async getNativeBalance(chain, address, options) {
+    rejectHistorical(chain, options?.atBlock);
     const owner = requirePubkey(address);
     const lamports = await withConnection(chain, 'getBalance', (connection) =>
       connection.getBalance(owner),
@@ -146,7 +152,8 @@ export const solanaAdapter: ChainAdapter = {
     };
   },
 
-  async getTokenBalances(chain, address, tokens) {
+  async getTokenBalances(chain, address, tokens, options) {
+    rejectHistorical(chain, options?.atBlock);
     const owner = requirePubkey(address);
 
     return withConnection(chain, 'getParsedTokenAccountsByOwner', async (connection) => {
@@ -436,6 +443,7 @@ export const solanaAdapter: ChainAdapter = {
   },
 
   async readContract(chain, params: ContractReadParams) {
+    rejectHistorical(chain, params.atBlock);
     // Solana has no "call a view function"; the equivalent is reading account data.
     const address = requirePubkey(params.address, 'account address');
     return withConnection(chain, 'getParsedAccountInfo', async (connection) => {
@@ -458,6 +466,23 @@ export const solanaAdapter: ChainAdapter = {
     });
   },
 };
+
+/**
+ * Solana JSON-RPC has no historical form of an account read.
+ *
+ * `getBalance` and `getAccountInfo` take a commitment and a `minContextSlot` —
+ * a floor on how *new* the answer may be, not a slot to read at. There is no
+ * parameter that would make them answer as of a past slot, so the request is
+ * refused rather than served with current state under a historical label.
+ * Serving it for real needs an archival indexer, which is roadmap 1.2.
+ */
+function rejectHistorical(chain: ChainSpec, atBlock?: number): void {
+  if (atBlock === undefined) return;
+  throw new HistoricalStateUnsupportedError(
+    chain.name,
+    'Solana RPC addresses account state by commitment, not by slot — `minContextSlot` bounds how new an answer may be, and cannot ask for an old one. Reading a past slot needs an archival indexer (Helius, Triton), which this tool does not bundle.',
+  );
+}
 
 interface SplAccountInfo {
   mint: string;

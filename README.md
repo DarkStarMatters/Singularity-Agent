@@ -323,6 +323,9 @@ singularity resolve vitalik.eth
 # Balances on one chain — names and aliases accepted.
 singularity balance vitalik.eth --chain ethereum
 
+# The same balances as of a past block, or nothing at all.
+singularity balance vitalik.eth --chain ethereum --at-block 19000000
+
 # One address across every chain its format is valid on.
 singularity portfolio 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 
@@ -356,12 +359,12 @@ Add `--json` to any command for machine-readable output.
 | --- | --- |
 | `chains` | List supported chains, with families, ids, aliases, native assets. |
 | `resolve` | Identify an address / tx hash / name and which chains it belongs to. |
-| `balance` | Native + token balances on one chain. |
+| `balance` | Native + token balances on one chain, now or `atBlock`. |
 | `portfolio` | One address across many chains in parallel. |
 | `transaction` | Fetch and normalize a transaction, decoding EVM calldata. |
 | `block` | A block by height, hash, or `latest`. |
 | `fees` | Current fee conditions, normalized. |
-| `read_contract` | EVM view calls; parsed account data on Solana. |
+| `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
 | `decode` | Decode EVM calldata into a signature and arguments. |
 | `build_transfer` | Build an **unsigned** transfer payload. |
 
@@ -483,6 +486,12 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   but not privacy-optimal.
 - **No CosmWasm queries.** `read_contract` covers EVM and Solana only.
 - **Solana history is pruned** on public RPCs; older signatures need an archival endpoint.
+- **`atBlock` is EVM and Cosmos only.** Solana RPC addresses account state by commitment
+  rather than by slot, and Esplora has no balance-at-height query, so both families reject
+  `atBlock` outright. That is deliberate: a result carrying `atBlock` is always genuinely
+  historical, never current state wearing a past label. On EVM and Cosmos the endpoint has
+  to be archival, and a pruned one returns `HISTORICAL_STATE_UNAVAILABLE` rather than
+  falling back to now.
 
 ---
 

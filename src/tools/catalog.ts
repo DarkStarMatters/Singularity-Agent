@@ -89,7 +89,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'balance',
     title: 'Get balances on one chain',
     description:
-      'Native and token balances for one address on one chain. Accepts ENS/SNS names and address-book aliases. On EVM chains the token scan covers a curated set of major tokens unless you pass `tokens` explicitly.',
+      'Native and token balances for one address on one chain. Accepts ENS/SNS names and address-book aliases. On EVM chains the token scan covers a curated set of major tokens unless you pass `tokens` explicitly. Pass `atBlock` to read a past block instead of now.',
     shape: {
       address: z.string().describe('Address, ENS/SNS name, or configured alias.'),
       chain: z.string().describe('Chain id or alias, e.g. "base", "solana", "btc".'),
@@ -101,6 +101,12 @@ export const TOOLS: ToolDefinition[] = [
         .boolean()
         .optional()
         .describe('Set false to fetch only the native balance (faster).'),
+      atBlock: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          'Read state as of this block height instead of now. Supported on EVM (needs an archive endpoint) and Cosmos (needs an archive LCD). Solana and UTXO chains reject it outright rather than answering with current state, so a result carrying `atBlock` is always genuinely historical.',
+        ),
     },
     run: (args) => ops.getBalance(args),
   }),
@@ -161,7 +167,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'read_contract',
     title: 'Read contract or account state',
     description:
-      'Call a view function on an EVM contract (supply `abi` in human-readable form plus `method`), or read parsed account data on Solana. Never sends a transaction.',
+      'Call a view function on an EVM contract (supply `abi` in human-readable form plus `method`), or read parsed account data on Solana. Pass `atBlock` to call against a past block. Never sends a transaction.',
     shape: {
       chain: z.string().describe('Chain id or alias.'),
       address: z.string().describe('Contract address (EVM) or account address (Solana).'),
@@ -173,6 +179,12 @@ export const TOOLS: ToolDefinition[] = [
           'Human-readable ABI entry, e.g. "function balanceOf(address) view returns (uint256)".',
         ),
       args: z.array(z.unknown()).optional().describe('Arguments for the call, in order.'),
+      atBlock: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          'Read state as of this block height instead of now. Supported on EVM (needs an archive endpoint) and Cosmos (needs an archive LCD). Solana and UTXO chains reject it outright rather than answering with current state, so a result carrying `atBlock` is always genuinely historical.',
+        ),
     },
     run: (args) => ops.readContract(args),
   }),

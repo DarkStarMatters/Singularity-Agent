@@ -65,6 +65,13 @@ export interface BalanceEntry {
    * total across them.
    */
   tokenAccounts?: number;
+  /**
+   * Block height / slot this balance was read at. Absent means current state.
+   * Present only when a historical read was asked for *and* served — it is
+   * never filled in speculatively, because a caller comparing two answers has
+   * to be able to tell which one is actually historical.
+   */
+  atBlock?: number;
 }
 
 export interface NormalizedTx {

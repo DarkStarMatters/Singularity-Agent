@@ -7,9 +7,15 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
-import { InvalidAddressError, SingularityError, UnsupportedOperationError } from '../core/errors.js';
+import {
+  HistoricalStateUnavailableError,
+  InvalidAddressError,
+  RpcError,
+  SingularityError,
+  UnsupportedOperationError,
+} from '../core/errors.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress } from '../core/format.js';
-import { fetchWithFailover } from '../core/http.js';
+import { fetchWithFailover, fetchWithFailoverDetail } from '../core/http.js';
 import { bech32ToBytes, bytesToBech32 } from '../core/address-codec.js';
 
 /** Gas the Cosmos SDK typically needs for a single MsgSend. */
@@ -89,6 +95,63 @@ function requireAddress(chain: ChainSpec, address: string): string {
   return address;
 }
 
+/**
+ * Fetch an account's coins, optionally as of a past height.
+ *
+ * The Cosmos SDK takes the height as a request header and echoes back the
+ * height it served. That echo is the whole point: an LCD behind a proxy that
+ * drops the header answers happily with *current* state, which would be
+ * reported as history and be silently wrong. So the echo is required to match,
+ * and anything else is an error rather than a best-effort answer.
+ */
+async function bankBalances(
+  chain: ChainSpec,
+  owner: string,
+  atBlock?: number,
+): Promise<Coin[]> {
+  const path = `/cosmos/bank/v1beta1/balances/${owner}`;
+
+  if (atBlock === undefined) {
+    const response = await fetchWithFailover<BalancesResponse>(chain, path);
+    return response?.balances ?? [];
+  }
+
+  let result;
+  try {
+    result = await fetchWithFailoverDetail<BalancesResponse>(chain, path, {
+      headers: { 'x-cosmos-block-height': String(atBlock) },
+    });
+  } catch (err) {
+    // Every endpoint refusing the height is the expected shape of "none of
+    // these are archive nodes" — name that rather than the transport.
+    if (err instanceof RpcError) {
+      throw new HistoricalStateUnavailableError(chain.id, atBlock, err.message);
+    }
+    throw err;
+  }
+
+  const served =
+    result.headers.get('grpc-metadata-x-cosmos-block-height') ??
+    result.headers.get('x-cosmos-block-height');
+
+  if (!served) {
+    throw new HistoricalStateUnavailableError(
+      chain.id,
+      atBlock,
+      'The endpoint answered without reporting which height it served, so the response cannot be distinguished from current state.',
+    );
+  }
+  if (Number(served) !== atBlock) {
+    throw new HistoricalStateUnavailableError(
+      chain.id,
+      atBlock,
+      `The endpoint served height ${served} instead, which is current state rather than history.`,
+    );
+  }
+
+  return result.data?.balances ?? [];
+}
+
 function denomInfo(chain: ChainSpec, denom: string): { symbol: string; decimals: number } {
   if (denom === chain.denom) {
     return { symbol: chain.nativeCurrency.symbol, decimals: chain.nativeCurrency.decimals };
@@ -123,14 +186,11 @@ export const cosmosAdapter: ChainAdapter = {
     return `Expected a bech32 address starting with "${prefix}1".`;
   },
 
-  async getNativeBalance(chain, address) {
+  async getNativeBalance(chain, address, options) {
     const owner = requireAddress(chain, address);
-    const response = await fetchWithFailover<BalancesResponse>(
-      chain,
-      `/cosmos/bank/v1beta1/balances/${owner}`,
-    );
+    const balances = await bankBalances(chain, owner, options?.atBlock);
 
-    const native = response?.balances.find((b) => b.denom === chain.denom);
+    const native = balances.find((b) => b.denom === chain.denom);
 
     return {
       chain: chain.id,
@@ -138,20 +198,18 @@ export const cosmosAdapter: ChainAdapter = {
       token: { ...chain.nativeCurrency, native: true },
       // An account with no coins is a valid account holding zero, not an error.
       amount: nativeAmount(native?.amount ?? '0', chain),
+      atBlock: options?.atBlock,
     };
   },
 
-  async getTokenBalances(chain, address, tokens) {
+  async getTokenBalances(chain, address, tokens, options) {
     const owner = requireAddress(chain, address);
-    const response = await fetchWithFailover<BalancesResponse>(
-      chain,
-      `/cosmos/bank/v1beta1/balances/${owner}`,
-    );
+    const balances = await bankBalances(chain, owner, options?.atBlock);
 
     const filter = tokens?.length ? new Set(tokens.map((t) => t.toLowerCase())) : null;
     const entries: BalanceEntry[] = [];
 
-    for (const coin of response?.balances ?? []) {
+    for (const coin of balances) {
       if (coin.denom === chain.denom) continue; // reported by getNativeBalance
       if (coin.amount === '0') continue;
 
@@ -165,6 +223,7 @@ export const cosmosAdapter: ChainAdapter = {
         address: owner,
         token: { address: coin.denom, symbol: info.symbol, decimals: info.decimals, native: false },
         amount: amount(coin.amount, info.decimals, info.symbol),
+        atBlock: options?.atBlock,
       });
     }
 

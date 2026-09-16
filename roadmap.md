@@ -44,12 +44,25 @@ token accounts per mint and cap unfiltered results at 50 with a note naming the 
 
 *Goal: make the current 23 chains answer more of the questions people actually ask.*
 
-### 1.1 Historical state
-Balances are current-state only, which rules out the most common analytical question:
-*what changed?* Add `atBlock` to `balance` and `read_contract` (EVM archival where
-available, Solana slot-addressed where the endpoint retains it), and degrade explicitly
-where the endpoint cannot serve it rather than silently returning current state — the
-failure mode that would quietly corrupt every downstream conclusion.
+### 1.1 Historical state — **shipped**
+`balance` and `read_contract` take `atBlock` (CLI: `--at-block`). EVM passes it to the
+node; Cosmos sends `x-cosmos-block-height` **and requires the LCD to echo back the height
+it served**, because a proxy that drops the header answers happily with current state.
+Solana and UTXO reject `atBlock` outright — Solana RPC addresses state by commitment, not
+by slot, and `minContextSlot` bounds how *new* an answer may be, not how old.
+
+The invariant worth naming: a result carrying `atBlock` is always genuinely historical.
+Every path either serves the height or raises — `HISTORICAL_STATE_UNAVAILABLE` for a
+pruned endpoint, `HISTORICAL_STATE_UNSUPPORTED` for a family that cannot address the past
+at all, `BLOCK_NOT_YET_MINED` for a height the chain has not reached. Two silent-corruption
+traps were closed on the way: an EVM token scan drops contracts that fail to answer, which
+at a past block would turn "this endpoint is not archival" into an empty list reading *held
+no tokens then*; and a refused token scan at a past block now fails the call rather than
+degrading to a note, which would have spliced a historical native balance onto a
+current-state token list.
+
+Remaining: Solana slot-addressed reads, which need the indexer in 1.2 rather than a public
+RPC.
 
 ### 1.2 Transaction history
 `transaction` fetches one tx by hash. There is no "what has this address been doing."
@@ -174,5 +187,5 @@ Highest-value contributions, in order:
 3. **A chain adapter meeting the Phase 3 bar.**
 4. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (76 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (342 tests); `npm run typecheck`
 must pass clean.

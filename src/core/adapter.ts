@@ -27,7 +27,19 @@ export interface TransferParams {
   memo?: string;
 }
 
-export interface ContractReadParams {
+/**
+ * When to read state.
+ *
+ * Passed to every state-reading call. An adapter that cannot honour `atBlock`
+ * must throw — ignoring it and answering with current state is the one bug
+ * class that produces a confidently wrong answer with no visible symptom.
+ */
+export interface StateOptions {
+  /** Block height / slot to read at. Absent means current state. */
+  atBlock?: number;
+}
+
+export interface ContractReadParams extends StateOptions {
   /** Contract address (EVM) or account/program address (SVM). */
   address: string;
   /** EVM: function name. Ignored on other families. */
@@ -54,7 +66,11 @@ export interface ChainAdapter {
    */
   addressExpectation(chain: ChainSpec, address?: string): string;
 
-  getNativeBalance(chain: ChainSpec, address: string): Promise<BalanceEntry>;
+  getNativeBalance(
+    chain: ChainSpec,
+    address: string,
+    options?: StateOptions,
+  ): Promise<BalanceEntry>;
   /**
    * Token holdings for an address.
    *
@@ -67,6 +83,7 @@ export interface ChainAdapter {
     chain: ChainSpec,
     address: string,
     tokens?: string[],
+    options?: StateOptions,
   ): Promise<BalanceEntry[] | TokenScan>;
   getTransaction(chain: ChainSpec, hash: string): Promise<NormalizedTx>;
   getBlock(chain: ChainSpec, ref: string | number): Promise<NormalizedBlock>;

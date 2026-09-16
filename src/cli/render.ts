@@ -95,7 +95,9 @@ export function renderResolve(result: ResolvedIdentity): string {
 
 export function renderBalance(result: BalanceResult): string {
   const lines = [
-    heading(`${result.chain}`),
+    // The heading carries the block, because a historical answer that looks
+    // identical to a current one is the whole hazard here.
+    heading(result.atBlock === undefined ? result.chain : `${result.chain}  @ block ${result.atBlock}`),
     `  ${bold(result.native.amount.formatted)} ${result.native.token.symbol}  ${dim('(native)')}`,
   ];
 
