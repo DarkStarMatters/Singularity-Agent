@@ -21,9 +21,10 @@ non-goals."
 
 ---
 
-## Shipped — the answer envelope
+## Shipped — v0.0.4, the answer envelope
 
-*The bug class above, closed structurally rather than remembered.*
+*The bug class above, closed structurally rather than remembered. Everything in this
+section landed after v0.0.3 and is what the version number now stands for.*
 
 **Completeness is a value, not a sentence.** Every token scan returns a `Completeness`:
 `exhaustive`, `curated`, `truncated` (with counts) or `failed`. There is deliberately no
@@ -58,6 +59,14 @@ not `exhaustive` gets the caveat appended; where the correction will not fit in 
 characters the reply is withheld and the reason logged. Going silent is itself a failure
 mode, so repair is preferred to refusal, and refusal is never quiet. Custody sentences
 ("holds no keys") are carved out — they are about the tool, not a wallet.
+
+**A symbol is a name, not an identity.** The `untrusted` mark says the deployer chose this
+string — and says it about the real USDC too, so it cannot separate the fake from the
+honest one. A token whose symbol is a curated token's symbol at a *different* address, or
+the chain's gas asset's, now carries an `impersonation` naming the address the symbol
+really belongs to, folded against case, spacing and homoglyphs. It is a value rather than
+a sentence for the same reason completeness is: the publish gate acts on it. Phase 2.2
+below records the two calls worth arguing with.
 
 ---
 
