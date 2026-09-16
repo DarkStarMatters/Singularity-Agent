@@ -36,12 +36,24 @@ import type { ChainSpec } from './types.js';
  */
 export interface Impersonation {
   /**
-   * - `curated-token` — collides with an entry in this tool's token map.
-   * - `native-asset` — collides with the chain's own gas asset, which has no
-   *   contract at all, so *any* contract claiming the name is not it.
+   * - `curated-token` — its *symbol* collides with an entry in this tool's
+   *   token map.
+   * - `native-asset` — its symbol collides with the chain's own gas asset,
+   *   which has no contract at all, so *any* contract claiming the name is
+   *   not it.
+   * - `curated-name` — its symbol is its own, but its *long name* is a curated
+   *   token's long name. Reading `name()` off an unknown contract is what
+   *   roadmap 1.4 added, and it opened this: "USD Coin" at an address that is
+   *   not USDC's reads as authoritative in every table that shows a name.
    */
-  kind: 'curated-token' | 'native-asset';
-  /** The known symbol this token's on-chain symbol resolves to. */
+  kind: 'curated-token' | 'native-asset' | 'curated-name';
+  /**
+   * The known asset the collision is with, named by its symbol.
+   *
+   * For `curated-name` the string that actually collided was the long name;
+   * this still reports the ticker, because the ticker is what a reader — and
+   * the publish gate — will have in hand.
+   */
   symbol: string;
   /** Where the real one lives. Absent for a native asset — there is no address. */
   authentic?: string;
@@ -109,10 +121,10 @@ export function symbolKey(symbol: string): string {
  */
 export function checkImpersonation(
   chain: ChainSpec,
-  token: { symbol: string; address: string },
+  token: { symbol: string; name?: string; address: string },
 ): Impersonation | undefined {
   const key = symbolKey(token.symbol);
-  if (!key) return undefined;
+  if (!key) return nameCollision(chain, token);
 
   if (key === symbolKey(chain.nativeCurrency.symbol)) {
     return {
@@ -126,7 +138,7 @@ export function checkImpersonation(
   }
 
   const match = knownTokens(chain.id).find((known) => symbolKey(known.symbol) === key);
-  if (!match || sameAddress(match.address, token.address)) return undefined;
+  if (!match || sameAddress(match.address, token.address)) return nameCollision(chain, token);
 
   return {
     kind: 'curated-token',
@@ -136,6 +148,57 @@ export function checkImpersonation(
       `This contract's symbol reads as ${match.symbol}, which on ${chain.name} is ${match.address}. ` +
       `This is ${token.address} — a different contract wearing the same name. ` +
       `Anyone can deploy a token called ${match.symbol}; identity is the address.`,
+  };
+}
+
+/**
+ * The same question asked of the long name.
+ *
+ * Only reachable once the symbol has been cleared, so a token is never reported
+ * twice for the same collision — and the symbol is the stronger signal, so it
+ * wins when both fire.
+ *
+ * This exists because roadmap 1.4 started reading `name()` off contracts the
+ * tool does not curate. Before that there was no long name to collide with;
+ * shipping the read without the check would have been the surface widening
+ * with nothing watching it, which is the reason 1.4 was held behind Phase 2 in
+ * the first place.
+ *
+ * The honest limit, stated rather than papered over: the publish gate matches
+ * on the *ticker*, so a reply that spells out "USD Coin" and never says USDC
+ * is not repaired. Names are phrases, and matching phrases against composed
+ * prose is a different and much fuzzier problem than matching a ticker.
+ */
+function nameCollision(
+  chain: ChainSpec,
+  token: { name?: string; address: string },
+): Impersonation | undefined {
+  if (!token.name) return undefined;
+  const key = symbolKey(token.name);
+  if (!key) return undefined;
+
+  if (key === symbolKey(chain.nativeCurrency.name)) {
+    return {
+      kind: 'native-asset',
+      symbol: chain.nativeCurrency.symbol,
+      note:
+        `This contract calls itself "${token.name}", which is ${chain.name}'s own gas asset — ` +
+        `an asset with no contract at all, so this is a token that took the name. ` +
+        `Identity here is the address ${token.address}, never the name.`,
+    };
+  }
+
+  const match = knownTokens(chain.id).find((known) => symbolKey(known.name) === key);
+  if (!match || sameAddress(match.address, token.address)) return undefined;
+
+  return {
+    kind: 'curated-name',
+    symbol: match.symbol,
+    authentic: match.address,
+    note:
+      `This contract calls itself "${token.name}", which on ${chain.name} is the name of ` +
+      `${match.symbol} at ${match.address}. This is ${token.address} — a different contract ` +
+      `using the same name. Identity is the address.`,
   };
 }
 
@@ -203,6 +266,8 @@ function isImpersonation(value: unknown): value is Impersonation {
   return (
     typeof record.symbol === 'string' &&
     typeof record.note === 'string' &&
-    (record.kind === 'curated-token' || record.kind === 'native-asset')
+    (record.kind === 'curated-token' ||
+      record.kind === 'native-asset' ||
+      record.kind === 'curated-name')
   );
 }

@@ -135,18 +135,40 @@ lookup for unknown selectors, nested multicall/batch unwrapping, Safe transactio
 payloads, and event-log decoding for receipts. Each addition must preserve the existing
 property that an *undecodable* blob says so plainly instead of guessing at a signature.
 
-### 1.4 Token metadata beyond the curated list
-On-chain `name`/`symbol`/`decimals` reads for unknown EVM contracts and Solana mints, so
-an unrecognized token becomes named rather than `0x1234…abcd`. **Metadata read this way
-is attacker-controlled** and must be marked as such in the response — which is the direct
-lead-in to Phase 2. Concretely, on Solana it must ship with the 2.2 impersonation check
-wired into the same code path: the reason Solana carries no collision findings today is
-that it reads no deployer-chosen string, and this is the change that starts.
+### 1.4 Token metadata beyond the curated list — **shipped**
+An unrecognized token is named rather than shown as `0x1234…abcd`. On EVM, `name()` joins
+the `symbol()` and `decimals()` reads that were already there. On Solana the name lives
+nowhere near the mint — a mint account stores decimals and authorities and no text at all,
+which is exactly why an uncurated mint used to come back as `EPjF…Dt1v` — so the Metaplex
+metadata PDA is derived and read, decoded by hand rather than by taking on the Metaplex
+SDK, in the same spirit as the hand-rolled `TransferChecked` next to it.
 
-Unblocked as of 2.1 closing: this was held behind the `transaction` and `decode` paths
-being marked, because it widens exactly that surface. The machinery it needs — the mark,
-the free-text sanitizer, the provenance clause — now exists, so what remains here is the
-reads themselves and the Solana impersonation wiring. **This is the next thing to build.**
+Every string read this way is attacker-authored and travels marked and defanged, which is
+why this was held behind Phase 2 and not merely sequenced after it. **And the Solana
+impersonation check ships in this same change**, as the code comment standing in its place
+demanded: the reason Solana carried no collision findings was that it read no
+deployer-chosen string, so the moment a mint has a symbol somebody chose it can have a
+symbol somebody else already uses.
+
+Three decisions worth recording:
+
+- **`name()` is read tolerantly, unlike `symbol()` and `decimals()`.** It is optional in
+  practice and plenty of live tokens skip it. Failing an entry over a missing label would
+  turn a cosmetic gap into a hole in the holdings list — precisely the trade 1.1 was
+  written about.
+- **Metadata is read only for the mints that survive truncation.** Naming before capping
+  would mean hundreds of account reads for fifty results, on exactly the dusted wallets
+  the cap exists for.
+- **A failed metadata read is stated, not swallowed.** A dead RPC and a set of mints that
+  genuinely have no names produce byte-identical entries, and in the failed case the
+  impersonation check never ran — so "nothing found" would not be a finding. The
+  completeness note says the names could not be read, names the reason, and says the check
+  did not run. The `kind` stays `exhaustive`, because the *token list* really is complete;
+  it is the naming that is not.
+
+Still open here: **Token-2022 metadata-extension mints**, whose text sits in the mint
+account rather than a Metaplex PDA. They fall back to the short mint today, which is the
+honest answer for them rather than a wrong one.
 
 ---
 
@@ -220,9 +242,18 @@ mints, and folding there would call an impersonator the real thing.
 
 The finding is a value, not a sentence, so the X publish gate acts on it: a reply naming
 a token by a symbol that belongs to another contract gets the correction appended, or is
-withheld whole when both that and a completeness caveat will not fit. Solana has no
-surface yet — an uncurated mint carries no deployer-chosen string at all — and Phase 1.4
-opens it, so the check ships in the same change that starts reading mint metadata.
+withheld whole when both that and a completeness caveat will not fit.
+
+**Solana is now covered**, as required: 1.4 started reading mint metadata and the check
+shipped in the same change. That change also opened a second vector and closed it —
+reading `name()` means a contract can take a curated token's *long name* while keeping a
+ticker of its own, and "USD Coin" at an address that is not USDC's reads as authoritative
+in every table that shows a name. That is the `curated-name` kind.
+
+The limit worth stating: the publish gate matches on the **ticker**, so a reply that spells
+out "USD Coin" and never says USDC is not repaired. Names are phrases, and matching phrases
+against composed prose is a different and much fuzzier problem than matching a ticker —
+one worth solving with a positive corpus in hand, not before.
 
 ### 2.3 Address-book verification
 Aliases resolve today but carry no integrity guarantee. Add optional pinning so a saved
@@ -310,5 +341,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (581 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (601 tests); `npm run typecheck`
 must pass clean.

@@ -174,12 +174,18 @@ function impersonationRepairs(text: string, impersonations: Impersonation[]): Re
   return impersonations
     .filter((value) => words.has(symbolKey(value.symbol)))
     .map((value) => ({
+      // A name collision gets its own wording. Saying "carries the symbol USDC"
+      // about a token whose symbol is its own and whose *name* is USD Coin's
+      // would be the caveat itself being false, which is worse than no caveat.
       caveat:
         value.kind === 'native-asset'
           ? `Caveat: a token there carries the symbol ${value.symbol} but is a contract, not the gas asset.`
-          : `Caveat: a token there carries the symbol ${value.symbol} but is a different contract from the real one.`,
+          : value.kind === 'curated-name'
+            ? `Caveat: a token there uses ${value.symbol}'s name but is a different contract.`
+            : `Caveat: a token there carries the symbol ${value.symbol} but is a different contract from the real one.`,
       reason:
-        `The reply names ${value.symbol}, and a token in the evidence wears that symbol while being ` +
+        `The reply names ${value.symbol}, and a token in the evidence wears that ` +
+        `${value.kind === 'curated-name' ? 'name' : 'symbol'} while being ` +
         `${value.authentic ? `a different contract from ${value.authentic}` : 'a contract rather than the gas asset'}.`,
     }));
 }

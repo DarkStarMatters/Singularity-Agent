@@ -118,8 +118,16 @@ export function renderBalance(result: BalanceResult): string {
           ),
           // The one thing a shortened address cannot tell you by eye: this
           // symbol belongs to something else. It goes in the row rather than a
-          // footnote, because the row is what gets read.
-          t.token.impersonation ? red(`not the real ${t.token.impersonation.symbol}`) : '',
+          // footnote, because the row is what gets read. A name collision gets
+          // its own wording — the symbol in this row is the token's own, so
+          // "not the real USDC" next to "USDCOIN" would read as a non sequitur.
+          t.token.impersonation
+            ? red(
+                t.token.impersonation.kind === 'curated-name'
+                  ? `uses ${t.token.impersonation.symbol}'s name`
+                  : `not the real ${t.token.impersonation.symbol}`,
+              )
+            : '',
         ]),
       ),
     );

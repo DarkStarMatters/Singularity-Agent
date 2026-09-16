@@ -236,7 +236,7 @@ export const evmAdapter: ChainAdapter = {
 
     const results = await Promise.allSettled(
       targets.map(async (target): Promise<BalanceEntry> => {
-        const [balance, decimals, symbol] = await Promise.all([
+        const [balance, decimals, symbol, name] = await Promise.all([
           client.readContract({
             address: target.address,
             abi: ERC20_ABI,
@@ -260,6 +260,21 @@ export const evmAdapter: ChainAdapter = {
                 functionName: 'symbol',
                 ...atArg,
               }) as Promise<string>),
+          // Tolerant, unlike the three above, and deliberately so: `name()` is
+          // optional in practice and plenty of live tokens do not implement it.
+          // A token with no name still has a balance, and failing the entry
+          // over a missing label would turn a cosmetic gap into a hole in the
+          // holdings list — the exact trade roadmap 1.1 was written about.
+          target.name !== undefined
+            ? Promise.resolve(target.name)
+            : (client
+                .readContract({
+                  address: target.address,
+                  abi: ERC20_ABI,
+                  functionName: 'name',
+                  ...atArg,
+                })
+                .catch(() => undefined) as Promise<string | undefined>),
         ]);
 
         // A curated target carries our own symbol; anything else was just read
@@ -269,11 +284,23 @@ export const evmAdapter: ChainAdapter = {
           ? sanitizeOnchainText(symbol, shortAddress(target.address, 6, 4))
           : symbol;
 
+        // The long name is the same kind of string as the symbol and gets the
+        // same treatment. Empty rather than absent means the contract answered
+        // with nothing, which is not a name.
+        const safeName =
+          target.name !== undefined
+            ? target.name
+            : sanitizeOnchainText(name, '') || undefined;
+
         // ...and a string the deployer chose can be a string we already know.
-        // Only worth asking about a symbol read off the chain: a curated entry
-        // is the thing being impersonated, not the impersonator.
+        // Only worth asking about text read off the chain: a curated entry is
+        // the thing being impersonated, not the impersonator.
         const impersonation = fromChain
-          ? checkImpersonation(chain, { symbol: safeSymbol, address: target.address })
+          ? checkImpersonation(chain, {
+              symbol: safeSymbol,
+              name: safeName,
+              address: target.address,
+            })
           : undefined;
 
         return {
@@ -282,7 +309,7 @@ export const evmAdapter: ChainAdapter = {
           token: {
             address: target.address,
             symbol: safeSymbol,
-            name: target.name,
+            name: safeName,
             decimals: Number(decimals),
             native: false,
             ...(fromChain ? { untrusted: true as const } : {}),

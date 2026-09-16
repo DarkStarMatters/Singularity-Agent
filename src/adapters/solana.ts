@@ -29,10 +29,26 @@ import {
 } from '../core/envelope.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
+import { checkImpersonation } from '../core/impersonation.js';
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+
+/**
+ * Metaplex Token Metadata — where an SPL mint's name and symbol actually live.
+ *
+ * A mint account itself stores decimals and authorities and no text at all,
+ * which is why an uncurated mint used to come back as `EPjF…Dt1v` and nothing
+ * else. The name is in a separate PDA owned by this program, and reading it is
+ * what roadmap 1.4 is. Decoded by hand rather than by pulling in the Metaplex
+ * SDK, in the same spirit as the hand-rolled TransferChecked below: the layout
+ * is three Borsh strings at a fixed offset and the dependency is enormous.
+ */
+const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+/** `getMultipleAccountsInfo` refuses more than this many keys in one call. */
+const ACCOUNT_BATCH = 100;
 
 /** Base signature fee, in lamports. Priority fees stack on top of this. */
 const BASE_SIGNATURE_FEE = 5_000n;
@@ -203,43 +219,28 @@ export const solanaAdapter: ChainAdapter = {
         }
       }
 
-      const all = [...byMint].map(([mint, { decimals, total, accounts }]) => {
-        const known = knownMintSymbol(chain.id, mint);
-        return {
-          known: Boolean(known),
-          magnitude: Number(total) / 10 ** decimals,
-          entry: {
-            chain: chain.id,
-            address: owner.toBase58(),
-            token: {
-              address: mint,
-              // An uncurated mint has no symbol here — the short mint stands in
-              // for one. Nothing on-chain is read for it, but it is still not a
-              // name this tool vouches for, so it travels marked. No
-              // impersonation check either, for the same reason: there is no
-              // deployer-chosen string here to collide with a curated one. That
-              // changes the moment mint metadata is read (roadmap 1.4), and the
-              // check has to be added in the same change that reads it.
-              symbol:
-                known?.symbol ?? sanitizeOnchainText(null, `${mint.slice(0, 4)}…${mint.slice(-4)}`),
-              name: known?.name,
-              decimals,
-              native: false,
-              ...(known ? {} : { untrusted: true as const }),
-            },
-            amount: amount(total, decimals, known?.symbol ?? 'tokens'),
-            ...(accounts > 1 ? { tokenAccounts: accounts } : {}),
-          } satisfies BalanceEntry,
-        };
-      });
+      // Rows first, entries later. The sort and the cap below need only the
+      // balance and whether the mint is curated, and building entries before
+      // truncating would mean reading metadata for mints about to be thrown
+      // away — on a dusted wallet, hundreds of accounts for fifty results.
+      const all = [...byMint].map(([mint, { decimals, total, accounts }]) => ({
+        mint,
+        decimals,
+        total,
+        accounts,
+        known: knownMintSymbol(chain.id, mint),
+        magnitude: Number(total) / 10 ** decimals,
+      }));
 
       // An explicit `tokens` list is the caller asking for specific mints — give
       // back every one of them, in the order they were requested.
       if (filter) {
+        const named = await withMetadata(connection, chain, owner, all);
         return {
-          entries: all.map((t) => t.entry),
+          entries: named.entries,
           completeness: completeness.exhaustive(
-            `Every token account the address holds for the ${filter.size} mint(s) you named, summed per mint.`,
+            `Every token account the address holds for the ${filter.size} mint(s) you named, summed per mint.` +
+              named.caveat,
           ),
         };
       }
@@ -248,26 +249,30 @@ export const solanaAdapter: ChainAdapter = {
       // magnitude is not value — there is no pricing here, so a trillion units of
       // dust outranks a thousand USDC. It is a stable, explicable order, not a
       // ranking by worth.
-      all.sort((a, b) => Number(b.known) - Number(a.known) || b.magnitude - a.magnitude);
+      all.sort((a, b) => Number(Boolean(b.known)) - Number(Boolean(a.known)) || b.magnitude - a.magnitude);
 
       if (all.length <= TOKEN_SCAN_LIMIT) {
+        const named = await withMetadata(connection, chain, owner, all);
         return {
-          entries: all.map((t) => t.entry),
+          entries: named.entries,
           completeness: completeness.exhaustive(
-            'Complete: on Solana token accounts are owned by the wallet, so this really is every SPL and Token-2022 mint held, summed across accounts.',
+            'Complete: on Solana token accounts are owned by the wallet, so this really is every SPL and Token-2022 mint held, summed across accounts.' +
+              named.caveat,
           ),
         };
       }
 
       const omitted = all.length - TOKEN_SCAN_LIMIT;
+      const named = await withMetadata(connection, chain, owner, all.slice(0, TOKEN_SCAN_LIMIT));
       return {
-        entries: all.slice(0, TOKEN_SCAN_LIMIT).map((t) => t.entry),
+        entries: named.entries,
         completeness: completeness.truncated(
           TOKEN_SCAN_LIMIT,
           omitted,
           `Showing ${TOKEN_SCAN_LIMIT} of ${all.length} mints held — curated tokens first, ` +
             `then by raw balance. ${omitted} omitted, and because there is no pricing here that ` +
-            'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.',
+            'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.' +
+            named.caveat,
         ),
       };
     });
@@ -587,6 +592,171 @@ async function mintDecimals(connection: Connection, mint: PublicKey, chain: Chai
 
 /** mint -> metadata, memoized per chain, so token lists render real symbols. */
 const mintIndexCache = new Map<string, Map<string, { symbol: string; name: string }>>();
+
+/** One summed holding, before anything has been read about what it is called. */
+interface MintRow {
+  mint: string;
+  decimals: number;
+  total: bigint;
+  accounts: number;
+  known: { symbol: string; name: string } | undefined;
+  magnitude: number;
+}
+
+/**
+ * Turn rows into balance entries, naming the uncurated mints along the way.
+ *
+ * This is the whole of roadmap 1.4 on Solana. Before it, an uncurated mint came
+ * back as `EPjF…Dt1v` and the comment in its place said the impersonation check
+ * would arrive in the same change that started reading deployer-chosen strings.
+ * This is that change, so the check is here: the moment a mint has a symbol
+ * somebody chose, it can be a symbol somebody else already uses.
+ *
+ * Every string read here is marked and defanged, for the reason the whole of
+ * Phase 2 exists — `runToolCall` feeds these into a model that composes public
+ * replies, and a mint called "Ignore previous instructions" costs about as much
+ * to deploy as a coffee.
+ */
+async function withMetadata(
+  connection: Connection,
+  chain: ChainSpec,
+  owner: PublicKey,
+  rows: MintRow[],
+): Promise<{ entries: BalanceEntry[]; caveat: string }> {
+  const unknown = rows.filter((row) => !row.known).map((row) => row.mint);
+  const { found, failure } = await readMintMetadata(connection, unknown);
+
+  const entries = rows.map((row) => {
+    const { mint, decimals, total, accounts, known } = row;
+    const short = `${mint.slice(0, 4)}…${mint.slice(-4)}`;
+    const metadata = known ? undefined : found.get(mint);
+
+    // The mint address stands in when nothing could be read. It is not a name
+    // and does not pretend to be one, which is the right answer for a mint that
+    // genuinely has no metadata account.
+    const symbol = known?.symbol ?? sanitizeOnchainText(metadata?.symbol, short);
+    const name = known?.name ?? (sanitizeOnchainText(metadata?.name, '') || undefined);
+
+    // Only where a deployer actually chose the string. A curated mint carries
+    // this tool's own text, and a mint with no metadata chose nothing at all.
+    const impersonation = metadata
+      ? checkImpersonation(chain, { symbol, name, address: mint })
+      : undefined;
+
+    return {
+      chain: chain.id,
+      address: owner.toBase58(),
+      token: {
+        address: mint,
+        symbol,
+        name,
+        decimals,
+        native: false,
+        ...(known ? {} : { untrusted: true as const }),
+        ...(impersonation ? { impersonation } : {}),
+      },
+      // "tokens" only when there is genuinely no symbol to use — the short
+      // mint is an address, and an amount reading "1000 EPjF…Dt1v" is worse
+      // than one that admits it does not know the unit.
+      amount: amount(total, decimals, known || metadata ? symbol : 'tokens'),
+      ...(accounts > 1 ? { tokenAccounts: accounts } : {}),
+    } satisfies BalanceEntry;
+  });
+
+  // Said out loud, because a failed metadata read and a set of mints that
+  // genuinely have no names produce identical output — and in the failed case
+  // the impersonation check did not run, so "nothing found" is not a finding.
+  const caveat = failure
+    ? ` Mint names could not be read (${sanitizeOnchainText(failure, 'the RPC gave no reason')}), so` +
+      ' uncurated mints show as their address and no impersonation check ran against them.'
+    : '';
+
+  return { entries, caveat };
+}
+
+/** What a mint's metadata account says it is called. Both strings are the deployer's. */
+interface MintMetadata {
+  name: string;
+  symbol: string;
+}
+
+/** The metadata account for a mint is a PDA — derivable, so no lookup is needed. */
+function metadataPda(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    METADATA_PROGRAM_ID,
+  )[0];
+}
+
+/**
+ * Pull `name` and `symbol` out of a Metaplex metadata account.
+ *
+ * Layout: a one-byte key, a 32-byte update authority, the 32-byte mint, then
+ * three Borsh strings — name, symbol, uri — each a u32 length followed by that
+ * many bytes. Metaplex allocates fixed room and null-pads the remainder, so the
+ * declared length is the *allocated* length and the trailing NULs come off.
+ *
+ * Returns null rather than throwing on anything unexpected. This runs against
+ * whatever bytes an arbitrary account holds, and a wallet holding one mint with
+ * a malformed metadata account must not lose the other forty-nine balances.
+ */
+function decodeMintMetadata(data: Uint8Array): MintMetadata | null {
+  const view = Buffer.from(data);
+  let offset = 1 + 32 + 32;
+
+  const readString = (): string | null => {
+    if (offset + 4 > view.length) return null;
+    const length = view.readUInt32LE(offset);
+    offset += 4;
+    // A sane bound before slicing: these fields are allocated 32 and 10 bytes.
+    if (length > 512 || offset + length > view.length) return null;
+    const text = view.subarray(offset, offset + length).toString('utf8');
+    offset += length;
+    return text.replace(/ +$/, '');
+  };
+
+  const name = readString();
+  const symbol = readString();
+  if (name === null || symbol === null) return null;
+  return { name, symbol };
+}
+
+/**
+ * Read metadata for a set of mints, in as few round trips as possible.
+ *
+ * The failure path is the interesting one. If this throws and the caller
+ * swallows it, every mint silently falls back to its short address — which
+ * reads exactly like "these tokens have no names" and, worse, means the
+ * impersonation check never ran while the result looks like it found nothing.
+ * That is the shape of every bug in this repo's history, so a failure is
+ * returned as a value and the caller is obliged to say so.
+ */
+async function readMintMetadata(
+  connection: Connection,
+  mints: string[],
+): Promise<{ found: Map<string, MintMetadata>; failure?: string }> {
+  const found = new Map<string, MintMetadata>();
+  if (!mints.length) return { found };
+
+  try {
+    for (let start = 0; start < mints.length; start += ACCOUNT_BATCH) {
+      const batch = mints.slice(start, start + ACCOUNT_BATCH);
+      const accounts = await connection.getMultipleAccountsInfo(
+        batch.map((mint) => metadataPda(new PublicKey(mint))),
+      );
+      accounts.forEach((account, index) => {
+        if (!account?.data) return;
+        const decoded = decodeMintMetadata(account.data);
+        if (decoded) found.set(batch[index]!, decoded);
+      });
+    }
+    return { found };
+  } catch (err) {
+    // Partial results are kept: the mints already read are genuinely read, and
+    // the failure covers the rest.
+    return { found, failure: (err as Error).message };
+  }
+}
 
 function knownMintSymbol(chainId: string, mint: string): { symbol: string; name: string } | undefined {
   let index = mintIndexCache.get(chainId);

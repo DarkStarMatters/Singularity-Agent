@@ -339,3 +339,86 @@ describe('a hostile memo on the same live path', () => {
     expect(run.result).not.toContain('"memo"');
   });
 });
+
+describe('reading the long name off an unknown EVM contract', () => {
+  /**
+   * Roadmap 1.4 on the EVM side. `symbol()` and `decimals()` were already read
+   * for a contract the caller names by address; `name()` was not, so an
+   * unrecognized token had a ticker and no name at all.
+   */
+  function serveToken(fields: { symbol?: unknown; name?: unknown; nameReverts?: boolean }) {
+    evmHandler = (_call, args) => {
+      if (String(args.address).toLowerCase() !== ATTACKER_TOKEN.toLowerCase()) return 0n;
+      if (args.functionName === 'balanceOf') return 1_000_000n;
+      if (args.functionName === 'decimals') return 6;
+      if (args.functionName === 'symbol') return fields.symbol ?? 'TKN';
+      if (args.functionName === 'name') {
+        if (fields.nameReverts) throw new Error('execution reverted');
+        return fields.name ?? 'Test Token';
+      }
+      return 0n;
+    };
+  }
+
+  it('reads it, and marks it like every other string a deployer chose', async () => {
+    serveToken({ name: 'Wrapped Something' });
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: [ATTACKER_TOKEN] });
+
+    expect(result.tokens[0]?.token.name).toBe('Wrapped Something');
+    expect(result.tokens[0]?.token.untrusted).toBe(true);
+  });
+
+  it('defangs a name pointed at whatever reads it next', async () => {
+    serveToken({ name: PAYLOAD });
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: [ATTACKER_TOKEN] });
+    const name = result.tokens[0]?.token.name ?? '';
+
+    expect(name).not.toMatch(/[\r\n]/);
+    expect(name).not.toContain('System:');
+    expect(name).toContain('Ignore all previous instructions');
+  });
+
+  it('keeps the balance when the contract has no name() at all', async () => {
+    serveToken({ nameReverts: true });
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: [ATTACKER_TOKEN] });
+
+    // `name()` is optional in practice and plenty of live tokens skip it. A
+    // missing label must not become a missing holding — that trade is how a
+    // cosmetic gap turns into a hole in the balance list.
+    expect(result.tokens).toHaveLength(1);
+    expect(result.tokens[0]?.amount.formatted).toBe('1');
+    expect(result.tokens[0]?.token.name).toBeUndefined();
+  });
+
+  it('treats an empty name as no name', async () => {
+    serveToken({ name: '' });
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: [ATTACKER_TOKEN] });
+
+    expect(result.tokens[0]?.token.name).toBeUndefined();
+  });
+
+  it('flags a contract that takes a curated token\u2019s long name', async () => {
+    // Its ticker is its own, so the symbol check clears it. The name is USDC's.
+    serveToken({ symbol: 'USDCOIN', name: 'USD Coin' });
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: [ATTACKER_TOKEN] });
+
+    expect(result.tokens[0]?.token.impersonation?.kind).toBe('curated-name');
+    expect(result.tokens[0]?.token.impersonation?.symbol).toBe('USDC');
+  });
+
+  it('does not read a name for a curated token', async () => {
+    // USDC's name comes from this tool's map. Reading it off the contract would
+    // spend an RPC call to replace trusted text with untrusted text.
+    const asked: string[] = [];
+    evmHandler = (_call, args) => {
+      asked.push(String(args.functionName));
+      return args.functionName === 'balanceOf' ? 5_000_000n : 0n;
+    };
+
+    const result = await getBalance({ address: ALICE, chain: 'ethereum', tokens: ['USDC'] });
+
+    expect(asked).not.toContain('name');
+    expect(result.tokens[0]?.token.name).toBe('USD Coin');
+    expect(result.tokens[0]?.token.untrusted).toBeUndefined();
+  });
+});

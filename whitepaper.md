@@ -254,12 +254,15 @@ Stated plainly, because §3.2 applies to this document too.
   a dedicated endpoint.
 - **No transaction simulation.** `build_transfer` constructs a payload but does not
   predict its effects.
-- **On-chain strings are untrusted input.** Token names and memos are attacker-controlled
-  and reach the model. Contract symbols and Cosmos denoms now travel marked `untrusted`
-  and defanged of anything that could forge structure, and a symbol that collides with a
-  known asset at another address carries an `impersonation` naming the real one — but
-  plain English survives by necessity, and memos and decoded arguments are still
-  unmarked. See roadmap Phase 2.
+- **On-chain strings are untrusted input.** Token names and symbols, Cosmos denoms and
+  memos, revert strings, Solana program logs and decoded `string` arguments are all
+  attacker-controlled and all reach the model. Every one of them now travels marked
+  `untrusted` and defanged of anything that could forge structure, and nothing read off
+  the chain is interpolated into a `summary` or a `note` — the fields that read as the
+  tool's own voice. A symbol, or a long name, that collides with a known asset at another
+  address carries an `impersonation` naming the real one. What survives by necessity is
+  plain English: the wallet really does hold a token by that name, so the mark is the
+  defense and the stripping only stops it being bypassed. See roadmap Phase 2.
 
 ---
 

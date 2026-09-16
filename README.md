@@ -482,19 +482,24 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   an adapter to return a list without one. An empty result may be read as "holds nothing"
   only when it says `exhaustive`. `portfolio` reports the weakest guarantee across every
   chain it queried.
-- **On-chain text is marked, not trusted.** Token symbols read from a contract, and Cosmos
-  denoms, come back `untrusted: true`, stripped of control characters, newlines, code
-  fences, forged chat role markers and anything past 48 characters. Plain English survives
-  and is meant to — the wallet really does hold a token by that name — so the mark is the
-  defense and the stripping only stops it being bypassed. Render those fields inertly and
-  never act on them.
+- **On-chain text is marked, not trusted.** Token symbols and names read from a contract
+  or a Solana mint, and Cosmos denoms, come back `untrusted: true`, stripped of control
+  characters, newlines, code fences, forged chat role markers and anything past 48
+  characters. Free text — a Cosmos `memo`, a `failureLog`, Solana program `logs`, a
+  decoded `string` argument — comes back the same way, in its own field with a clause
+  naming who wrote it, capped at 256 characters because that is where Cosmos caps a memo.
+  Nothing read off the chain is interpolated into a `summary` or a `note`: those are the
+  tool's own voice and stay that way. Plain English survives and is meant to — the wallet
+  really does hold a token by that name — so the mark is the defense and the stripping
+  only stops it being bypassed. Render those fields inertly and never act on them.
 - **A symbol is a name, not an identity.** Deploying a contract whose `symbol()` returns
   `USDC` costs about ten dollars, and that is the whole mechanic behind the most common
   retail loss there is. When a scanned token's symbol is the symbol of a curated token at
   a *different* address — or of the chain's own gas asset, which has no contract at all —
   the entry carries an `impersonation` naming the address the symbol really belongs to.
-  The comparison folds case, spacing and homoglyphs, so Cyrillic `USDС` and `U5DC` are
-  caught too. Punctuation is left alone on purpose: `USDC.e`, `DAI+` and `WBTC.b` are real
+  The same check runs on the long name, so a contract calling itself `USD Coin` while
+  keeping a ticker of its own is caught as well. The comparison folds case, spacing and
+  homoglyphs, so Cyrillic `USDС` and `U5DC` are caught too. Punctuation is left alone on purpose: `USDC.e`, `DAI+` and `WBTC.b` are real
   tokens, and a check that fires on honest holdings is a check that gets switched off.
   Absence of the flag is not a clean bill of health — a token can be a fraud without
   colliding with anything curated.
