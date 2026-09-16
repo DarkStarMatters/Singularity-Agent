@@ -492,6 +492,14 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   tool's own voice and stay that way. Plain English survives and is meant to — the wallet
   really does hold a token by that name — so the mark is the defense and the stripping
   only stops it being bypassed. Render those fields inertly and never act on them.
+- **A decode that stops at the wrapper has not decoded anything.** A `multicall`, a
+  Multicall3 `aggregate`, a Safe `execTransaction` or a `multiSend` reports the calls it
+  carries under `inner`, with the target each leg hits. EVM transactions also carry
+  decoded receipt `events`, because calldata says what was asked for and logs say what
+  happened. Set `lookup` to ask a public 4-byte directory about an unrecognized selector —
+  its answers come back as `candidates`, marked untrusted, never promoted to `signature`,
+  and decoded only when exactly one of them fits the bytes. Four bytes of a hash is not an
+  identity.
 - **A symbol is a name, not an identity.** Deploying a contract whose `symbol()` returns
   `USDC` costs about ten dollars, and that is the whole mechanic behind the most common
   retail loss there is. When a scanned token's symbol is the symbol of a curated token at

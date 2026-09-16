@@ -34,7 +34,7 @@ import {
   SingularityError,
 } from '../core/errors.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
-import { decodeCalldata, ERC20_ABI } from '../core/abi.js';
+import { decodeCalldata, decodeLogs, ERC20_ABI } from '../core/abi.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { completeness, sanitizeOnchainText } from '../core/envelope.js';
 import { checkImpersonation } from '../core/impersonation.js';
@@ -381,6 +381,10 @@ export const evmAdapter: ChainAdapter = {
         : null;
 
       const decoded = decodeCalldata(tx.input);
+      // Calldata is what was asked for; logs are what happened. On anything
+      // that routed through an aggregator those are different answers, and
+      // the second one is usually the question.
+      const events = decodeLogs(receipt?.logs ?? []);
       const value = nativeAmount(tx.value, chain);
       const gasUsed = receipt?.gasUsed ?? tx.gas;
       const effectiveGasPrice = receipt?.effectiveGasPrice ?? tx.gasPrice ?? 0n;
@@ -398,6 +402,7 @@ export const evmAdapter: ChainAdapter = {
         summary: summarizeTx(chain, tx.from, tx.to, value.formatted, decoded.signature),
         decoded,
         explorerUrl: explorerUrl(chain, 'tx', tx.hash),
+        ...(events.length ? { events } : {}),
         raw: {
           nonce: tx.nonce,
           gas: tx.gas.toString(),

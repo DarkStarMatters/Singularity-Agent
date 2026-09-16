@@ -157,8 +157,12 @@ program
   .description('Decode EVM calldata into a function signature and arguments.')
   .argument('<data>', 'Hex calldata, with or without the 0x prefix.')
   .option('--abi <abi...>', 'Human-readable ABI entries to decode against.')
-  .action((data: string, options: { abi?: string[] }) => {
-    console.log(toJson(ops.decode(data, options.abi)));
+  .option(
+    '--lookup',
+    'If the selector is unknown, ask a public 4-byte directory for candidate signatures. Off by default: it discloses the selector to a third party, and anyone may submit an entry there.',
+  )
+  .action(async (data: string, options: { abi?: string[]; lookup?: boolean }) => {
+    console.log(toJson(await ops.decode(data, options.abi, options.lookup)));
   });
 
 program

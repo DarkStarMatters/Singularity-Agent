@@ -193,7 +193,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'decode',
     title: 'Decode EVM calldata',
     description:
-      'Decode a hex calldata blob into a function signature and arguments. Recognizes common ERC-20/721/1155, WETH, and router calls out of the box; pass `abi` for anything else.',
+      'Decode a hex calldata blob into a function signature and arguments. Recognizes common ERC-20/721/1155, WETH, Multicall3 and Safe calls out of the box, and unwraps batches — a multicall, an aggregate, an execTransaction or a multiSend reports the calls it carries under `inner`. Pass `abi` for anything else, or set `lookup` to ask a public 4-byte directory for candidate signatures when the selector is unknown (those are third-party guesses, marked untrusted, and never promoted to `signature`).',
     shape: {
       data: z.string().describe('Hex calldata, with or without the 0x prefix.'),
       abi: z
@@ -202,10 +202,19 @@ export const TOOLS: ToolDefinition[] = [
         .describe(
           'Human-readable ABI entries to decode against, e.g. ["function foo(uint256 bar)"].',
         ),
+      lookup: z
+        .boolean()
+        .optional()
+        .describe(
+          'When the selector is not recognized, ask a public 4-byte directory for candidate signatures. Off by default: it discloses the selector to a third party, and anyone may submit an entry there, so results come back as untrusted candidates rather than as an identification.',
+        ),
     },
-    // Pure computation: nothing outside the process is consulted.
-    annotations: { readOnlyHint: true, openWorldHint: false },
-    run: ({ data, abi }) => ops.decode(data, abi),
+    // `openWorldHint` is true because of `lookup`, and only because of it.
+    // Every other path here is pure computation, but a hint that is accurate
+    // for the default and wrong for the flag is worse than one that is simply
+    // conservative — the caller uses it to decide what this tool may reach.
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    run: ({ data, abi, lookup }) => ops.decode(data, abi, lookup),
   }),
 
   defineTool({

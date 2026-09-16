@@ -21,10 +21,43 @@ non-goals."
 
 ---
 
+## Shipped — v0.0.5, reading what is actually there
+
+*Everything in this section landed after v0.0.4 and is what the version number now stands
+for. Three roadmap items, in the order their dependencies allowed rather than the order
+they are numbered — 2.1 had to close before 1.4 could open, and 1.3 followed.*
+
+**Free text stops being spliced into prose** (Phase 2.1). A symbol is a label; a memo, a
+revert string and a program log are prose, already shaped like an instruction, and all
+three used to be interpolated straight into `summary` and `decoded.note` — the two fields
+whose entire job is to read as the tool's own narration. For the price of a Cosmos memo a
+stranger could put a sentence in Singularity's mouth. They are now values — `memo`,
+`failureLog`, `logs` — each defanged at construction and carrying its own provenance
+clause, and the invariant is written on the type: nothing read off the chain is
+interpolated into `summary`.
+
+**An unrecognized token gets a name** (Phase 1.4). `name()` on EVM; on Solana the Metaplex
+metadata PDA, derived and decoded by hand, because a mint account holds no text at all and
+that is exactly why an uncurated mint used to come back as `EPjF…Dt1v`. Reading a name
+means reading a string a deployer chose, so the read and the defenses shipped together —
+including the Solana impersonation check, and a new one for contracts that keep their own
+ticker while taking a curated token's long name.
+
+**A decode goes all the way down** (Phase 1.3). Batches unwrap, receipts decode to events,
+and a public 4-byte directory can be asked about an unknown selector — as a source of
+candidates, never as an authority.
+
+The through-line, and the reason these three belong under one number: every one of them is
+the tool reading *more* attacker-authored text than it did before, and every one ships the
+handling in the same change as the read. The alternative — read now, mark later — is how a
+surface gets widened with nothing watching it.
+
+---
+
 ## Shipped — v0.0.4, the answer envelope
 
 *The bug class above, closed structurally rather than remembered. Everything in this
-section landed after v0.0.3 and is what the version number now stands for.*
+section landed after v0.0.3.*
 
 **Completeness is a value, not a sentence.** Every token scan returns a `Completeness`:
 `exhaustive`, `curated`, `truncated` (with counts) or `failed`. There is deliberately no
@@ -129,11 +162,45 @@ This needs an indexer and therefore a real decision: optional provider integrati
 saying clearly that history is unavailable rather than returning an empty list that reads
 as "no activity."
 
-### 1.3 Richer decoding
-`decode` covers ERC-20/721/1155, WETH, and common routers. Extend to: 4-byte registry
-lookup for unknown selectors, nested multicall/batch unwrapping, Safe transaction
-payloads, and event-log decoding for receipts. Each addition must preserve the existing
-property that an *undecodable* blob says so plainly instead of guessing at a signature.
+### 1.3 Richer decoding — **shipped**
+A decode that stops at the wrapper has not decoded anything. `multicall(bytes[])` tells a
+reviewer exactly what the four-byte selector already told them; the thing the transaction
+actually does is inside a `bytes` argument, and "it is in there somewhere" is how an
+infinite approval gets reviewed as a swap.
+
+**Batches are unwrapped.** A `multicall` in all three spellings routers ship, a Multicall3
+`aggregate` / `tryAggregate` / `aggregate3` / `aggregate3Value`, a Safe `execTransaction`
+and the `multiSend` it usually wraps all report the calls they carry under `inner`, with
+`target` where the wrapper named one — a batch that hides which contract each leg hits is
+a batch nobody can review. `multiSend` is packed rather than ABI-encoded, with no count and
+no terminator, so it is walked; a blob that declares more calldata than it contains stops
+the walk and says so instead of throwing, because these are bytes an attacker chose and
+must cost nothing. Nesting stops at four levels for the same reason.
+
+**Receipts are decoded.** Calldata says what was asked for; logs say what happened, and on
+anything that routed through an aggregator those are different answers. EVM transactions
+carry `events`. The one trap worth naming: ERC-20's `Transfer` and ERC-721's hash to the
+*same* topic, and are told apart only by how many topics the log carries — three against
+four. Getting it backwards decodes a token id as an amount, which is how "transferred
+4,512 tokens" gets written about NFT #4512. An unrecognized log is kept with its topic
+rather than dropped, because an empty `events` list reading as "nothing happened" is the
+same bug as an empty token list reading as "holds nothing".
+
+**The 4-byte directory is a source, not an authority.** Four bytes of a hash is not an
+identity: collisions are cheap to manufacture, public directories accept submissions from
+anyone, and this repo's own tests use a *real* collision found by search rather than an
+asserted one. So a directory answer never becomes `signature` — `signature` means this tool
+recognized the call. It arrives as a `candidate`, marked `untrusted`, listed alongside every
+other answer given, and arguments are shown only when exactly one candidate decodes the
+bytes cleanly. Where two fit there is no evidence for either and both are reported
+undecoded, which is the roadmap's standing rule about undecodable blobs applied to the
+case where the tool has *too many* answers rather than none.
+
+The lookup is **off unless asked for** (`lookup` on the tool, `--lookup` on the CLI): it
+discloses the selector you are looking at to a third party, which is a decision for the
+caller to make deliberately. `decode`'s `openWorldHint` is now `true` because of that flag
+and only because of it — a hint that is accurate for the default and wrong for the flag is
+worse than one that is conservative.
 
 ### 1.4 Token metadata beyond the curated list — **shipped**
 An unrecognized token is named rather than shown as `0x1234…abcd`. On EVM, `name()` joins
@@ -341,5 +408,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (601 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (623 tests); `npm run typecheck`
 must pass clean.

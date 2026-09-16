@@ -1,4 +1,5 @@
 import type {
+  DecodedCall,
   FeeEstimate,
   NormalizedBlock,
   NormalizedTx,
@@ -209,15 +210,23 @@ export function renderTx(tx: NormalizedTx): string {
 
   if (tx.decoded?.signature) {
     lines.push(`\n  ${bold('Decoded')}   ${green(tx.decoded.signature)}`);
-    for (const arg of tx.decoded.args ?? []) {
-      // The mark has to survive the trip to a terminal too. Someone scanning
-      // output cannot tell an address from a sentence a stranger wrote unless
-      // something says so, and the field carrying it is no help at a terminal.
-      const label = dim(`${arg.name ?? '?'} (${arg.type ?? '?'})`);
-      lines.push(`    ${label}  ${arg.untrusted ? yellow(arg.value) : arg.value}`);
-    }
+    lines.push(...renderCall(tx.decoded, '    '));
   } else if (tx.decoded?.note) {
     lines.push(`\n  ${dim(tx.decoded.note)}`);
+  }
+
+  if (tx.events?.length) {
+    lines.push(`\n  ${bold('Events')}`);
+    for (const event of tx.events) {
+      lines.push(
+        `    ${green(event.signature ?? 'unrecognized')} ${dim(`from ${shorten(event.address)}`)}`,
+      );
+      if (event.note) lines.push(`      ${dim(event.note)}`);
+      for (const arg of event.args ?? []) {
+        const label = dim(`${arg.name ?? '?'} (${arg.type ?? '?'})`);
+        lines.push(`      ${label}  ${arg.untrusted ? yellow(arg.value) : arg.value}`);
+      }
+    }
   }
 
   if (tx.memo) lines.push(`\n  ${bold('Memo')}      ${yellow(tx.memo.text)}`);
@@ -228,12 +237,58 @@ export function renderTx(tx: NormalizedTx): string {
     for (const log of tx.logs) lines.push(`    ${yellow(log.text)}`);
   }
 
-  if (tx.memo || tx.failureLog || tx.logs?.length || tx.decoded?.args?.some((a) => a.untrusted)) {
+  if (tx.memo || tx.failureLog || tx.logs?.length || carriesMarkedText(tx)) {
     lines.push(`\n  ${dim('Yellow text was written by someone on the chain, not by this tool.')}`);
   }
 
   if (tx.explorerUrl) lines.push(`\n  ${dim(tx.explorerUrl)}`);
   return lines.join('\n');
+}
+
+/**
+ * One decoded call, and anything it carried inside it.
+ *
+ * A batch reported as `multicall(bytes[])` with nothing under it tells a
+ * reviewer exactly what the selector already told them. The indentation is the
+ * point: it is how "approve, then swap" stops looking like one opaque call.
+ */
+function renderCall(call: DecodedCall, indent: string): string[] {
+  const lines: string[] = [];
+
+  for (const arg of call.args ?? []) {
+    // The mark has to survive the trip to a terminal too. Someone scanning
+    // output cannot tell an address from a sentence a stranger wrote unless
+    // something says so, and the field carrying it is no help at a terminal.
+    const label = dim(`${arg.name ?? '?'} (${arg.type ?? '?'})`);
+    lines.push(`${indent}${label}  ${arg.untrusted ? yellow(arg.value) : arg.value}`);
+  }
+
+  for (const candidate of call.candidates ?? []) {
+    lines.push(`${indent}${dim('candidate')}  ${yellow(candidate.signature)}`);
+  }
+
+  for (const inner of call.inner ?? []) {
+    const what = inner.signature ?? inner.selector ?? 'unknown';
+    const where = inner.target ? dim(` -> ${shorten(inner.target)}`) : '';
+    lines.push(`${indent}${green(what)}${where}`);
+    if (inner.note) lines.push(`${indent}  ${dim(inner.note)}`);
+    lines.push(...renderCall(inner, `${indent}  `));
+  }
+
+  return lines;
+}
+
+/** Does anything in this transaction's decode carry text somebody chose? */
+function carriesMarkedText(tx: NormalizedTx): boolean {
+  const inCall = (call: DecodedCall): boolean =>
+    Boolean(call.args?.some((arg) => arg.untrusted)) ||
+    Boolean(call.candidates?.length) ||
+    Boolean(call.inner?.some(inCall));
+
+  return (
+    (tx.decoded ? inCall(tx.decoded) : false) ||
+    Boolean(tx.events?.some((event) => event.args?.some((arg) => arg.untrusted)))
+  );
 }
 
 export function renderBlock(block: NormalizedBlock): string {

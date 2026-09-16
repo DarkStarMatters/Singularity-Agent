@@ -187,7 +187,7 @@ const decode: Command = {
     // Everything after the data is one human-readable ABI entry, which contains
     // spaces — so it is rejoined rather than read as separate arguments.
     const abi = ctx.args.slice(1).join(' ').trim();
-    return formatDecoded(ops.decode(data, abi ? [abi] : undefined));
+    return formatDecoded(await ops.decode(data, abi ? [abi] : undefined));
   },
 };
 

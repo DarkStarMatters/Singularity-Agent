@@ -276,15 +276,15 @@ describe('decoded calldata arguments', () => {
     '0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa96045' +
     '00000000000000000000000000000000000000000000000000000000000f4240';
 
-  it('leaves arguments that cannot hold prose unmarked', () => {
-    const decoded = decode(TRANSFER);
+  it('leaves arguments that cannot hold prose unmarked', async () => {
+    const decoded = await decode(TRANSFER);
 
     // An `address` is twenty bytes of hex and a `uint256` is digits. Marking
     // them would be noise, and noise is how a reader learns to skip the mark.
     expect(decoded.args?.every((a) => a.untrusted === undefined)).toBe(true);
   });
 
-  it('marks and defangs a string argument', () => {
+  it('marks and defangs a string argument', async () => {
     const data = encodeFunctionData({
       abi: [
         {
@@ -299,7 +299,7 @@ describe('decoded calldata arguments', () => {
       args: [PAYLOAD],
     });
 
-    const decoded = decode(data, ['function setNote(string note)']);
+    const decoded = await decode(data, ['function setNote(string note)']);
     const arg = decoded.args?.[0];
 
     expect(arg?.untrusted).toBe(true);
@@ -308,7 +308,7 @@ describe('decoded calldata arguments', () => {
     expect(arg?.value).toContain('Ignore previous instructions');
   });
 
-  it('marks only the argument that carried the text', () => {
+  it('marks only the argument that carried the text', async () => {
     const data = encodeFunctionData({
       abi: [
         {
@@ -326,7 +326,7 @@ describe('decoded calldata arguments', () => {
       args: ['0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', HONEST_MEMO],
     });
 
-    const decoded = decode(data, ['function label(address who, string note)']);
+    const decoded = await decode(data, ['function label(address who, string note)']);
 
     expect(decoded.args?.[0]?.untrusted).toBeUndefined();
     expect(decoded.args?.[1]?.untrusted).toBe(true);

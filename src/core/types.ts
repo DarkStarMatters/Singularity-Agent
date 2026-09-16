@@ -145,9 +145,61 @@ export interface NormalizedTx {
    * text shaped exactly like this tool's own output.
    */
   logs?: UntrustedText[];
+  /**
+   * Decoded receipt logs (EVM).
+   *
+   * Distinct from `logs` above, and the distinction is not cosmetic: a Solana
+   * program log is free text somebody wrote, while these are structured events
+   * whose shape the ABI fixes. One is prose to be distrusted, the other is
+   * evidence of what the transaction did.
+   */
+  events?: DecodedEvent[];
   explorerUrl?: string;
   /** Anything chain-specific that did not fit the normalized shape. */
   raw?: Record<string, unknown>;
+}
+
+/** One decoded argument. Split out because nested calls carry them too. */
+export interface DecodedArg {
+  name?: string;
+  type?: string;
+  value: string;
+  /**
+   * This argument's value is text somebody chose, not a number or an address.
+   *
+   * Most decoded arguments cannot carry prose — a `uint256` is digits and an
+   * `address` is twenty bytes of hex, and neither can be made to read as an
+   * instruction. A `string` can, and calldata is authored by whoever sent the
+   * transaction. Set whenever the argument's type carries text *or the type
+   * is unknown*, because an argument whose provenance cannot be established
+   * is exactly the one to distrust.
+   */
+  untrusted?: true;
+}
+
+/**
+ * A signature offered by a public 4-byte directory.
+ *
+ * Kept apart from `signature` on purpose, and that separation is the whole
+ * point of the field. `signature` means *this tool recognized the call*. A
+ * directory entry means *somebody submitted this text for this selector*, and
+ * anybody may submit: a selector is four bytes of a hash, collisions are
+ * cheap to manufacture, and a plausible wrong signature decodes a transfer
+ * into something that reads as harmless. So it arrives marked, named as
+ * third-party, and never promoted into `signature`.
+ */
+export interface SelectorCandidate {
+  /** The signature text exactly as the directory serves it, sanitized. */
+  signature: string;
+  untrusted: true;
+  /**
+   * Arguments decoded against this candidate.
+   *
+   * Present only when it was the *sole* candidate that decoded cleanly. With
+   * two that both decode there is no evidence for either, and picking one
+   * would be the guess this tool exists not to make.
+   */
+  args?: DecodedArg[];
 }
 
 export interface DecodedCall {
@@ -155,23 +207,50 @@ export interface DecodedCall {
   signature?: string;
   name?: string;
   selector?: string;
-  args?: Array<{
-    name?: string;
-    type?: string;
-    value: string;
-    /**
-     * This argument's value is text somebody chose, not a number or an address.
-     *
-     * Most decoded arguments cannot carry prose — a `uint256` is digits and an
-     * `address` is twenty bytes of hex, and neither can be made to read as an
-     * instruction. A `string` can, and calldata is authored by whoever sent the
-     * transaction. Set whenever the argument's type carries text *or the type
-     * is unknown*, because an argument whose provenance cannot be established
-     * is exactly the one to distrust.
-     */
-    untrusted?: true;
-  }>;
+  args?: DecodedArg[];
   /** Set when we could not identify the call. */
+  note?: string;
+  /**
+   * The address this call was aimed at, when the call that wrapped it said so.
+   *
+   * Only meaningful on a nested call: a Multicall3 batch and a Safe
+   * `execTransaction` both name their target, and a batch that hides which
+   * contract each leg hits is a batch nobody can review.
+   */
+  target?: string;
+  /**
+   * Calls carried inside this one's arguments.
+   *
+   * A `multicall`, a Multicall3 `aggregate`, a Safe `execTransaction` or a
+   * `multiSend` is a wrapper: the thing it actually does is in a `bytes`
+   * argument, and reporting "multicall(bytes[])" while leaving that opaque
+   * tells a reviewer nothing they did not already know from the selector.
+   */
+  inner?: DecodedCall[];
+  /**
+   * Third-party guesses at this selector, when nothing local matched and the
+   * caller asked for a directory lookup. Never a substitute for `signature`.
+   */
+  candidates?: SelectorCandidate[];
+}
+
+/**
+ * A log entry from a receipt, decoded.
+ *
+ * Calldata says what was *asked for*; logs say what happened. On a transaction
+ * that routed through an aggregator those are different answers, and the
+ * second one is usually the question.
+ */
+export interface DecodedEvent {
+  /** The contract that emitted it. */
+  address: string;
+  /** e.g. "Transfer(address,address,uint256)", when recognized. */
+  signature?: string;
+  name?: string;
+  /** topics[0], always present — the one thing a log cannot hide. */
+  topic: string;
+  args?: DecodedArg[];
+  /** Set when the event could not be identified. */
   note?: string;
 }
 

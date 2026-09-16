@@ -3,6 +3,7 @@ import { allChains, getChain, portfolioChains, resolveAlias } from '../core/regi
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
 import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
+import { lookupSelector } from '../core/selectors.js';
 import { explorerUrl, shortAddress } from '../core/format.js';
 import { convertBech32Prefix } from '../core/address-codec.js';
 import type { StateOptions, TransferParams } from '../core/adapter.js';
@@ -461,7 +462,19 @@ export async function readContract(options: {
   });
 }
 
-export function decode(data: string, abi?: string[]): DecodedCall {
+/**
+ * Decode calldata.
+ *
+ * `lookup` is opt-in and off by default. It sends the selector to a public
+ * 4-byte directory, which is both a disclosure the caller should make
+ * deliberately and an answer from a source anyone may write to — see
+ * `lookupSelector` for why the result never becomes `signature`.
+ */
+export async function decode(
+  data: string,
+  abi?: string[],
+  lookup = false,
+): Promise<DecodedCall> {
   if (abi?.length) {
     try {
       return decodeWithAbi(data, abi);
@@ -473,7 +486,29 @@ export function decode(data: string, abi?: string[]): DecodedCall {
       );
     }
   }
-  return decodeCalldata(data);
+
+  const decoded = decodeCalldata(data);
+  // Only when nothing local matched. A directory answer is weaker evidence than
+  // a match against this tool's own ABI, so it never gets the chance to
+  // contradict one.
+  if (!lookup || decoded.signature || !decoded.selector) return decoded;
+
+  const hex = data.startsWith('0x') ? data : `0x${data}`;
+  const candidates = await lookupSelector(decoded.selector, hex);
+  if (!candidates.length) return decoded;
+
+  const fitted = candidates.filter((candidate) => candidate.args).length;
+  return {
+    ...decoded,
+    candidates,
+    note:
+      `${candidates.length} candidate signature(s) for ${decoded.selector} came from a public ` +
+      '4-byte directory, where anyone may submit an entry for any selector. They are guesses, ' +
+      'not identifications. ' +
+      (fitted === 1
+        ? 'One of them decodes this calldata cleanly and its arguments are shown; that is still not proof it is the right one.'
+        : 'None is shown decoded: where more than one fits the bytes there is no evidence for either, and where none fits, none applies.'),
+  };
 }
 
 /** Accept a name, an address-book alias, or a raw address; always return an address. */
