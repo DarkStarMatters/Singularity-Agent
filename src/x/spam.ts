@@ -7,9 +7,18 @@
  * engagement bots would burn both on an audience of nobody.
  *
  * The rule that actually does the work is the last one: a cold mention must be
- * **on topic** — it must name a chain, an asset, an address, a hash, or one of
- * the things this agent can look up. A question mark is not enough, because
- * "can I get a follow back?" is a question and there is nothing to answer.
+ * **on topic** — it must name something this agent can look up or talk about. A
+ * question mark is not enough, because "can I get a follow back?" is a question
+ * and there is nothing to answer.
+ *
+ * "On topic" is deliberately wider than "names a chain". The commonest genuine
+ * mention a project account gets is a question about the project itself — what
+ * it does, whether it is open source, how to install it — and an agent that
+ * drops those while happily answering balance lookups reads as broken. So the
+ * vocabulary covers three things: the chain registry (derived from it, not
+ * hand-copied, so a chain added in Phase 3 teaches the filter for free), the
+ * project's own subject matter, and a direct question put to the agent about
+ * itself.
  *
  * That ordering was arrived at empirically. Measured against a real mentions
  * timeline, filters built on account age and follower count let ~80% of spam
@@ -22,6 +31,8 @@
  * cannot explain is indistinguishable from a broken bot.
  */
 import { detect } from '../core/detect.js';
+import { allChains } from '../core/registry.js';
+import { WELL_KNOWN_TOKENS } from '../core/tokens.js';
 import type { Mention } from './client.js';
 
 export interface SpamVerdict {
@@ -106,7 +117,6 @@ const FARMING_PHRASES = [
   'reach out anytime',
   'feel free to reach out',
   'got you covered',
-  'need assistance',
   'follow back',
   'follow me',
   'followback',
@@ -173,18 +183,128 @@ const TOPIC_WORDS = [
   'mainnet',
   'testnet',
   'rpc',
-  'eth',
-  'btc',
-  'sol',
-  'solana',
-  'bitcoin',
-  'ethereum',
-  'base',
-  'arbitrum',
-  'optimism',
-  'polygon',
-  'cosmos',
+  'node',
+  'endpoint',
+  'archive',
+  'decimals',
+  'decode',
+  'calldata',
+  'swap',
+  'validator',
+  'ibc',
+  'denom',
+  'seed',
+  'custody',
+  'sign',
+  'signing',
+  'unsigned',
 ];
+
+/**
+ * Things the agent can talk about that are not chain data.
+ *
+ * A project account's mentions are mostly questions *about the project*, and
+ * before this list existed every one of them was dropped as "nothing this agent
+ * can look up" — which is exactly backwards, since the agent can answer them
+ * from its own README.
+ */
+const PROJECT_WORDS = [
+  'singularity',
+  'mcp',
+  'cli',
+  'sdk',
+  'api',
+  'repo',
+  'repository',
+  'github',
+  'npm',
+  'install',
+  'setup',
+  'docs',
+  'documentation',
+  'readme',
+  'roadmap',
+  'whitepaper',
+  'license',
+  'open source',
+  'opensource',
+  'source code',
+  'plugin',
+  'tool',
+  'tools',
+  'tooling',
+  'agent',
+  'agents',
+  'bot',
+  'claude',
+  'eliza',
+  'elizaos',
+  'grok',
+  'llm',
+  'model',
+  'prompt',
+  'injection',
+  'rate limit',
+  'rate limits',
+  'uptime',
+  'roadmap',
+  'plans',
+  'planned',
+  'feature',
+  'features',
+  'support',
+  'supports',
+  'supported',
+];
+
+/**
+ * Chain vocabulary, derived from the registry rather than hand-copied.
+ *
+ * The hand-written list this replaced named twelve chains out of twenty-three,
+ * so "does it support avalanche?" was filtered as off-topic by the agent that
+ * supports Avalanche. Deriving it means a chain added in Phase 3 teaches the
+ * filter on the same commit.
+ */
+let chainVocabulary: string[] | null = null;
+
+/**
+ * Words too generic to carry a chain's identity. "Smart" and "one" arrive from
+ * "BNB Smart Chain" and "Arbitrum One"; "era" and "main" are real aliases that
+ * are also ordinary English, and matching them would let anything through.
+ */
+const AMBIGUOUS = new Set(['smart', 'one', 'era', 'main', 'pos', 'test', 'hub', 'wrapped', 'coin']);
+
+function chainWords(): string[] {
+  if (chainVocabulary) return chainVocabulary;
+
+  const words = new Set<string>();
+  const add = (value: string | undefined): void => {
+    for (const part of (value ?? '').toLowerCase().split(/[\s-]+/)) {
+      // Two characters is not a name — "l1" and "op" match far more prose than
+      // they do questions about a chain.
+      if (part.length > 2 && !AMBIGUOUS.has(part)) words.add(part);
+    }
+  };
+
+  for (const chain of allChains()) {
+    add(chain.id);
+    add(chain.name);
+    add(chain.nativeCurrency.symbol);
+    add(chain.nativeCurrency.name);
+    for (const alias of chain.aliases ?? []) add(alias);
+  }
+  for (const tokens of Object.values(WELL_KNOWN_TOKENS)) {
+    for (const token of tokens) add(token.symbol);
+  }
+
+  chainVocabulary = [...words];
+  return chainVocabulary;
+}
+
+/** Test seam: the registry can be reloaded with custom chains. */
+export function resetSpamVocabulary(): void {
+  chainVocabulary = null;
+}
 
 const HANDLE = /@[A-Za-z0-9_]{1,15}/g;
 const HASHTAG = /#[\w]+/g;
@@ -207,14 +327,21 @@ function mentionsAny(text: string, phrases: string[]): string | null {
 }
 
 /**
- * Does this text name something the agent can actually look up?
+ * Does this text name something concrete the agent handles?
+ *
+ * "Substantive" as opposed to merely being addressed at the agent: this is the
+ * signal strong enough to override an engagement-farming phrase, so it has to
+ * be about a subject, not about tone.
  *
  * Detection is reused rather than guessed at: `detect()` already knows every
  * address, name and hash format on every supported family, so a mention
- * carrying a bare address counts as on-topic even with no keyword in it.
+ * carrying a bare address counts even with no keyword in it.
  */
-export function isOnTopic(text: string): boolean {
-  if (mentionsAny(text.toLowerCase(), TOPIC_WORDS)) return true;
+export function hasSubstance(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (mentionsAny(lower, TOPIC_WORDS)) return true;
+  if (mentionsAny(lower, PROJECT_WORDS)) return true;
+  if (mentionsAny(lower, chainWords())) return true;
 
   return text
     .split(/[\s,;:()[\]{}"'`]+/)
@@ -224,6 +351,35 @@ export function isOnTopic(text: string): boolean {
       const kind = detect(word).kind;
       return kind === 'address' || kind === 'tx' || kind === 'name';
     });
+}
+
+/** Opens a question even without a question mark — people drop them constantly. */
+const INTERROGATIVE =
+  /^(what|whats|how|hows|why|when|where|which|who|whose|can|could|do|does|did|is|isnt|are|was|were|will|would|should|any|got|have|has|tell|explain)\b/i;
+
+export function isQuestion(text: string): boolean {
+  return text.includes('?') || INTERROGATIVE.test(text.trim());
+}
+
+/** A question whose subject is the agent or the thing it is part of. */
+const SELF_REFERENCE =
+  /\b(you|your|yours|yourself|this|these|it|its|singularity|the bot|the agent|the project|the tool)\b/i;
+
+/**
+ * "What can you do?" has no chain in it and is still the most answerable
+ * question there is. So a direct question *about the agent* counts as on
+ * topic — but only as the weaker signal: it never overrides a farming phrase,
+ * or "do you follow back?" would talk its way straight through.
+ */
+export function asksAboutTheAgent(text: string): boolean {
+  return isQuestion(text) && SELF_REFERENCE.test(text);
+}
+
+/**
+ * The full on-topic test: something concrete, or a question put to the agent.
+ */
+export function isOnTopic(text: string): boolean {
+  return hasSubstance(text) || asksAboutTheAgent(text);
 }
 
 /**
@@ -253,12 +409,23 @@ export function classifyMention(
   const lower = raw.toLowerCase();
   // What is left once the addressing is removed is the actual message.
   const body = raw.replace(HANDLE, '').replace(LINK, '').trim();
+  // What was *said*, for the topic tests: handles gone, links kept. The
+  // agent's own handle is in every mention by definition, so matching topic
+  // words against the raw text made the account's own name — and anything
+  // else in a handle — read as substance, which passed everything.
+  const said = raw.replace(HANDLE, ' ').trim();
 
   const scam = mentionsAny(lower, SCAM_PHRASES);
   if (scam) return { skip: true, reason: `scam phrase: "${scam}"` };
 
+  // Farming phrases are openers, not questions — but a real question often
+  // arrives wearing one ("great project, how do you handle rate limits?"), and
+  // killing those was filtering out the people worth answering. The phrase only
+  // decides when there is no substantive question attached to it.
   const farming = mentionsAny(lower, FARMING_PHRASES);
-  if (farming) return { skip: true, reason: `engagement farming: "${farming}"` };
+  if (farming && !(isQuestion(said) && hasSubstance(said))) {
+    return { skip: true, reason: `engagement farming: "${farming}"` };
+  }
 
   if (body.length < 3) return { skip: true, reason: 'no message beyond the handles' };
 
@@ -305,8 +472,12 @@ export function classifyMention(
   // A question mark deliberately does not qualify on its own: "can I get a
   // follow back?" is a question with nothing in it to answer, and questions
   // like it are most of what arrives.
-  if (!isOnTopic(raw)) {
-    return { skip: true, reason: 'nothing this agent can look up — no chain, asset, address or hash' };
+  if (!isOnTopic(said)) {
+    return {
+      skip: true,
+      reason:
+        'nothing this agent can answer — no chain, asset, address, hash, or question about the project',
+    };
   }
 
   return { skip: false };

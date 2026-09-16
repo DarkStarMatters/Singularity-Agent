@@ -126,7 +126,7 @@ describe('spam classification', () => {
   it('stays quiet on chatter it has nothing to say about', () => {
     const result = verdict('@SingularityAgnt gm frens');
     expect(result.skip).toBe(true);
-    expect(result.reason).toMatch(/nothing this agent can look up/);
+    expect(result.reason).toMatch(/nothing this agent can answer/);
   });
 
   it('does not accept a question mark as a reason to reply', () => {
