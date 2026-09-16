@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { completeness } from '../src/core/envelope.js';
+import { checkImpersonation } from '../src/core/impersonation.js';
+import { getChain } from '../src/core/registry.js';
 import { evidenceFrom, reviewReply } from '../src/x/honesty.js';
 import type { ToolRun } from '../src/grok/tools.js';
 
@@ -19,6 +21,7 @@ const run = (overrides: Partial<ToolRun> = {}): ToolRun => ({
   result: '{}',
   ok: true,
   untrusted: false,
+  impersonations: [],
   ...overrides,
 });
 
@@ -162,5 +165,108 @@ describe('a failed scan is not an empty wallet', () => {
     if (!verdict.publish) throw new Error('unreachable');
     expect(verdict.text).toMatch(/token scan failed/i);
     expect(verdict.text).toMatch(/not evidence of an empty wallet/i);
+  });
+});
+
+describe('a reply that calls a fake token by the real one’s name', () => {
+  const ethereum = getChain('ethereum');
+  const ATTACKER = '0x1111111111111111111111111111111111111111';
+
+  /** A contract at some other address whose `symbol()` returns "USDC". */
+  const fakeUsdc = checkImpersonation(ethereum, { symbol: 'USDC', address: ATTACKER })!;
+  /** A contract calling itself the gas asset, which has no contract at all. */
+  const fakeEth = checkImpersonation(ethereum, { symbol: 'ETH', address: ATTACKER })!;
+
+  const exhaustive = (...impersonations: typeof fakeUsdc[]) =>
+    evidenceFrom([
+      run({ completeness: completeness.exhaustive('every mint held'), impersonations }),
+    ]);
+
+  it('says the balance is not the asset the reply just named', () => {
+    const verdict = reviewReply('It holds 50,000 USDC.', exhaustive(fakeUsdc), LIMIT);
+
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.caveated).toBe(true);
+    expect(verdict.text).toContain('It holds 50,000 USDC.');
+    expect(verdict.text).toMatch(/different contract from the real one/i);
+  });
+
+  it('distinguishes a token wearing the gas asset’s name', () => {
+    const verdict = reviewReply('It holds 12 ETH there.', exhaustive(fakeEth), LIMIT);
+
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.text).toMatch(/is a contract, not the gas asset/i);
+  });
+
+  it('follows the fake’s own spelling back to the name it stole', () => {
+    // The symbol the model is carrying is whatever the deployer typed —
+    // "USDС" with a Cyrillic С. The name it collides with is spelled the
+    // honest way, so a literal comparison here would see two different words
+    // and let the reply through.
+    const verdict = reviewReply('It holds 50,000 USDС.', exhaustive(fakeUsdc), LIMIT);
+
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.caveated).toBe(true);
+  });
+
+  it('stays quiet when the reply never mentions the token', () => {
+    // The collision is in the data either way. A reply that does not name the
+    // token has not made the claim this repairs, and an unprompted caveat
+    // about something unmentioned is the noise that gets gates switched off.
+    const verdict = reviewReply('Gas on Ethereum is about 8 gwei.', exhaustive(fakeUsdc), LIMIT);
+
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.caveated).toBe(false);
+    expect(verdict.text).toBe('Gas on Ethereum is about 8 gwei.');
+  });
+
+  it('says it once, however many fakes are in the wallet', () => {
+    const farmed = evidenceFrom([
+      run({ completeness: completeness.exhaustive('every mint held'), impersonations: [fakeUsdc] }),
+      run({ completeness: completeness.exhaustive('every mint held'), impersonations: [fakeUsdc] }),
+    ]);
+
+    const verdict = reviewReply('It holds 50,000 USDC.', farmed, LIMIT);
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.text.match(/different contract from the real one/gi)).toHaveLength(1);
+  });
+
+  it('carries both corrections when the reply earns both', () => {
+    const curatedWithFake = evidenceFrom([
+      run({ completeness: completeness.curated('major tokens only'), impersonations: [fakeUsdc] }),
+    ]);
+
+    const verdict = reviewReply(
+      'It holds 50,000 USDC and no other tokens.',
+      curatedWithFake,
+      LIMIT,
+    );
+
+    expect(verdict.publish).toBe(true);
+    if (!verdict.publish) throw new Error('unreachable');
+    expect(verdict.text).toMatch(/not a full enumeration/i);
+    expect(verdict.text).toMatch(/different contract from the real one/i);
+    expect(verdict.text.length).toBeLessThanOrEqual(LIMIT);
+  });
+
+  it('withholds the whole reply when only one correction would fit', () => {
+    // Half-repaired is still misleading, and which half survived would depend
+    // on nothing more principled than string length.
+    const curatedWithFake = evidenceFrom([
+      run({ completeness: completeness.curated('major tokens only'), impersonations: [fakeUsdc] }),
+    ]);
+
+    const long = `${'x'.repeat(150)} it holds 50,000 USDC and nothing else.`;
+    const verdict = reviewReply(long, curatedWithFake, LIMIT);
+
+    expect(verdict.publish).toBe(false);
+    if (verdict.publish) throw new Error('unreachable');
+    expect(verdict.reason).toMatch(/names USDC/);
+    expect(verdict.reason).toMatch(/does not fit/i);
   });
 });

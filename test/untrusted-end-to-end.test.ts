@@ -162,3 +162,81 @@ describe('completeness reaches the model as a value, not just prose', () => {
     expect(run.completeness?.note).toMatch(/not an empty wallet/i);
   });
 });
+
+describe('a token wearing a name the tool already knows', () => {
+  const REAL_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+
+  /** A contract at the attacker's address whose `symbol()` returns "USDC". */
+  function serveFakeUsdc(symbol = 'USDC') {
+    evmHandler = (_call, args) => {
+      if (String(args.address).toLowerCase() !== ATTACKER_TOKEN.toLowerCase()) return 0n;
+      if (args.functionName === 'balanceOf') return 50_000_000_000n;
+      if (args.functionName === 'decimals') return 6;
+      if (args.functionName === 'symbol') return symbol;
+      return 0n;
+    };
+  }
+
+  it('names the real contract next to the fake balance', async () => {
+    serveFakeUsdc();
+    const result = await getBalance({
+      address: ALICE,
+      chain: 'ethereum',
+      tokens: [ATTACKER_TOKEN],
+    });
+
+    // The balance is real — the address does hold 50,000 of this thing. What
+    // it is not is USDC, and the only way to know that is the address.
+    expect(result.tokens[0]?.amount.formatted).toBe('50000');
+    expect(result.tokens[0]?.token.impersonation?.symbol).toBe('USDC');
+    expect(result.tokens[0]?.token.impersonation?.authentic).toBe(REAL_USDC);
+  });
+
+  it('sees through a homoglyph, because the picture is the attack', async () => {
+    serveFakeUsdc('USDС'); // Cyrillic С
+    const result = await getBalance({
+      address: ALICE,
+      chain: 'ethereum',
+      tokens: [ATTACKER_TOKEN],
+    });
+
+    expect(result.tokens[0]?.token.impersonation?.symbol).toBe('USDC');
+  });
+
+  it('tells the model what the finding obliges it to do', async () => {
+    serveFakeUsdc();
+    const run = await callBalance([ATTACKER_TOKEN]);
+
+    expect(run.impersonations).toHaveLength(1);
+    expect(run.result).toContain('_impersonation');
+    expect(run.result).toMatch(/never treat the balance as a holding of the real asset/i);
+  });
+
+  it('says nothing about the real USDC at the real address', async () => {
+    // The curated scan reads its symbols from this tool's own map, so there is
+    // nothing to collide with. A finding here would fire on every honest
+    // wallet on Ethereum, which is how a check like this gets switched off.
+    evmHandler = (_call, args) => (args.functionName === 'balanceOf' ? 5_000_000n : 0n);
+
+    const run = await callBalance();
+
+    expect(run.impersonations).toHaveLength(0);
+    expect(run.result).not.toContain('_impersonation');
+  });
+
+  it('says nothing when the caller names the real USDC by address', async () => {
+    // Read off-chain rather than from the map, so the symbol is untrusted —
+    // and still not an impersonation, because it is the address it claims.
+    evmHandler = (_call, args) => {
+      if (args.functionName === 'balanceOf') return 5_000_000n;
+      if (args.functionName === 'decimals') return 6;
+      if (args.functionName === 'symbol') return 'USDC';
+      return 0n;
+    };
+
+    const run = await callBalance([REAL_USDC]);
+
+    expect(run.untrusted).toBe(true);
+    expect(run.impersonations).toHaveLength(0);
+  });
+});

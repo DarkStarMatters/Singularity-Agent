@@ -49,7 +49,15 @@ function amountLine(amount: Amount): string {
 
 function tokenLine(entry: BalanceEntry): string {
   const accounts = entry.tokenAccounts && entry.tokenAccounts > 1 ? ` (${entry.tokenAccounts} accounts)` : '';
-  return `  • ${amountLine(entry.amount)}${esc(accounts)}`;
+  // A chat client shows the symbol and nothing else, which is the whole reason
+  // a contract wearing someone else's name works. Say it on the line itself.
+  const impersonation = entry.token.impersonation;
+  const warning = impersonation
+    ? `\n    ⚠️ ${esc(`Not the real ${impersonation.symbol}`)}${
+        impersonation.authentic ? ` — that is ${code(impersonation.authentic)}` : ' — that has no contract at all'
+      }`
+    : '';
+  return `  • ${amountLine(entry.amount)}${esc(accounts)}${warning}`;
 }
 
 export function formatBalance(result: BalanceResult): string {

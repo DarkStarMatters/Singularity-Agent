@@ -8,6 +8,7 @@ import type {
   UnsignedTx,
 } from '../core/types.js';
 import { completeness, sanitizeOnchainText } from '../core/envelope.js';
+import { checkImpersonation } from '../core/impersonation.js';
 import {
   HistoricalStateUnavailableError,
   InvalidAddressError,
@@ -223,6 +224,11 @@ export const cosmosAdapter: ChainAdapter = {
       // creates it choose the text, and the symbol here is derived from it.
       const symbol = sanitizeOnchainText(info.symbol, 'token');
 
+      // A tokenfactory denom can be minted to read as the chain's own gas
+      // asset — "OSMO" on Osmosis is a denom anyone may create, and it is not
+      // the OSMO the fee market runs on.
+      const impersonation = checkImpersonation(chain, { symbol, address: coin.denom });
+
       entries.push({
         chain: chain.id,
         address: owner,
@@ -232,6 +238,7 @@ export const cosmosAdapter: ChainAdapter = {
           decimals: info.decimals,
           native: false,
           untrusted: true as const,
+          ...(impersonation ? { impersonation } : {}),
         },
         amount: amount(coin.amount, info.decimals, symbol),
         atBlock: options?.atBlock,

@@ -130,7 +130,9 @@ property that an *undecodable* blob says so plainly instead of guessing at a sig
 On-chain `name`/`symbol`/`decimals` reads for unknown EVM contracts and Solana mints, so
 an unrecognized token becomes named rather than `0x1234…abcd`. **Metadata read this way
 is attacker-controlled** and must be marked as such in the response — which is the direct
-lead-in to Phase 2.
+lead-in to Phase 2. Concretely, on Solana it must ship with the 2.2 impersonation check
+wired into the same code path: the reason Solana carries no collision findings today is
+that it reads no deployer-chosen string, and this is the change that starts.
 
 ---
 
@@ -150,15 +152,27 @@ Still open: **Cosmos memos**, and the **contract-sourced strings that surface th
 symbol does, and those paths mark nothing yet. Phase 1.4 (reading `name` off unknown
 contracts) must not ship before they do: it widens exactly this surface.
 
-### 2.2 Impersonation signals — **next**
-Directly buildable now: provenance already distinguishes a curated symbol from one a
-contract chose, which is the comparison this needs.
-
-
+### 2.2 Impersonation signals — **shipped**
 Fake tokens reuse real symbols; that is the entire mechanic of the most common retail
-loss. When a scanned token's symbol collides with a curated entry at a *different*
-address, say so in the response instead of relying on the user to compare 42 hex
-characters.
+loss. A scanned token whose symbol is a curated token's symbol at a *different* address —
+or the chain's own gas asset, which has no contract at all — now carries an
+`impersonation` naming the address the symbol really belongs to, instead of leaving the
+user to compare 42 hex characters. The comparison folds case, spacing, accents, fullwidth
+forms and homoglyphs, because "USDС" with a Cyrillic С is a different string and the
+same picture.
+
+Two decisions worth recording. **Punctuation stays significant**: stripping it would
+catch "USDC." and would also flag `USDC.e`, `DAI+` and `WBTC.b`, which are real tokens
+people really hold — and by the rule in Contributing §3, a gate is worth what it does to
+the traffic it should pass, so the miss is stated rather than traded for false positives.
+**Base58 case is not folded**, because two mints differing only in case are two different
+mints, and folding there would call an impersonator the real thing.
+
+The finding is a value, not a sentence, so the X publish gate acts on it: a reply naming
+a token by a symbol that belongs to another contract gets the correction appended, or is
+withheld whole when both that and a completeness caveat will not fit. Solana has no
+surface yet — an uncurated mint carries no deployer-chosen string at all — and Phase 1.4
+opens it, so the check ships in the same change that starts reading mint metadata.
 
 ### 2.3 Address-book verification
 Aliases resolve today but carry no integrity guarantee. Add optional pinning so a saved
@@ -246,5 +260,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (496 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (558 tests); `npm run typecheck`
 must pass clean.

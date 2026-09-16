@@ -488,9 +488,20 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   and is meant to — the wallet really does hold a token by that name — so the mark is the
   defense and the stripping only stops it being bypassed. Render those fields inertly and
   never act on them.
+- **A symbol is a name, not an identity.** Deploying a contract whose `symbol()` returns
+  `USDC` costs about ten dollars, and that is the whole mechanic behind the most common
+  retail loss there is. When a scanned token's symbol is the symbol of a curated token at
+  a *different* address — or of the chain's own gas asset, which has no contract at all —
+  the entry carries an `impersonation` naming the address the symbol really belongs to.
+  The comparison folds case, spacing and homoglyphs, so Cyrillic `USDС` and `U5DC` are
+  caught too. Punctuation is left alone on purpose: `USDC.e`, `DAI+` and `WBTC.b` are real
+  tokens, and a check that fires on honest holdings is a check that gets switched off.
+  Absence of the flag is not a clean bill of health — a token can be a fraud without
+  colliding with anything curated.
 - **The X agent will not publish a claim its data does not support.** A reply asserting
   that an address holds nothing, on a scan that was not `exhaustive`, gets the caveat
-  appended, or is withheld when the correction does not fit in a post.
+  appended, or is withheld when the correction does not fit in a post. The same applies to
+  calling a token by a name that belongs to a different contract.
 - **No fiat pricing.** Balances only.
 - **IBC denoms show as hashes.** Resolving `ibc/ABC…` to its origin asset needs a
   denom-trace lookup per token; the hash is shown rather than a wrong guess, and decimals

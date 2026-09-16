@@ -210,7 +210,11 @@ export const solanaAdapter: ChainAdapter = {
               address: mint,
               // An uncurated mint has no symbol here — the short mint stands in
               // for one. Nothing on-chain is read for it, but it is still not a
-              // name this tool vouches for, so it travels marked.
+              // name this tool vouches for, so it travels marked. No
+              // impersonation check either, for the same reason: there is no
+              // deployer-chosen string here to collide with a curated one. That
+              // changes the moment mint metadata is read (roadmap 1.4), and the
+              // check has to be added in the same change that reads it.
               symbol:
                 known?.symbol ?? sanitizeOnchainText(null, `${mint.slice(0, 4)}…${mint.slice(-4)}`),
               name: known?.name,

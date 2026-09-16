@@ -116,9 +116,22 @@ export function renderBalance(result: BalanceResult): string {
               .filter(Boolean)
               .join('  '),
           ),
+          // The one thing a shortened address cannot tell you by eye: this
+          // symbol belongs to something else. It goes in the row rather than a
+          // footnote, because the row is what gets read.
+          t.token.impersonation ? red(`not the real ${t.token.impersonation.symbol}`) : '',
         ]),
       ),
     );
+  }
+
+  // Spelled out under the table, because the marker in the row says there is a
+  // problem and this says which address is the real one — which is the part
+  // nobody can work out by looking.
+  for (const t of result.tokens) {
+    if (t.token.impersonation) {
+      lines.push(`\n  ${red('impersonation')}  ${dim(t.token.impersonation.note)}`);
+    }
   }
 
   // An exhaustive scan is the only one where an empty list means what it looks

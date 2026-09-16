@@ -37,6 +37,7 @@ import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } fr
 import { decodeCalldata, ERC20_ABI } from '../core/abi.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { completeness, sanitizeOnchainText } from '../core/envelope.js';
+import { checkImpersonation } from '../core/impersonation.js';
 import { getChain } from '../core/registry.js';
 
 /** 21000 gas — the cost of a bare ETH transfer, used for fee quotes. */
@@ -268,6 +269,13 @@ export const evmAdapter: ChainAdapter = {
           ? sanitizeOnchainText(symbol, shortAddress(target.address, 6, 4))
           : symbol;
 
+        // ...and a string the deployer chose can be a string we already know.
+        // Only worth asking about a symbol read off the chain: a curated entry
+        // is the thing being impersonated, not the impersonator.
+        const impersonation = fromChain
+          ? checkImpersonation(chain, { symbol: safeSymbol, address: target.address })
+          : undefined;
+
         return {
           chain: chain.id,
           address: owner,
@@ -278,6 +286,7 @@ export const evmAdapter: ChainAdapter = {
             decimals: Number(decimals),
             native: false,
             ...(fromChain ? { untrusted: true as const } : {}),
+            ...(impersonation ? { impersonation } : {}),
           },
           amount: amount(balance, Number(decimals), safeSymbol),
           atBlock: options?.atBlock,

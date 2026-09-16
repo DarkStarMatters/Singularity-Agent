@@ -6,6 +6,8 @@
  * never has to learn four sets of field names.
  */
 
+import type { Impersonation } from './impersonation.js';
+
 export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos';
 
 export interface NativeCurrency {
@@ -64,6 +66,19 @@ export interface TokenRef {
    * map, which is as trustworthy as the tool.
    */
   untrusted?: true;
+  /**
+   * The symbol above is the symbol of a *different* known asset.
+   *
+   * `untrusted` says the deployer chose this string; this says the string they
+   * chose already belongs to something else on this chain. Fake tokens reusing
+   * a real ticker is the most common retail loss there is, and the difference
+   * between the two is forty-two hex characters nobody compares by eye.
+   *
+   * Present only when the collision is real — see `checkImpersonation`. Absent
+   * means nothing was found, which is not a clean bill of health: a token can
+   * be a fraud without colliding with anything this tool curates.
+   */
+  impersonation?: Impersonation;
 }
 
 export interface BalanceEntry {

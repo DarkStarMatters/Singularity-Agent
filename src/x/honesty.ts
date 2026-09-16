@@ -19,6 +19,7 @@
  */
 import { supportsAbsenceClaim, type Completeness } from '../core/envelope.js';
 import { weakest } from '../core/envelope.js';
+import { symbolKey, type Impersonation } from '../core/impersonation.js';
 import type { ToolRun } from '../grok/tools.js';
 
 /** What the tool calls behind a reply collectively support. */
@@ -27,6 +28,8 @@ export interface Evidence {
   completeness: Completeness | null;
   /** Any result carried text authored on-chain. */
   untrusted: boolean;
+  /** Tokens in the evidence wearing a known asset's symbol at another address. */
+  impersonations: Impersonation[];
 }
 
 export function evidenceFrom(runs: ToolRun[]): Evidence {
@@ -34,9 +37,20 @@ export function evidenceFrom(runs: ToolRun[]): Evidence {
     .map((run) => run.completeness)
     .filter((value): value is Completeness => Boolean(value));
 
+  // One collision per name: a wallet farmed with nine fake USDCs is still one
+  // thing to say, and nine copies of the same caveat would not fit anyway.
+  const byName = new Map<string, Impersonation>();
+  for (const run of runs) {
+    for (const value of run.impersonations) {
+      const key = `${value.kind}:${symbolKey(value.symbol)}`;
+      if (!byName.has(key)) byName.set(key, value);
+    }
+  }
+
   return {
     completeness: weakest(found),
     untrusted: runs.some((run) => run.untrusted),
+    impersonations: [...byName.values()],
   };
 }
 
@@ -72,43 +86,102 @@ export type ReviewVerdict =
 /**
  * Decide whether a composed reply may go out as written.
  *
+ * Two mechanical questions, never a judgement about quality:
+ *
+ *   1. Does it claim absence or totality the scan cannot support?
+ *   2. Does it name a token by a symbol that belongs to a different contract?
+ *
  * Where the claim is unsupported but the caveat fits in the remaining
  * characters, the caveat is appended rather than the reply dropped — going
  * silent on someone who asked a real question is its own failure, and the one
  * the X filter was just fixed for. Only when the truth will not fit does the
- * reply get held back.
+ * reply get held back, and it is held back whole: a reply that can carry one of
+ * its two corrections but not the other is still a reply that misleads.
  */
 export function reviewReply(text: string, evidence: Evidence, limit: number): ReviewVerdict {
   // Match against straight apostrophes only. Models and people both write
   // curly ones constantly, and "doesn’t hold any" slipping past a pattern
   // spelled with ' is exactly the kind of near-miss this gate cannot afford.
   const normalized = text.replace(/[\u2018\u2019]/g, "'");
-  const claim = ABSENCE_CLAIM.test(normalized) || TOTALITY_CLAIM.test(normalized);
 
-  // Nothing was claimed about absence or totality, or the evidence is good
-  // enough to claim it. Either way there is nothing here to catch.
-  if (!claim || supportsAbsenceClaim(evidence.completeness)) {
-    return { publish: true, text, caveated: false };
+  const repairs = [
+    ...overclaimRepair(normalized, evidence.completeness),
+    ...impersonationRepairs(normalized, evidence.impersonations),
+  ];
+
+  if (!repairs.length) return { publish: true, text, caveated: false };
+
+  let combined = text.trim();
+  for (const repair of repairs) {
+    const separator = /[.!?…]$/.test(combined) ? ' ' : '. ';
+    combined = `${combined}${separator}${repair.caveat}`;
   }
-
-  const completeness = evidence.completeness;
-  if (!completeness) {
-    // An absence claim with no enumerable evidence behind it at all. The model
-    // is talking about something this gate has no view of — a question about
-    // the project, say — so there is nothing to check it against.
-    return { publish: true, text, caveated: false };
-  }
-
-  const caveat = caveatFor(completeness);
-  const separator = /[.!?…]$/.test(text.trim()) ? ' ' : '. ';
-  const combined = `${text.trim()}${separator}${caveat}`;
 
   if (combined.length <= limit) return { publish: true, text: combined, caveated: true };
 
   return {
     publish: false,
-    reason: `The reply claims something is absent, but the scan behind it was ${completeness.kind} (${completeness.note}) — and the correction does not fit in ${limit} characters.`,
+    reason: `${repairs.map((r) => r.reason).join(' ')} The correction does not fit in ${limit} characters.`,
   };
+}
+
+interface Repair {
+  /** The sentence that makes the reply honest. */
+  caveat: string;
+  /** Why it was needed, for the log when it does not fit. */
+  reason: string;
+}
+
+/** An absence or totality claim the completeness behind it does not support. */
+function overclaimRepair(text: string, completeness: Completeness | null): Repair[] {
+  const claim = ABSENCE_CLAIM.test(text) || TOTALITY_CLAIM.test(text);
+  if (!claim || supportsAbsenceClaim(completeness)) return [];
+
+  // An absence claim with no enumerable evidence behind it at all. The model
+  // is talking about something this gate has no view of — a question about
+  // the project, say — so there is nothing to check it against.
+  if (!completeness) return [];
+
+  return [
+    {
+      caveat: caveatFor(completeness),
+      reason: `The reply claims something is absent, but the scan behind it was ${completeness.kind} (${completeness.note}).`,
+    },
+  ];
+}
+
+/**
+ * The reply calls a token by a name that is not exclusively its own.
+ *
+ * Only fires when the reply actually says the name — the collision is in the
+ * data either way, but a reply that never mentions the token has not made the
+ * claim this repairs, and a caveat about something unmentioned is noise.
+ *
+ * The comparison folds the way {@link symbolKey} folds, because the symbol the
+ * reply is carrying is the fake's own spelling, homoglyphs and all, while the
+ * name it collides with is spelled the honest way.
+ */
+function impersonationRepairs(text: string, impersonations: Impersonation[]): Repair[] {
+  if (!impersonations.length) return [];
+
+  const words = new Set(
+    text
+      .split(/[^\p{L}\p{N}]+/u)
+      .map(symbolKey)
+      .filter(Boolean),
+  );
+
+  return impersonations
+    .filter((value) => words.has(symbolKey(value.symbol)))
+    .map((value) => ({
+      caveat:
+        value.kind === 'native-asset'
+          ? `Caveat: a token there carries the symbol ${value.symbol} but is a contract, not the gas asset.`
+          : `Caveat: a token there carries the symbol ${value.symbol} but is a different contract from the real one.`,
+      reason:
+        `The reply names ${value.symbol}, and a token in the evidence wears that symbol while being ` +
+        `${value.authentic ? `a different contract from ${value.authentic}` : 'a contract rather than the gas asset'}.`,
+    }));
 }
 
 /** The shortest honest sentence that repairs each kind of overclaim. */

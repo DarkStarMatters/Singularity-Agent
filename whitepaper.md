@@ -255,8 +255,11 @@ Stated plainly, because §3.2 applies to this document too.
 - **No transaction simulation.** `build_transfer` constructs a payload but does not
   predict its effects.
 - **On-chain strings are untrusted input.** Token names and memos are attacker-controlled
-  and reach the model. Treating them as data rather than instruction is currently a
-  consumer's responsibility. See roadmap Phase 2.
+  and reach the model. Contract symbols and Cosmos denoms now travel marked `untrusted`
+  and defanged of anything that could forge structure, and a symbol that collides with a
+  known asset at another address carries an `impersonation` naming the real one — but
+  plain English survives by necessity, and memos and decoded arguments are still
+  unmarked. See roadmap Phase 2.
 
 ---
 

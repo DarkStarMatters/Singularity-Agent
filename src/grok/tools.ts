@@ -20,6 +20,11 @@ import {
   UNTRUSTED_NOTE,
   type Completeness,
 } from '../core/envelope.js';
+import {
+  findImpersonations,
+  IMPERSONATION_NOTE,
+  type Impersonation,
+} from '../core/impersonation.js';
 import type { ToolCall, ToolSchema } from './client.js';
 
 /** Built once: the schemas are static for the process lifetime. */
@@ -54,6 +59,14 @@ export interface ToolRun {
   completeness?: Completeness;
   /** The result contained text authored on-chain. */
   untrusted: boolean;
+  /**
+   * Tokens in this result whose symbol is a known asset's symbol at a
+   * different address.
+   *
+   * Structured for the same reason `completeness` is: the model is told, and
+   * usually honours it, and the publish gate does not rely on usually.
+   */
+  impersonations: Impersonation[];
 }
 
 /**
@@ -64,22 +77,35 @@ export interface ToolRun {
  * `symbol()` is a sentence aimed at the reader arrives here having already been
  * stripped of anything that could forge structure (see `sanitizeOnchainText`);
  * what is added here is the other half — telling the model, in the same
- * message, that those fields are data and not instructions.
+ * message, that those fields are data and not instructions, and that a symbol
+ * it recognizes may belong to a contract that is not the one it names.
  */
-function envelope(value: unknown): { json: string; completeness?: Completeness; untrusted: boolean } {
+function envelope(value: unknown): {
+  json: string;
+  completeness?: Completeness;
+  untrusted: boolean;
+  impersonations: Impersonation[];
+} {
   const untrusted = carriesUntrusted(value);
+  const impersonations = findImpersonations(value);
   const found = findCompleteness(value);
   const worst = weakest(found);
 
+  const notes = {
+    ...(untrusted ? { _untrusted: UNTRUSTED_NOTE } : {}),
+    ...(impersonations.length ? { _impersonation: IMPERSONATION_NOTE } : {}),
+  };
+
   const payload =
-    untrusted && value && typeof value === 'object'
-      ? { ...(value as Record<string, unknown>), _untrusted: UNTRUSTED_NOTE }
+    Object.keys(notes).length && value && typeof value === 'object'
+      ? { ...(value as Record<string, unknown>), ...notes }
       : value;
 
   return {
     json: toJson(payload),
     ...(worst ? { completeness: worst } : {}),
     untrusted,
+    impersonations,
   };
 }
 
@@ -97,6 +123,7 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
       arguments: {},
       ok: false,
       untrusted: false,
+      impersonations: [],
       result: toJson({
         error: 'UNKNOWN_TOOL',
         message: `There is no tool called "${name}".`,
@@ -116,6 +143,7 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
       arguments: {},
       ok: false,
       untrusted: false,
+      impersonations: [],
       result: toJson({
         error: 'BAD_ARGUMENTS',
         message: 'Arguments were not valid JSON.',
@@ -125,13 +153,14 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
   }
 
   try {
-    const { json, completeness, untrusted } = envelope(await tool.run(args));
+    const { json, completeness, untrusted, impersonations } = envelope(await tool.run(args));
     return {
       name,
       arguments: args,
       ok: true,
       result: json,
       untrusted,
+      impersonations,
       ...(completeness ? { completeness } : {}),
     };
   } catch (err) {
@@ -140,6 +169,13 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
         ? { error: err.code, message: err.message, hint: err.hint }
         : { error: 'UNEXPECTED', message: err instanceof Error ? err.message : String(err) };
 
-    return { name, arguments: args, ok: false, untrusted: false, result: toJson(payload) };
+    return {
+      name,
+      arguments: args,
+      ok: false,
+      untrusted: false,
+      impersonations: [],
+      result: toJson(payload),
+    };
   }
 }
