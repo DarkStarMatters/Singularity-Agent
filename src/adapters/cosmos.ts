@@ -7,6 +7,7 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
+import { completeness, sanitizeOnchainText } from '../core/envelope.js';
 import {
   HistoricalStateUnavailableError,
   InvalidAddressError,
@@ -218,16 +219,35 @@ export const cosmosAdapter: ChainAdapter = {
         continue;
       }
 
+      // A denom is a string anyone can mint under — tokenfactory lets whoever
+      // creates it choose the text, and the symbol here is derived from it.
+      const symbol = sanitizeOnchainText(info.symbol, 'token');
+
       entries.push({
         chain: chain.id,
         address: owner,
-        token: { address: coin.denom, symbol: info.symbol, decimals: info.decimals, native: false },
-        amount: amount(coin.amount, info.decimals, info.symbol),
+        token: {
+          address: coin.denom,
+          symbol,
+          decimals: info.decimals,
+          native: false,
+          untrusted: true as const,
+        },
+        amount: amount(coin.amount, info.decimals, symbol),
         atBlock: options?.atBlock,
       });
     }
 
-    return entries;
+    const at = options?.atBlock === undefined ? '' : ` at height ${options.atBlock}`;
+
+    return {
+      entries,
+      completeness: completeness.exhaustive(
+        tokens?.length
+          ? `Every balance the account holds${at} in the denom(s) you named. Cosmos bank balances enumerate fully, so a denom absent here is genuinely not held.`
+          : `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash, and decimals for non-native denoms are assumed to be 6.`,
+      ),
+    };
   },
 
   async getTransaction(chain, hash) {

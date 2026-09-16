@@ -1,3 +1,4 @@
+import type { Completeness } from './envelope.js';
 import type {
   BalanceEntry,
   ChainFamily,
@@ -8,11 +9,19 @@ import type {
   UnsignedTx,
 } from './types.js';
 
-/** A token scan that carries a caveat about its own completeness. */
+/**
+ * A token scan and the account it gives of itself.
+ *
+ * `completeness` is required, and there is deliberately no way to return a bare
+ * array instead. An empty array reads as "this wallet holds nothing" to
+ * everything downstream, and it is the same empty array whether that is true,
+ * whether nine tokens out of thousands were checked, or whether every call
+ * failed. Making the adapter say which one closes that gap at the type level
+ * rather than in a comment someone has to remember.
+ */
 export interface TokenScan {
   entries: BalanceEntry[];
-  /** Set when the list is not the address's full holdings. */
-  note?: string;
+  completeness: Completeness;
 }
 
 export interface TransferParams {
@@ -72,19 +81,19 @@ export interface ChainAdapter {
     options?: StateOptions,
   ): Promise<BalanceEntry>;
   /**
-   * Token holdings for an address.
+   * Token holdings for an address, with a statement of what the list covers.
    *
-   * Return a bare array when the list is complete as-is. Return a {@link TokenScan}
-   * when the scan had to leave something out — a wallet with thousands of dust
-   * token accounts gets truncated, and the caller surfaces `note` so the list is
-   * never silently passed off as exhaustive.
+   * Every return says which kind of list it is — see {@link TokenScan}. A
+   * family that cannot enumerate at all still answers here rather than
+   * throwing, with `completeness.kind === 'curated'` or `'failed'`, because
+   * "nothing was checked" is an answer and an exception is not.
    */
   getTokenBalances(
     chain: ChainSpec,
     address: string,
     tokens?: string[],
     options?: StateOptions,
-  ): Promise<BalanceEntry[] | TokenScan>;
+  ): Promise<TokenScan>;
   getTransaction(chain: ChainSpec, hash: string): Promise<NormalizedTx>;
   getBlock(chain: ChainSpec, ref: string | number): Promise<NormalizedBlock>;
   estimateFees(chain: ChainSpec): Promise<FeeEstimate>;

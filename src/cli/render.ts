@@ -121,7 +121,16 @@ export function renderBalance(result: BalanceResult): string {
     );
   }
 
-  if (result.tokenScanNote) lines.push(`\n  ${dim(result.tokenScanNote)}`);
+  // An exhaustive scan is the only one where an empty list means what it looks
+  // like, so it is the only one that gets to stay quiet.
+  const scan = result.tokenCompleteness;
+  if (scan.kind !== 'exhaustive') {
+    const label = scan.kind === 'failed' ? red('incomplete') : yellow(scan.kind);
+    lines.push(`\n  ${label}  ${dim(scan.note)}`);
+  } else if (!result.tokens.length) {
+    lines.push(`\n  ${dim(`No tokens. ${scan.note}`)}`);
+  }
+
   if (result.explorerUrl) lines.push(`  ${dim(result.explorerUrl)}`);
 
   return lines.join('\n');

@@ -369,15 +369,16 @@ describe('getBalance at a past block', () => {
 
     expect(result.atBlock).toBe(19_000_000);
     expect(result.native.amount.formatted).toBe('2');
-    expect(result.tokenScanNote).toMatch(/read at block 19000000/i);
-    expect(result.tokenScanNote).toMatch(/did not exist yet/i);
+    expect(result.tokenCompleteness.kind).toBe('curated');
+    expect(result.tokenCompleteness.note).toMatch(/read at block 19000000/i);
+    expect(result.tokenCompleteness.note).toMatch(/did not exist yet/i);
   });
 
   it('never carries a block when the read was current state', async () => {
     const result = await getBalance({ address: ALICE, chain: 'ethereum' });
 
     expect(result.atBlock).toBeUndefined();
-    expect(result.tokenScanNote ?? '').not.toMatch(/block/i);
+    expect(result.tokenCompleteness.note).not.toMatch(/block/i);
   });
 
   it('fails the whole call rather than pairing a past balance with current tokens', async () => {
@@ -396,7 +397,7 @@ describe('getBalance at a past block', () => {
     expect(err.code).toBe('HISTORICAL_STATE_UNAVAILABLE');
   });
 
-  it('still degrades a failed token scan to a note for a current-state read', async () => {
+  it('still degrades a failed token scan to a caveat for a current-state read', async () => {
     evmHandler = (call) => {
       if (call === 'getBalance') return 0n;
       throw new Error('execution reverted');
@@ -404,7 +405,10 @@ describe('getBalance at a past block', () => {
 
     const result = await getBalance({ address: ALICE, chain: 'ethereum' });
 
+    // Empty, and explicitly not evidence of an empty wallet: every contract
+    // failed, so nothing is known either way.
     expect(result.tokens).toEqual([]);
-    expect(result.tokenScanNote).toMatch(/curated list/i);
+    expect(result.tokenCompleteness.kind).toBe('failed');
+    expect(result.tokenCompleteness.note).toMatch(/not an empty wallet/i);
   });
 });

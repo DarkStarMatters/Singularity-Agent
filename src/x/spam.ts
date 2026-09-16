@@ -406,7 +406,10 @@ export function classifyMention(
   } = options;
 
   const raw = mention.text ?? '';
-  const lower = raw.toLowerCase();
+  // Straight-apostrophe form, because every phrase list below is spelled with
+  // one and X is full of curly ones — "let’s connect" would sail past a
+  // pattern written as "let's connect".
+  const lower = raw.toLowerCase().replace(/[\u2018\u2019]/g, "'");
   // What is left once the addressing is removed is the actual message.
   const body = raw.replace(HANDLE, '').replace(LINK, '').trim();
   // What was *said*, for the topic tests: handles gone, links kept. The

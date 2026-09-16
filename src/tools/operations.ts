@@ -6,6 +6,7 @@ import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
 import { explorerUrl, shortAddress } from '../core/format.js';
 import { convertBech32Prefix } from '../core/address-codec.js';
 import type { StateOptions, TransferParams } from '../core/adapter.js';
+import { completeness, weakest, type Completeness } from '../core/envelope.js';
 import type {
   BalanceEntry,
   ChainSpec,
@@ -161,7 +162,15 @@ export interface BalanceResult {
   chain: string;
   native: BalanceEntry;
   tokens: BalanceEntry[];
-  /** Set when the token list is a scan of known tokens rather than exhaustive. */
+  /**
+   * What the token list covers, and what it does not.
+   *
+   * Always present. Reading `tokens: []` as "this address holds no tokens" is
+   * only sound when this says `exhaustive`; on every other kind the absence of
+   * a token is an absence of evidence.
+   */
+  tokenCompleteness: Completeness;
+  /** The human sentence from `tokenCompleteness`, kept for existing callers. */
   tokenScanNote?: string;
   /**
    * The height this was read at. Present only on a historical read that was
@@ -189,35 +198,35 @@ export async function getBalance(options: {
   const native = await adapter.getNativeBalance(chain, address, state);
 
   let tokens: BalanceEntry[] = [];
-  let tokenScanNote: string | undefined;
+  let tokenCompleteness = completeness.curated(
+    'Token balances were not requested, so none were checked.',
+  );
 
   if (options.includeTokens !== false) {
     try {
       const scan = await adapter.getTokenBalances(chain, address, options.tokens, state);
-      // An adapter returns a bare array when the list stands on its own, or a
-      // TokenScan when it had to leave something out.
-      tokens = Array.isArray(scan) ? scan : scan.entries;
-      if (!Array.isArray(scan)) tokenScanNote = scan.note;
+      tokens = scan.entries;
+      tokenCompleteness = scan.completeness;
 
-      if (chain.family === 'evm' && !options.tokens?.length) {
-        tokenScanNote =
-          'EVM chains cannot be enumerated without an indexer, so this covers a curated list of major tokens only. Pass `tokens` with contract addresses to check others.';
-      }
       if (atBlock !== undefined) {
-        tokenScanNote = [
-          tokenScanNote,
-          `Token metadata was read at block ${atBlock} too, so a token whose contract did not exist yet is absent from this list rather than shown as zero.`,
-        ]
-          .filter(Boolean)
-          .join(' ');
+        tokenCompleteness = {
+          ...tokenCompleteness,
+          note: `${tokenCompleteness.note} Token metadata was read at block ${atBlock} too, so a token whose contract did not exist yet is absent from this list rather than shown as zero.`,
+        };
       }
     } catch (err) {
-      // A chain with no token concept (Bitcoin) is not a failure of the balance call.
-      // A refused historical read is different: the native balance came back at
-      // a past height, and pairing it with a current-state token list would be a
-      // silent mix of two points in time.
+      // A refused historical read must not degrade: the native balance came
+      // back at a past height, and pairing it with a current-state token list
+      // would silently splice two points in time together.
       if (atBlock !== undefined) throw err;
-      tokenScanNote = err instanceof SingularityError ? err.message : String(err);
+
+      // Anything else becomes a caveated empty list rather than an exception.
+      // The caller still gets the native balance, and — this is the part that
+      // matters — the empty token list says out loud that it is empty because
+      // the scan failed, not because the wallet is.
+      tokenCompleteness = completeness.failed(
+        err instanceof SingularityError ? `${err.message} ${err.hint ?? ''}`.trim() : String(err),
+      );
     }
   }
 
@@ -226,7 +235,8 @@ export async function getBalance(options: {
     chain: chain.id,
     native,
     tokens,
-    tokenScanNote,
+    tokenCompleteness,
+    tokenScanNote: tokenCompleteness.note,
     atBlock,
     explorerUrl: explorerUrl(chain, 'address', address),
   };
@@ -237,6 +247,13 @@ export interface PortfolioResult {
   chainsQueried: string[];
   balances: BalanceResult[];
   errors: Array<{ chain: string; error: string; hint?: string }>;
+  /**
+   * The weakest guarantee across every chain queried — what the *combined*
+   * answer may claim. One curated EVM scan is enough to make "this address
+   * holds nothing anywhere" an unsupported statement, however many chains
+   * enumerated cleanly.
+   */
+  completeness: Completeness;
   note: string;
 }
 
@@ -310,11 +327,18 @@ export async function getPortfolio(options: {
     });
   });
 
+  const combined =
+    weakest([
+      ...balances.map((b) => b.tokenCompleteness),
+      ...errors.map((e) => completeness.failed(`${e.chain}: ${e.error}`)),
+    ]) ?? completeness.failed('No chain answered.');
+
   return {
     address,
     chainsQueried: candidates.map((c) => c.id),
     balances,
     errors,
+    completeness: combined,
     note: 'Balances only — no fiat pricing. Chains where the address format does not apply were skipped, not queried and failed.',
   };
 }

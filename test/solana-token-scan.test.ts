@@ -51,8 +51,7 @@ describe('solana token scan', () => {
   it('sums the token accounts that share a mint', async () => {
     setAccounts(account(USDC, '1095074585'), account(USDC, '1000000'));
 
-    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
-    const entries = Array.isArray(scan) ? scan : scan.entries;
+    const { entries } = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].token.symbol).toBe('USDC');
@@ -64,8 +63,7 @@ describe('solana token scan', () => {
   it('leaves tokenAccounts unset for a single account', async () => {
     setAccounts(account(USDC, '1000000'));
 
-    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
-    const entries = Array.isArray(scan) ? scan : scan.entries;
+    const { entries } = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
 
     expect(entries[0].tokenAccounts).toBeUndefined();
   });
@@ -74,7 +72,12 @@ describe('solana token scan', () => {
     setAccounts(account(USDC, '0'), account(dustMint(1), '0'));
 
     const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
-    expect(Array.isArray(scan) ? scan : scan.entries).toHaveLength(0);
+
+    expect(scan.entries).toHaveLength(0);
+    // Empty *and* exhaustive: on Solana this really does mean "holds nothing",
+    // and saying so is what makes the same empty list on a curated EVM scan
+    // distinguishable from it.
+    expect(scan.completeness.kind).toBe('exhaustive');
   });
 
   it('caps an unfiltered scan and says what it left out', async () => {
@@ -82,19 +85,28 @@ describe('solana token scan', () => {
 
     const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
 
-    expect(Array.isArray(scan)).toBe(false);
-    if (Array.isArray(scan)) throw new Error('expected a truncated scan');
-
     expect(scan.entries).toHaveLength(50);
-    expect(scan.note).toContain('50 of 81');
-    expect(scan.note).toContain('31 omitted');
+    expect(scan.completeness.kind).toBe('truncated');
+    // The counts are structured, not only prose: a caller deciding whether it
+    // may say "that is everything" reads these, not the sentence.
+    expect(scan.completeness.shown).toBe(50);
+    expect(scan.completeness.omitted).toBe(31);
+    expect(scan.completeness.note).toContain('50 of 81');
+    expect(scan.completeness.note).toContain('31 omitted');
     // A curated token sorts ahead of dust, however much dust there is.
     expect(scan.entries[0].token.symbol).toBe('USDC');
   });
 
-  it('returns a bare array when nothing is left out', async () => {
+  it('declares a complete scan exhaustive rather than returning a bare list', async () => {
     setAccounts(account(USDC, '1000000'));
-    expect(Array.isArray(await solanaAdapter.getTokenBalances(SOLANA, OWNER))).toBe(true);
+
+    // There is deliberately no way to return a list without saying what it
+    // covers. A bare array was the old shape, and a bare array is precisely
+    // what reads as "this is everything" whether or not it is.
+    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
+
+    expect(scan.entries).toHaveLength(1);
+    expect(scan.completeness.kind).toBe('exhaustive');
   });
 
   it('never caps an explicitly requested token list', async () => {
@@ -105,9 +117,9 @@ describe('solana token scan', () => {
     );
 
     const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER, [USDC]);
-    const entries = Array.isArray(scan) ? scan : scan.entries;
+    const entries = scan.entries;
 
-    expect(Array.isArray(scan)).toBe(true);
+    expect(scan.completeness.kind).toBe('exhaustive');
     expect(entries).toHaveLength(1);
     expect(entries[0].amount.raw).toBe('1500000');
     expect(entries[0].tokenAccounts).toBe(2);

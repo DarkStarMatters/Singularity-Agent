@@ -6,6 +6,7 @@ import type {
   NormalizedTx,
   UnsignedTx,
 } from '../core/types.js';
+import { completeness } from '../core/envelope.js';
 import {
   HistoricalStateUnsupportedError,
   InvalidAddressError,
@@ -136,11 +137,15 @@ export const bitcoinAdapter: ChainAdapter = {
   },
 
   async getTokenBalances(chain) {
-    throw new UnsupportedOperationError(
-      'token balances',
-      `${chain.name} (UTXO)`,
-      'UTXO chains have no token contracts. Ordinals/Runes need a dedicated indexer, which this tool does not bundle.',
-    );
+    // Answering rather than throwing. "This chain has no tokens" is a complete,
+    // correct answer, and returning it as a caveated empty list keeps it
+    // distinguishable from "the scan failed" — which throwing did not.
+    return {
+      entries: [],
+      completeness: completeness.curated(
+        `${chain.name} is a UTXO chain with no token contracts, so nothing was scanned. Ordinals and Runes need a dedicated indexer, which this tool does not bundle — their absence here says nothing about whether the address holds any.`,
+      ),
+    };
   },
 
   async getTransaction(chain, hash) {

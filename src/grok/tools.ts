@@ -13,6 +13,13 @@ import { getTool, TOOLS } from '../tools/catalog.js';
 import { shapeToJsonSchema } from '../tools/json-schema.js';
 import { SingularityError } from '../core/errors.js';
 import { toJson } from '../core/format.js';
+import {
+  carriesUntrusted,
+  findCompleteness,
+  weakest,
+  UNTRUSTED_NOTE,
+  type Completeness,
+} from '../core/envelope.js';
 import type { ToolCall, ToolSchema } from './client.js';
 
 /** Built once: the schemas are static for the process lifetime. */
@@ -36,6 +43,44 @@ export interface ToolRun {
   /** JSON, ready to hand back as a `tool` message. */
   result: string;
   ok: boolean;
+  /**
+   * The weakest completeness anywhere in this result, when it carried one.
+   *
+   * Kept structured rather than left buried in the JSON so a surface can act
+   * on it — the X listener uses it to refuse to publish a claim the data does
+   * not support. A model reading the same caveat in prose may honour it; a
+   * publish gate reading this field has no choice.
+   */
+  completeness?: Completeness;
+  /** The result contained text authored on-chain. */
+  untrusted: boolean;
+}
+
+/**
+ * Wraps a result before the model sees it.
+ *
+ * `runToolCall` is the seam where chain data becomes model context, and on this
+ * repo's X surface that context goes on to compose a public post. A token whose
+ * `symbol()` is a sentence aimed at the reader arrives here having already been
+ * stripped of anything that could forge structure (see `sanitizeOnchainText`);
+ * what is added here is the other half — telling the model, in the same
+ * message, that those fields are data and not instructions.
+ */
+function envelope(value: unknown): { json: string; completeness?: Completeness; untrusted: boolean } {
+  const untrusted = carriesUntrusted(value);
+  const found = findCompleteness(value);
+  const worst = weakest(found);
+
+  const payload =
+    untrusted && value && typeof value === 'object'
+      ? { ...(value as Record<string, unknown>), _untrusted: UNTRUSTED_NOTE }
+      : value;
+
+  return {
+    json: toJson(payload),
+    ...(worst ? { completeness: worst } : {}),
+    untrusted,
+  };
 }
 
 /**
@@ -51,6 +96,7 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
       name,
       arguments: {},
       ok: false,
+      untrusted: false,
       result: toJson({
         error: 'UNKNOWN_TOOL',
         message: `There is no tool called "${name}".`,
@@ -69,6 +115,7 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
       name,
       arguments: {},
       ok: false,
+      untrusted: false,
       result: toJson({
         error: 'BAD_ARGUMENTS',
         message: 'Arguments were not valid JSON.',
@@ -78,13 +125,21 @@ export async function runToolCall(call: ToolCall): Promise<ToolRun> {
   }
 
   try {
-    return { name, arguments: args, ok: true, result: toJson(await tool.run(args)) };
+    const { json, completeness, untrusted } = envelope(await tool.run(args));
+    return {
+      name,
+      arguments: args,
+      ok: true,
+      result: json,
+      untrusted,
+      ...(completeness ? { completeness } : {}),
+    };
   } catch (err) {
     const payload =
       err instanceof SingularityError
         ? { error: err.code, message: err.message, hint: err.hint }
         : { error: 'UNEXPECTED', message: err instanceof Error ? err.message : String(err) };
 
-    return { name, arguments: args, ok: false, result: toJson(payload) };
+    return { name, arguments: args, ok: false, untrusted: false, result: toJson(payload) };
   }
 }

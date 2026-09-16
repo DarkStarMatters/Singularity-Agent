@@ -21,6 +21,7 @@ import {
   RpcError,
   SingularityError,
 } from '../core/errors.js';
+import { completeness, sanitizeOnchainText } from '../core/envelope.js';
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 
@@ -207,10 +208,15 @@ export const solanaAdapter: ChainAdapter = {
             address: owner.toBase58(),
             token: {
               address: mint,
-              symbol: known?.symbol ?? `${mint.slice(0, 4)}…${mint.slice(-4)}`,
+              // An uncurated mint has no symbol here — the short mint stands in
+              // for one. Nothing on-chain is read for it, but it is still not a
+              // name this tool vouches for, so it travels marked.
+              symbol:
+                known?.symbol ?? sanitizeOnchainText(null, `${mint.slice(0, 4)}…${mint.slice(-4)}`),
               name: known?.name,
               decimals,
               native: false,
+              ...(known ? {} : { untrusted: true as const }),
             },
             amount: amount(total, decimals, known?.symbol ?? 'tokens'),
             ...(accounts > 1 ? { tokenAccounts: accounts } : {}),
@@ -220,7 +226,14 @@ export const solanaAdapter: ChainAdapter = {
 
       // An explicit `tokens` list is the caller asking for specific mints — give
       // back every one of them, in the order they were requested.
-      if (filter) return all.map((t) => t.entry);
+      if (filter) {
+        return {
+          entries: all.map((t) => t.entry),
+          completeness: completeness.exhaustive(
+            `Every token account the address holds for the ${filter.size} mint(s) you named, summed per mint.`,
+          ),
+        };
+      }
 
       // Curated tokens first; within each group, larger balances first. Note that
       // magnitude is not value — there is no pricing here, so a trillion units of
@@ -228,15 +241,25 @@ export const solanaAdapter: ChainAdapter = {
       // ranking by worth.
       all.sort((a, b) => Number(b.known) - Number(a.known) || b.magnitude - a.magnitude);
 
-      if (all.length <= TOKEN_SCAN_LIMIT) return all.map((t) => t.entry);
+      if (all.length <= TOKEN_SCAN_LIMIT) {
+        return {
+          entries: all.map((t) => t.entry),
+          completeness: completeness.exhaustive(
+            'Complete: on Solana token accounts are owned by the wallet, so this really is every SPL and Token-2022 mint held, summed across accounts.',
+          ),
+        };
+      }
 
       const omitted = all.length - TOKEN_SCAN_LIMIT;
       return {
         entries: all.slice(0, TOKEN_SCAN_LIMIT).map((t) => t.entry),
-        note:
+        completeness: completeness.truncated(
+          TOKEN_SCAN_LIMIT,
+          omitted,
           `Showing ${TOKEN_SCAN_LIMIT} of ${all.length} mints held — curated tokens first, ` +
-          `then by raw balance. ${omitted} omitted, and because there is no pricing here that ` +
-          'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.',
+            `then by raw balance. ${omitted} omitted, and because there is no pricing here that ` +
+            'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.',
+        ),
       };
     });
   },

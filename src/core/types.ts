@@ -52,6 +52,18 @@ export interface TokenRef {
   decimals: number;
   /** True for ETH, SOL, BTC, ATOM — the chain's gas asset. */
   native: boolean;
+  /**
+   * The symbol and name were read from the chain, so whoever deployed the
+   * contract chose them.
+   *
+   * Set when the token is not in the curated list. A token whose `symbol()`
+   * returns a sentence aimed at whatever reads it next costs about ten dollars
+   * to deploy; the value here has already been stripped of anything that could
+   * forge structure, and this flag tells a consumer to render it inertly and
+   * never act on it. Absent means the text came from this tool's own token
+   * map, which is as trustworthy as the tool.
+   */
+  untrusted?: true;
 }
 
 export interface BalanceEntry {

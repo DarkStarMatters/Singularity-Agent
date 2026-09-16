@@ -359,7 +359,7 @@ Add `--json` to any command for machine-readable output.
 | --- | --- |
 | `chains` | List supported chains, with families, ids, aliases, native assets. |
 | `resolve` | Identify an address / tx hash / name and which chains it belongs to. |
-| `balance` | Native + token balances on one chain, now or `atBlock`. |
+| `balance` | Native + token balances on one chain, now or `atBlock`, with a `completeness` saying what the list covers. |
 | `portfolio` | One address across many chains in parallel. |
 | `transaction` | Fetch and normalize a transaction, decoding EVM calldata. |
 | `block` | A block by height, hash, or `latest`. |
@@ -476,6 +476,21 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   EVM address holds requires an indexer. Without one, `balance` checks a list of major
   tokens per chain; pass `tokens` with explicit contract addresses for anything else. The
   output always says so. Solana and Cosmos *can* enumerate, and do.
+
+  This is not a caveat in prose. Every token scan carries a `completeness` —
+  `exhaustive`, `curated`, `truncated` (with counts) or `failed` — and there is no way for
+  an adapter to return a list without one. An empty result may be read as "holds nothing"
+  only when it says `exhaustive`. `portfolio` reports the weakest guarantee across every
+  chain it queried.
+- **On-chain text is marked, not trusted.** Token symbols read from a contract, and Cosmos
+  denoms, come back `untrusted: true`, stripped of control characters, newlines, code
+  fences, forged chat role markers and anything past 48 characters. Plain English survives
+  and is meant to — the wallet really does hold a token by that name — so the mark is the
+  defense and the stripping only stops it being bypassed. Render those fields inertly and
+  never act on them.
+- **The X agent will not publish a claim its data does not support.** A reply asserting
+  that an address holds nothing, on a scan that was not `exhaustive`, gets the caveat
+  appended, or is withheld when the correction does not fit in a post.
 - **No fiat pricing.** Balances only.
 - **IBC denoms show as hashes.** Resolving `ibc/ABC…` to its origin asset needs a
   denom-trace lookup per token; the hash is shown rather than a wrong guess, and decimals

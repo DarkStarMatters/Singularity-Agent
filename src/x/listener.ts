@@ -23,6 +23,7 @@ import { XClient, type Mention, type PostResult } from './client.js';
 import { classifyMention, ReplyBudget, type SpamOptions, type SpamVerdict } from './spam.js';
 import type { PostGate } from './approval.js';
 import { cursorFor, loadState, saveState, type XState } from './state.js';
+import { evidenceFrom, reviewReply } from './honesty.js';
 import {
   collectProjectFacts,
   isDue,
@@ -394,8 +395,29 @@ export class XListener {
       mention.authorUsername ?? mention.authorId,
     );
 
-    const body = fitReply(reply.text);
+    // The last check before this becomes permanent and public: a reply may not
+    // assert that something is absent when the scan behind it only looked at a
+    // subset. The model is told the caveat and usually honours it; this is what
+    // makes "usually" into "always".
+    const review = reviewReply(fitReply(reply.text), evidenceFrom(reply.toolRuns), REPLY_LIMIT);
     const who = mention.authorUsername ? `@${mention.authorUsername}` : mention.authorId;
+
+    if (!review.publish) {
+      console.error(`[singularity-x] withheld a reply to ${who} (${mention.id}): ${review.reason}`);
+      return {
+        published: false,
+        text: fitReply(reply.text),
+        reason: `Withheld: ${review.reason}`,
+        inReplyTo: mention.id,
+      };
+    }
+
+    const body = review.text;
+    if (review.caveated) {
+      console.error(
+        `[singularity-x] added a completeness caveat to the reply to ${who} (${mention.id}).`,
+      );
+    }
 
     if (this.gate) {
       await this.gate.submit({

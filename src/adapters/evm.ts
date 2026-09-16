@@ -36,6 +36,7 @@ import {
 import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
 import { decodeCalldata, ERC20_ABI } from '../core/abi.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
+import { completeness, sanitizeOnchainText } from '../core/envelope.js';
 import { getChain } from '../core/registry.js';
 
 /** 21000 gas — the cost of a bare ETH transfer, used for fee quotes. */
@@ -205,7 +206,7 @@ export const evmAdapter: ChainAdapter = {
   async getTokenBalances(chain, address, tokens, options) {
     const owner = requireAddress(chain, address);
     const client = clientFor(chain);
-    const at = atBlockArg(options);
+    const atArg = atBlockArg(options);
 
     // Resolve the caller's list (addresses or symbols) or fall back to the
     // curated set for this chain. Metadata we already know saves two RPC calls
@@ -223,7 +224,14 @@ export const evmAdapter: ChainAdapter = {
         })
       : knownTokens(chain.id).map((t) => ({ ...t, address: getAddress(t.address) }));
 
-    if (!targets.length) return [];
+    if (!targets.length) {
+      return {
+        entries: [],
+        completeness: completeness.curated(
+          `No tokens are curated for ${chain.name}, and an EVM chain cannot be enumerated without an indexer, so nothing was checked. This is not evidence the address holds no tokens. Pass \`tokens\` with contract addresses to check specific ones.`,
+        ),
+      };
+    }
 
     const results = await Promise.allSettled(
       targets.map(async (target): Promise<BalanceEntry> => {
@@ -233,7 +241,7 @@ export const evmAdapter: ChainAdapter = {
             abi: ERC20_ABI,
             functionName: 'balanceOf',
             args: [owner],
-            ...at,
+            ...atArg,
           }) as Promise<bigint>,
           target.decimals !== undefined
             ? Promise.resolve(target.decimals)
@@ -241,7 +249,7 @@ export const evmAdapter: ChainAdapter = {
                 address: target.address,
                 abi: ERC20_ABI,
                 functionName: 'decimals',
-                ...at,
+                ...atArg,
               }) as Promise<number>),
           target.symbol !== undefined
             ? Promise.resolve(target.symbol)
@@ -249,21 +257,29 @@ export const evmAdapter: ChainAdapter = {
                 address: target.address,
                 abi: ERC20_ABI,
                 functionName: 'symbol',
-                ...at,
+                ...atArg,
               }) as Promise<string>),
         ]);
+
+        // A curated target carries our own symbol; anything else was just read
+        // off the contract, so whoever deployed it wrote that string.
+        const fromChain = target.symbol === undefined;
+        const safeSymbol = fromChain
+          ? sanitizeOnchainText(symbol, shortAddress(target.address, 6, 4))
+          : symbol;
 
         return {
           chain: chain.id,
           address: owner,
           token: {
             address: target.address,
-            symbol,
+            symbol: safeSymbol,
             name: target.name,
             decimals: Number(decimals),
             native: false,
+            ...(fromChain ? { untrusted: true as const } : {}),
           },
-          amount: amount(balance, Number(decimals), symbol),
+          amount: amount(balance, Number(decimals), safeSymbol),
           atBlock: options?.atBlock,
         };
       }),
@@ -285,10 +301,34 @@ export const evmAdapter: ChainAdapter = {
 
     // A token contract that fails to answer is dropped rather than failing the
     // whole balance call — one dead contract should not hide the other nine.
-    return results
-      .filter((r): r is PromiseFulfilledResult<BalanceEntry> => r.status === 'fulfilled')
-      .map((r) => r.value)
-      .filter((entry) => entry.amount.raw !== '0');
+    // What it must not do is vanish: the count of dropped contracts is the
+    // difference between "holds none of these" and "could not tell".
+    const answered = results.filter(
+      (r): r is PromiseFulfilledResult<BalanceEntry> => r.status === 'fulfilled',
+    );
+    const unreachable = results.length - answered.length;
+    const entries = answered.map((r) => r.value).filter((entry) => entry.amount.raw !== '0');
+
+    const scope = tokens?.length
+      ? `the ${targets.length} token(s) you named`
+      : `a curated list of ${targets.length} major token(s) on ${chain.name}`;
+
+    const at = options?.atBlock === undefined ? '' : ` at block ${options.atBlock}`;
+
+    return {
+      entries,
+      completeness:
+        unreachable === results.length
+          ? completeness.failed(
+              `None of the ${results.length} token contract(s) answered${at}, so nothing is known about this address's token holdings. This is not an empty wallet.`,
+            )
+          : completeness.curated(
+              `Covers ${scope}${at} — an EVM chain cannot be enumerated without an indexer, so a token outside this list is invisible here, not absent from the wallet.` +
+                (unreachable
+                  ? ` ${unreachable} contract(s) did not answer and are unaccounted for.`
+                  : ''),
+            ),
+    };
   },
 
   async getTransaction(chain, hash) {
