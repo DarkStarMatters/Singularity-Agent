@@ -495,6 +495,16 @@ signature, and the agent credits it without ever holding a key, an address, or a
 
 The parts worth arguing with:
 
+- **And the memo is now checked, not merely returned.** The first version of this shipped
+  with the gap written on the receipt and open in the code: redemption keyed on a signature
+  alone is first-come-first-served, because a signature is public the moment it lands, so
+  whoever watches the chain and quotes it first takes the credit. `build_burn` now writes a
+  claim into the transaction as an SPL memo — signed along with the burn, so attaching your
+  name to somebody else’s burn costs a burn of your own — and `redeem` requires a match.
+  The Telegram command does not take the expectation as an argument, because a claimant who
+  can name their own expectation is not a claimant: it comes from the chat the command
+  arrived in. In a direct message that is one person; in a group it is the group, and both
+  commands say which they are talking to rather than leaving it to be assumed.
 - **A signature proves a burn, not a claimant.** Signatures are public the moment they
   land, so anyone can quote somebody else’s. There is no version of this that a read can
   fix, so it is stated on every receipt rather than papered over. What *does* bind a burn

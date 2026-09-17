@@ -25,6 +25,13 @@ vi.mock('../src/adapters/index.js', () => ({
   adapterForFamily: vi.fn(),
 }));
 
+// Imported once, at module scope. Inside a test body this counts against the
+// five-second timeout, and it grew heavy enough to blow it — operations pulls
+// in the Solana adapter, which pulls in web3.js. The first test then timed out
+// mid-flight and left its spies dirty for the next one, so a slow import read
+// as two unrelated failures.
+const { getPortfolio } = await import('../src/tools/operations.js');
+
 const ADDRESS = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
 
 beforeEach(() => {
@@ -42,8 +49,6 @@ afterEach(() => vi.clearAllMocks());
 
 describe('getPortfolio', () => {
   it('resolves an ENS name before deciding which chains apply', async () => {
-    const { getPortfolio } = await import('../src/tools/operations.js');
-
     const result = await getPortfolio({
       address: 'vitalik.eth',
       chains: ['ethereum', 'base'],
@@ -59,8 +64,6 @@ describe('getPortfolio', () => {
   });
 
   it('passes a plain address straight through without a name lookup', async () => {
-    const { getPortfolio } = await import('../src/tools/operations.js');
-
     const result = await getPortfolio({
       address: ADDRESS,
       chains: ['ethereum'],
@@ -73,16 +76,12 @@ describe('getPortfolio', () => {
 
   it('reports an unresolvable name as a name problem, not a chain problem', async () => {
     resolveName.mockResolvedValue(null);
-    const { getPortfolio } = await import('../src/tools/operations.js');
-
     await expect(
       getPortfolio({ address: 'definitely-not-registered.eth', chains: ['ethereum'] }),
     ).rejects.toMatchObject({ code: 'NAME_NOT_RESOLVED' });
   });
 
   it('names the chains an address does work on when none of the requested ones match', async () => {
-    const { getPortfolio } = await import('../src/tools/operations.js');
-
     // A Solana address against EVM-only chains.
     await expect(
       getPortfolio({ address: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', chains: ['ethereum'] }),

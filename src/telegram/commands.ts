@@ -22,7 +22,7 @@ import {
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
-  esc,  formatMintAudit,  formatBurnClaim,  formatTokenIdentity,
+  esc,  formatMintAudit,  formatBurnClaim,  formatTokenIdentity,  code,
 } from './format.js';
 
 export interface CommandContext {
@@ -223,6 +223,24 @@ const mint: Command = {
   },
 };
 
+/**
+ * What a burn has to say in its memo to be credited to this chat.
+ *
+ * A burn signature is public the moment it lands, so redemption keyed on the
+ * signature alone is first-come-first-served: whoever watches the chain and
+ * quotes it first takes the credit. The memo is the only part of the
+ * transaction the burner writes and signs, so a claim written there costs a
+ * burn of your own to forge.
+ *
+ * The identifier is the chat, which means exactly what it says: in a direct
+ * message that is one person, and in a group it is the group — anybody in the
+ * room can redeem a burn carrying it. That is a reasonable thing to want and a
+ * terrible thing to assume, so both commands say which they are talking to.
+ */
+function burnClaim(chatId: number): string {
+  return `sngl:${chatId}`;
+}
+
 const burn: Command = {
   name: 'burn',
   aliases: ['build_burn'],
@@ -233,9 +251,19 @@ const burn: Command = {
     const amount = required(ctx, 1, 'an amount', burn);
     const owner = required(ctx, 2, 'the wallet holding the tokens', burn);
 
-    return formatUnsignedTx(
-      await ops.buildBurn({ mint, amount, owner, chain: ctx.args[3] }),
-    );
+    const claim = burnClaim(ctx.chatId);
+    const built = await ops.buildBurn({ mint, amount, owner, memo: claim, chain: ctx.args[3] });
+
+    // Said on the way out rather than left in the payload for someone to
+    // notice: the memo is already in the transaction they are about to sign,
+    // and it is the only reason this burn can be credited to them at all.
+    const note =
+      `\n\nThis burn carries the memo ${code(claim)}, which is what credits it ` +
+      `to ${ctx.chatType === 'private' ? 'you' : 'this group'} when you ` +
+      `${code('/redeem')} the signature. Burn without it and anyone who sees the ` +
+      'signature can claim it first.';
+
+    return formatUnsignedTx(built) + note;
   },
 };
 
@@ -265,6 +293,10 @@ const redeem: Command = {
       await ops.redeemBurn({
         signature,
         mint,
+        // Not a parameter. A claimant who can name their own expectation is not
+        // a claimant, they are anybody with a signature — so this comes from
+        // the chat the command arrived in and nowhere else.
+        expectMemo: burnClaim(ctx.chatId),
         purpose: ctx.args.slice(2).join(' ').trim() || undefined,
       }),
     );

@@ -176,6 +176,60 @@ describe('building a burn', () => {
   });
 });
 
+describe('the memo that makes a burn yours', () => {
+  beforeEach(() => {
+    accounts.set(MINT, extendedMint(baseMint()));
+    accounts.set(ata(), tokenAccount({ amount: 5_000_000_000n }));
+  });
+
+  function burnWithMemo(memo: string) {
+    return buildBurn(SOLANA, { owner: OWNER, mint: MINT, amount: '1000', memo });
+  }
+
+  it('writes the claim into the transaction, signed with it', async () => {
+    const built = await burnWithMemo('sngl:840193');
+    const instructions = Transaction.from(
+      Buffer.from(built.payload.transaction as string, 'base64'),
+    ).instructions;
+
+    const memo = instructions.find(
+      (instruction) =>
+        instruction.programId.toBase58() === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
+    );
+
+    // The point of putting it here rather than in a database: it is signed
+    // along with the burn, so nobody can attach their claim to somebody else's
+    // burn without making one of their own.
+    expect(memo?.data.toString('utf8')).toBe('sngl:840193');
+    expect(memo?.keys[0]?.isSigner).toBe(true);
+    expect(instructions).toHaveLength(2);
+  });
+
+  it('says what the memo is for, since it is public forever', async () => {
+    const built = await burnWithMemo('sngl:840193');
+
+    expect(built.warnings.join(' ')).toMatch(/public and permanent/i);
+    expect(built.warnings.join(' ')).toMatch(/quotes the signature first/i);
+  });
+
+  it('leaves the transaction alone when there is no memo', async () => {
+    const built = await buildBurn(SOLANA, { owner: OWNER, mint: MINT, amount: '1000' });
+    const instructions = Transaction.from(
+      Buffer.from(built.payload.transaction as string, 'base64'),
+    ).instructions;
+
+    // A burn with no claim is still a perfectly good burn. It is just one that
+    // only its signer can prove is theirs.
+    expect(instructions).toHaveLength(1);
+    expect(built.warnings.join(' ')).not.toMatch(/public and permanent/i);
+  });
+
+  it('refuses a memo of nothing, and one too long to be a memo', async () => {
+    await expect(burnWithMemo('   ')).rejects.toThrow(/attaches this burn to nobody/i);
+    await expect(burnWithMemo('x'.repeat(257))).rejects.toThrow(/limit here is 256/i);
+  });
+});
+
 describe('what it refuses to build', () => {
   it('refuses when the holder has no token account for the mint', async () => {
     accounts.set(MINT, extendedMint(baseMint()));

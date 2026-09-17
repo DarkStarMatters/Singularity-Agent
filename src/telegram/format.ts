@@ -33,7 +33,7 @@ export function esc(value: unknown): string {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function code(value: unknown): string {
+export function code(value: unknown): string {
   return `<code>${esc(value)}</code>`;
 }
 

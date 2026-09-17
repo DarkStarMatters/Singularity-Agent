@@ -129,6 +129,19 @@ const BASE_SIGNATURE_FEE = 5_000n;
 const IX_TRANSFER_CHECKED = 12;
 /** ...and for BurnChecked, which carries the decimals the same way. */
 const IX_BURN_CHECKED = 15;
+/**
+ * The SPL Memo program.
+ *
+ * A memo is the only part of a transaction the signer writes in their own
+ * words, which makes it the only thing that can attach a *claim* to a burn
+ * without anybody holding anything. A signature is public the moment it lands
+ * and proves nothing about who quotes it; a memo is signed along with the rest
+ * of the transaction, so nobody can put their name on somebody else's burn
+ * without making a burn of their own.
+ */
+const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+/** Long enough for any claim worth making, short enough to stay a memo. */
+const MAX_MEMO_LENGTH = 256;
 /** Token account layout: the balance at 64, the frozen flag past the delegate. */
 const TOKEN_ACCOUNT_AMOUNT_OFFSET = 64;
 const TOKEN_ACCOUNT_STATE_OFFSET = 108;
@@ -1456,6 +1469,15 @@ function burnCheckedInstruction(args: {
   });
 }
 
+/** A memo instruction: the text, and the signer it is attributable to. */
+function memoInstruction(text: string, signer: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: MEMO_PROGRAM_ID,
+    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
+    data: Buffer.from(text, 'utf8'),
+  });
+}
+
 /**
  * Build an unsigned burn.
  *
@@ -1472,7 +1494,7 @@ function burnCheckedInstruction(args: {
  */
 export async function buildBurn(
   chain: ChainSpec,
-  params: { owner: string; mint: string; amount: string },
+  params: { owner: string; mint: string; amount: string; memo?: string },
 ): Promise<UnsignedTx> {
   const owner = requirePubkey(params.owner, 'owner address');
   const mint = requirePubkey(params.mint, 'mint address');
@@ -1531,6 +1553,26 @@ export async function buildBurn(
       }),
     );
 
+    if (params.memo !== undefined) {
+      const memo = params.memo.trim();
+      if (!memo) {
+        throw new SingularityError(
+          'EMPTY_MEMO',
+          'A memo of nothing attaches this burn to nobody.',
+          'Leave the memo off entirely, or pass the claim this burn is meant to satisfy.',
+        );
+      }
+      if (Buffer.byteLength(memo, 'utf8') > MAX_MEMO_LENGTH) {
+        throw new SingularityError(
+          'MEMO_TOO_LONG',
+          `That memo is ${Buffer.byteLength(memo, 'utf8')} bytes, and the limit here is ${MAX_MEMO_LENGTH}.`,
+          'A memo carries a claim, not a document.',
+        );
+      }
+
+      transaction.add(memoInstruction(memo, owner));
+    }
+
     transaction.feePayer = owner;
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
@@ -1540,6 +1582,12 @@ export async function buildBurn(
       'A burn is irreversible. These tokens are destroyed rather than moved — nobody receives them, and nobody can send them back.',
       `After it lands, ${shortAddress(owner.toBase58())} holds ${formatUnits(held - value, facts.decimals)} of this mint.`,
     ];
+
+    if (params.memo) {
+      warnings.push(
+        'The memo is written into the transaction and is public and permanent, the same as everything else in it. It is what lets this burn be credited to you rather than to whoever quotes the signature first.',
+      );
+    }
 
     if (chain.testnet) {
       warnings.push(`${chain.name} is a test network — these tokens have no value.`);

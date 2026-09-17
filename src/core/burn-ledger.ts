@@ -104,6 +104,16 @@ export interface BurnCriteria {
   owner?: string;
   /** The least that must have been destroyed, in base units. */
   minimum?: bigint;
+  /**
+   * Text the burn's memo must contain for this claim to be the claimant's.
+   *
+   * This is what makes a burn *attributable*. Without it, redemption is
+   * first-come-first-served on public data: a signature is visible the moment
+   * it lands, and whoever quotes it first takes the credit. A memo is signed
+   * along with the rest of the transaction, so putting somebody else's claim in
+   * one costs a burn of your own.
+   */
+  memo?: string;
 }
 
 /**
@@ -125,6 +135,28 @@ export function selectBurn(receipt: BurnReceipt, criteria: BurnCriteria): BurnEv
       `That transaction burned ${found.join(', ')}, not ${criteria.mint}.`,
       'A burn counts for the mint it destroyed. Identity is the address — a token wearing the right symbol at the wrong address is a different token.',
     );
+  }
+
+  if (criteria.memo) {
+    const written = receipt.memo?.text ?? '';
+    if (!written) {
+      throw new SingularityError(
+        'BURN_MEMO_MISSING',
+        'That burn carries no memo, so there is nothing in it saying whose claim it is.',
+        'A burn without a memo is attributable to the wallet that signed it and to nobody else. Build the burn with the claim in its memo and it can be credited.',
+      );
+    }
+
+    // Folded for case only. A claim is an identifier, and the memo is the
+    // burner's own text — matching it loosely would be the one place where
+    // being generous lets one claim satisfy another.
+    if (!written.toLowerCase().includes(criteria.memo.toLowerCase())) {
+      throw new SingularityError(
+        'BURN_MEMO_MISMATCH',
+        `That burn's memo does not contain "${criteria.memo}".`,
+        'The memo is what ties a burn to a claim. A signature alone is public, so anyone could quote this one — the memo is the part only the burner could have written.',
+      );
+    }
   }
 
   const byOwner = criteria.owner

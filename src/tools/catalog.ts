@@ -266,6 +266,12 @@ export const TOOLS: ToolDefinition[] = [
         .string()
         .describe('Human decimal amount to destroy, e.g. "1000". Never base units.'),
       owner: z.string().describe('The wallet holding the tokens. It signs, and pays the fee.'),
+      memo: z
+        .string()
+        .optional()
+        .describe(
+          'Text written into the transaction as an SPL memo, signed along with everything else. This is what lets the burn be credited to a particular claimant later: a signature is public the moment it lands, so without a memo the first party to quote it takes the credit. Public and permanent.',
+        ),
       chain: z
         .string()
         .optional()
@@ -294,6 +300,12 @@ export const TOOLS: ToolDefinition[] = [
         .string()
         .optional()
         .describe('The least that must have been destroyed, as a human decimal amount, e.g. "1000".'),
+      expectMemo: z
+        .string()
+        .optional()
+        .describe(
+          "Text the burn's memo must contain. The memo is the only part of the transaction the burner wrote and signed, so it is what makes a burn attributable to a claimant rather than to whoever quotes the signature first.",
+        ),
       chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
     },
     run: (args) => ops.verifyBurn(args),

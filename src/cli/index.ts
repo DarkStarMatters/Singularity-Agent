@@ -202,10 +202,22 @@ program
   .requiredOption('-m, --mint <mint>', 'Mint address, or an address-book alias.')
   .requiredOption('-a, --amount <amount>', 'Human decimal amount to destroy.')
   .requiredOption('-o, --owner <owner>', 'The wallet holding the tokens.')
+  .option(
+    '--memo <memo>',
+    'Text to write into the transaction, signed with it. What lets this burn be credited to you rather than to whoever quotes the signature first.',
+  )
   .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
-  .action(async (options: { mint: string; amount: string; owner: string; chain: string }) => {
-    emit(await ops.buildBurn(options), render.renderUnsignedTx);
-  });
+  .action(
+    async (options: {
+      mint: string;
+      amount: string;
+      owner: string;
+      memo?: string;
+      chain: string;
+    }) => {
+      emit(await ops.buildBurn(options), render.renderUnsignedTx);
+    },
+  );
 
 program
   .command('verify-burn')
@@ -214,11 +226,18 @@ program
   .option('-m, --mint <mint>', 'The mint the burn must be of.')
   .option('-o, --owner <owner>', 'The wallet that must have signed it.')
   .option('--min <amount>', 'The least that must have been destroyed.')
+  .option('--expect-memo <text>', "Text the burn's memo must contain for this claim to be yours.")
   .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
   .action(
     async (
       signature: string,
-      options: { mint?: string; owner?: string; min?: string; chain: string },
+      options: {
+        mint?: string;
+        owner?: string;
+        min?: string;
+        expectMemo?: string;
+        chain: string;
+      },
     ) => {
       emit(
         await ops.verifyBurn({
@@ -226,6 +245,7 @@ program
           mint: options.mint,
           owner: options.owner,
           minimum: options.min,
+          expectMemo: options.expectMemo,
           chain: options.chain,
         }),
         render.renderBurnClaim,
@@ -240,6 +260,7 @@ program
   .requiredOption('-m, --mint <mint>', 'The mint the burn must be of.')
   .option('-o, --owner <owner>', 'The wallet that must have signed it.')
   .option('--min <amount>', 'The least that must have been destroyed.')
+  .option('--expect-memo <text>', "Text the burn's memo must contain for this claim to be yours.")
   .option('-p, --purpose <purpose>', 'What this burn is being redeemed for.')
   .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
   .action(
@@ -250,6 +271,7 @@ program
         owner?: string;
         min?: string;
         purpose?: string;
+        expectMemo?: string;
         chain: string;
       },
     ) => {
@@ -260,6 +282,7 @@ program
           owner: options.owner,
           minimum: options.min,
           purpose: options.purpose,
+          expectMemo: options.expectMemo,
           chain: options.chain,
         }),
         render.renderBurnClaim,

@@ -265,6 +265,69 @@ describe('deciding whether a burn satisfies a claim', () => {
   });
 });
 
+describe('whose burn it is', () => {
+  function receiptWithMemo(memo?: string) {
+    return {
+      chain: 'solana',
+      signature: SIGNATURE,
+      slot: 1,
+      burns: [
+        {
+          mint: MINT,
+          owner: OWNER,
+          account: ACCOUNT,
+          amount: { raw: '1000000', formatted: '1', decimals: 6, symbol: 'tokens' },
+        },
+      ],
+      ...(memo ? { memo: { text: memo, untrusted: true as const, source: 'a memo' } } : {}),
+      completeness: { kind: 'exhaustive' as const, note: '' },
+      note: '',
+    };
+  }
+
+  it('accepts a burn whose memo carries the claim', () => {
+    const chosen = selectBurn(receiptWithMemo('sngl:840193'), {
+      mint: MINT,
+      memo: 'sngl:840193',
+    });
+
+    expect(chosen.mint).toBe(MINT);
+  });
+
+  it('accepts a claim sitting inside a longer memo', () => {
+    // People write sentences. The claim has to be *in* the memo, not be the
+    // whole of it, or the first person to add a word loses their burn.
+    const chosen = selectBurn(receiptWithMemo('burning 1000 for sngl:840193 — thanks'), {
+      mint: MINT,
+      memo: 'sngl:840193',
+    });
+
+    expect(chosen.owner).toBe(OWNER);
+  });
+
+  it('refuses a burn carrying somebody else\u2019s claim', () => {
+    // The whole attack this closes: watch the chain, see a burn, quote the
+    // signature before its owner does. The signature is public; the memo is
+    // the part only the burner could write.
+    expect(() =>
+      selectBurn(receiptWithMemo('sngl:111111'), { mint: MINT, memo: 'sngl:840193' }),
+    ).toThrow(/does not contain "sngl:840193"/);
+  });
+
+  it('refuses a burn with no memo at all when a claim is required', () => {
+    expect(() => selectBurn(receiptWithMemo(), { mint: MINT, memo: 'sngl:840193' })).toThrow(
+      /carries no memo/i,
+    );
+  });
+
+  it('still accepts any burn when no claim is required', () => {
+    // The passing side. A burn nobody is competing for does not need a memo,
+    // and requiring one everywhere would break every claim made before this
+    // existed.
+    expect(selectBurn(receiptWithMemo(), { mint: MINT }).mint).toBe(MINT);
+  });
+});
+
 describe('spending a burn once', () => {
   let directory: string;
 

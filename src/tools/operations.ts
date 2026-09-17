@@ -706,6 +706,7 @@ export async function buildBurn(options: {
   mint: string;
   amount: string;
   owner: string;
+  memo?: string;
   chain?: string;
 }): Promise<UnsignedTx> {
   const chain = getChain(options.chain ?? 'solana');
@@ -721,7 +722,12 @@ export async function buildBurn(options: {
   const owner = await toAddress(options.owner, chain);
   const mint = await toAddress(options.mint, chain);
 
-  return buildSolanaBurn(chain, { owner, mint, amount: options.amount });
+  return buildSolanaBurn(chain, {
+    owner,
+    mint,
+    amount: options.amount,
+    ...(options.memo ? { memo: options.memo } : {}),
+  });
 }
 
 /** A burn, and what it satisfies. */
@@ -748,7 +754,7 @@ function solanaChain(named: string | undefined, verb: string): ChainSpec {
 
 async function criteriaFor(
   chain: ChainSpec,
-  options: { mint?: string; owner?: string; minimum?: string },
+  options: { mint?: string; owner?: string; minimum?: string; expectMemo?: string },
   receipt: BurnReceipt,
 ): Promise<BurnCriteria | undefined> {
   if (!options.mint) return undefined;
@@ -765,7 +771,7 @@ async function criteriaFor(
       ? parseUnits(options.minimum, decimals)
       : undefined;
 
-  return { mint, owner, minimum };
+  return { mint, owner, minimum, ...(options.expectMemo ? { memo: options.expectMemo } : {}) };
 }
 
 /**
@@ -782,6 +788,8 @@ export async function verifyBurn(options: {
   mint?: string;
   owner?: string;
   minimum?: string;
+  /** Text the burn's memo must contain for this claim to be the caller's. */
+  expectMemo?: string;
 }): Promise<BurnClaim> {
   const chain = solanaChain(options.chain, 'Burn verification');
   const receipt = await verifySolanaBurn(chain, options.signature);
@@ -813,6 +821,12 @@ export async function redeemBurn(options: {
   owner?: string;
   minimum?: string;
   purpose?: string;
+  /**
+   * Text the burn's memo must contain. Where a caller has an identity of its
+   * own — a chat, an account — this is how a burn is credited to *them* rather
+   * than to whoever quotes the public signature first.
+   */
+  expectMemo?: string;
 }): Promise<BurnClaim & { redemption: Redemption }> {
   const chain = solanaChain(options.chain, 'Burn redemption');
 
