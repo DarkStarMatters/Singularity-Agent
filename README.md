@@ -145,6 +145,9 @@ that mapping so the three cannot drift:
 | `/resolve` | identify an address or hash | `/health` | which RPCs are reachable |
 | `/fees` | current gas conditions | `/chains` | what is supported |
 | `/block` | fetch a block | `/forget` | drop this chat's history |
+| `/mint` | what a mint can do to you | `/identity` | is this the real token |
+| `/burn` | build an **unsigned** burn | `/verifyburn` | confirm a burn happened |
+| `/redeem` | spend a burn, once | | |
 
 | Where | When it answers conversationally |
 | --- | --- |
@@ -345,6 +348,18 @@ singularity decode 0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53
 # Build an UNSIGNED transfer for your own wallet to sign.
 singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC
 
+# What can this mint still do to you? Authorities, extensions, who holds each.
+singularity mint 5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump
+
+# Is this the real one? --fetch also reads the accounts the mint declares.
+singularity identity 5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump --fetch
+
+# Build an UNSIGNED burn. Nothing receives these; they stop existing.
+singularity burn --mint <mint> --amount 1000 --owner <your wallet>
+
+# Confirm a burn happened, and that it was the mint you expected.
+singularity verify-burn <signature> --mint <mint>
+
 # Which of your configured endpoints are actually up?
 singularity doctor
 ```
@@ -367,6 +382,10 @@ Add `--json` to any command for machine-readable output.
 | `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
 | `decode` | Decode EVM calldata into a signature and arguments. |
 | `build_transfer` | Build an **unsigned** transfer payload. |
+| `mint_audit` | What a Solana mint permits: authorities, Token-2022 extensions, and who holds each power. |
+| `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
+| `build_burn` | Build an **unsigned** burn for the holder to sign. |
+| `verify_burn` | Confirm a burn from its signature, and check it against a claim. |
 
 Every tool is annotated `readOnlyHint: true`. Errors come back as structured results
 carrying a code and a hint, rather than as transport exceptions — so a model can correct

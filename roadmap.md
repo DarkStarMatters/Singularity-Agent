@@ -21,6 +21,54 @@ non-goals."
 
 ---
 
+## Shipped — v0.0.7, the half of Solana that could not be read
+
+*Everything in this section landed after v0.0.6. Four roadmap items and a chain batch,
+which is unusual — they turned out to be one piece of work: a token this project could
+not name led to every other gap around it.*
+
+**Token-2022 mints are named, and their scan no longer fails open** (Phase 1.4, closed).
+Their text lives in the mint account rather than a Metaplex PDA, so every pump.fun mint
+since the program switch — including this project's own — rendered as its address. Three
+passes now, cheapest first, and a metadata record must name the mint back before it is
+believed. The Token-2022 half of a token scan used to be caught into an empty list, so one
+rate-limited call cost a wallet every Token-2022 holding it had under a note promising
+otherwise; it fails over instead.
+
+**`build_transfer` stopped building transactions that could not land.** Program id and
+associated-account derivation were hardcoded to legacy SPL Token, and TransferChecked has
+the same discriminator under Token-2022 — so the payload serialized cleanly, summarized
+correctly, and was addressed to a program that does not own the accounts.
+
+**`mint_audit` answers what a mint permits** (Phase 1.5). Can more be printed, can an
+account be frozen, can somebody move these out of a wallet, can the name change after a
+purchase. Powers with the address holding each, settled facts for what is closed off, and
+deliberately no score.
+
+**A burn, built and then spent once** (Phases 1.6 and 1.7). `build_burn` returns an
+unsigned burn — the one write a read-only tool can stand behind, because a burn has no
+receiving end and therefore no key to trust — and `verify_burn` plus `redeem` confirm one
+at finalized commitment and spend it exactly once.
+
+**`token_identity` reads what a mint declares, and whether it can be taken back**
+(Phase 1.8). Where the update authority is revoked *and* the link is content-addressed,
+the declared accounts are fixed at mint time; the document is hashed against its CID on
+arrival, so "content-addressed" is a check rather than a description.
+
+**Five EVM L2s** (Phase 3): Blast, Mantle, Mode, Fraxtal and opBNB, each verified live
+before it was written down. Polygon zkEVM was refused for serving a 76-day-old head block.
+Failover became a test rather than a sentence.
+
+The through-line is the one this file keeps finding: every bug here was invisible from
+inside the test suite and obvious the first time the tool was pointed at a real address.
+The Token-2022 decoder passed eleven tests against a fixture built from the same wrong
+offset as the decoder. Mantle's ERC-20 MNT looked like a holding until a live balance
+printed the same number twice. A tenth of Solana had been unreadable for months because a
+version ceiling was set to 0. Contributing §2 says demoing it is how the Solana dust
+problem was found; that is still true, and it is still the fastest test in the repo.
+
+---
+
 ## Shipped — v0.0.6, the alias that cannot drift
 
 *Phase 2.3, which closes Phase 2. Everything in this section landed after v0.0.5.*

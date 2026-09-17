@@ -6,4 +6,4 @@
  * and the whitepaper's header line. A bump that misses one ships a plugin manifest
  * claiming a version the tool does not report.
  */
-export const VERSION = '0.0.6';
+export const VERSION = '0.0.7';
