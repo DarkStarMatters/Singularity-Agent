@@ -340,11 +340,16 @@ export function renderUnsignedTx(tx: UnsignedTx): string {
     heading(`Unsigned transaction — ${tx.chain}`),
     `  ${tx.summary}`,
     '',
-    `  ${bold('Payload')}`,
+    // Named for what it is rather than for the field it lives in. On Solana
+    // that field is called `transaction`, which reads as "the transaction" —
+    // the thing an explorer would show you — when it is the proposal, not the
+    // receipt. Only one of those exists at this point.
+    `  ${bold('Payload to sign — this is not a signature')}`,
     indent(JSON.stringify(tx.payload, null, 2), 4),
     '',
     `  ${bold('How to sign')}`,
     `    ${tx.signingHint}`,
+    `    ${dim('Signing and sending this is what produces a signature; that is the string to keep.')}`,
   ];
 
   if (tx.warnings.length) {

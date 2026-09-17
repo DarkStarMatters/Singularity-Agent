@@ -224,14 +224,46 @@ export function formatChains(chains: ChainSummary[]): string {
  * hex that pushes everything above it off-screen, and the warnings are the only
  * thing standing between someone and a signature.
  */
+/**
+ * An unsigned transaction, laid out so the long string cannot be mistaken for
+ * the other long string.
+ *
+ * The first version dumped every payload field under a heading of "Payload",
+ * and on Solana the field holding the bytes is called `transaction`. Somebody
+ * then asked to redeem a burn, reasonably pasted the thing labelled
+ * `transaction`, and got told it was not a signature — which was true, useless,
+ * and entirely the formatting's fault. A payload is a *proposal* and a signature
+ * is its *receipt*; they exist at different times and only one of them exists
+ * yet. So the signable string gets its own heading saying what it is, the rest
+ * of the payload moves under "Details", and the gap between the two is spelled
+ * out rather than left to be inferred from a field name.
+ */
 export function formatUnsignedTx(tx: UnsignedTx): string {
   const lines = [bold('Unsigned transaction'), '', esc(tx.summary), ''];
 
   for (const warning of tx.warnings) lines.push(`⚠️ ${esc(warning)}`);
 
-  lines.push('', `<i>${esc(tx.signingHint)}</i>`, '', bold('Payload'));
-  for (const [key, value] of Object.entries(tx.payload)) {
-    lines.push(`${esc(key)}: ${code(typeof value === 'string' ? value : JSON.stringify(value))}`);
+  const { transaction, ...rest } = tx.payload as { transaction?: unknown } & Record<string, unknown>;
+
+  if (typeof transaction === 'string') {
+    lines.push(
+      '',
+      bold('Sign this string'),
+      code(transaction),
+      '',
+      `<i>${esc(
+        'That is the transaction to sign — it is not a signature. Signing and sending it is what produces one: about 88 characters, no "+", "/" or "=". The signature is what /redeem wants; this string is not.',
+      )}</i>`,
+    );
+  }
+
+  lines.push('', `<i>${esc(tx.signingHint)}</i>`);
+
+  if (Object.keys(rest).length) {
+    lines.push('', bold('Details'));
+    for (const [key, value] of Object.entries(rest)) {
+      lines.push(`${esc(key)}: ${code(typeof value === 'string' ? value : JSON.stringify(value))}`);
+    }
   }
 
   lines.push('', '<i>Singularity holds no keys. Nothing here has been signed or broadcast.</i>');
