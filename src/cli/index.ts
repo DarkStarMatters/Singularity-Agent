@@ -197,6 +197,17 @@ program
   );
 
 program
+  .command('burn')
+  .description('Build an UNSIGNED burn of a Solana token for you to sign in your own wallet.')
+  .requiredOption('-m, --mint <mint>', 'Mint address, or an address-book alias.')
+  .requiredOption('-a, --amount <amount>', 'Human decimal amount to destroy.')
+  .requiredOption('-o, --owner <owner>', 'The wallet holding the tokens.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
+  .action(async (options: { mint: string; amount: string; owner: string; chain: string }) => {
+    emit(await ops.buildBurn(options), render.renderUnsignedTx);
+  });
+
+program
   .command('mcp')
   .description('Run the MCP server on stdio, for Claude Code and other MCP clients.')
   .action(async () => {

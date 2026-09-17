@@ -1,5 +1,8 @@
 import { adapterFor } from '../adapters/index.js';
-import { auditMint as auditSolanaMint } from '../adapters/solana.js';
+import {
+  auditMint as auditSolanaMint,
+  buildBurn as buildSolanaBurn,
+} from '../adapters/solana.js';
 import { allChains, getChain, portfolioChains } from '../core/registry.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
@@ -672,4 +675,38 @@ export async function auditMint(options: { mint: string; chain?: string }): Prom
   }
 
   return auditSolanaMint(chain, options.mint);
+}
+
+/**
+ * Build an unsigned burn.
+ *
+ * Both addresses pour through `toAddress`, which is not ceremony: an alias is
+ * the one input this tool does not validate against a chain, and a burn is the
+ * one instruction that cannot be undone. A pinned alias that has drifted stops
+ * the call here rather than destroying the wrong mint.
+ *
+ * Solana only. An ERC-20 has no standard burn — some contracts expose one, most
+ * do not, and the usual substitute is a transfer to an address nobody holds the
+ * key for, which is not the same thing and must not be built as though it were.
+ */
+export async function buildBurn(options: {
+  mint: string;
+  amount: string;
+  owner: string;
+  chain?: string;
+}): Promise<UnsignedTx> {
+  const chain = getChain(options.chain ?? 'solana');
+
+  if (chain.family !== 'svm') {
+    throw new SingularityError(
+      'BURN_UNSUPPORTED',
+      `Burning is only built for Solana mints, and ${chain.name} is not a Solana chain.`,
+      'On an EVM chain a burn is whatever the contract chose to implement, if anything. Sending to a dead address is not a burn and this tool will not build one as if it were.',
+    );
+  }
+
+  const owner = await toAddress(options.owner, chain);
+  const mint = await toAddress(options.mint, chain);
+
+  return buildSolanaBurn(chain, { owner, mint, amount: options.amount });
 }

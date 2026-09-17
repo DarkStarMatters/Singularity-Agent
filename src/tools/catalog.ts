@@ -254,6 +254,29 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
     run: (args) => ops.buildTransfer(args),
   }),
+
+  defineTool({
+    name: 'build_burn',
+    title: 'Build an unsigned burn',
+    description:
+      'Build an UNSIGNED burn of a Solana token for the holder to sign in their own wallet. Singularity holds no keys and never signs or broadcasts. A burn destroys the tokens permanently: nobody receives them and nobody can return them, so always show the returned `summary` and every `warning` before the user signs. Refuses rather than building something that cannot land — no token account, a frozen account, or a balance below the amount. Warns when the mint authority is still live, because a burn against a mint that can print more reduces a balance without reducing supply. Solana only.',
+    shape: {
+      mint: z.string().describe('Mint address, or an address-book alias for one.'),
+      amount: z
+        .string()
+        .describe('Human decimal amount to destroy, e.g. "1000". Never base units.'),
+      owner: z.string().describe('The wallet holding the tokens. It signs, and pays the fee.'),
+      chain: z
+        .string()
+        .optional()
+        .describe('Solana chain id or alias. Defaults to "solana"; a non-Solana chain is refused.'),
+    },
+    // Building is a read: it returns bytes and changes nothing. What the user
+    // then signs is destructive, and that is said in the description, the
+    // summary and the warnings rather than by mislabelling this call.
+    annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
+    run: (args) => ops.buildBurn(args),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

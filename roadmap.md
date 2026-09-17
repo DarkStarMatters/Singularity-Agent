@@ -392,6 +392,48 @@ read as "nothing here can happen to you", which is the one thing it must never s
 
 ---
 
+### 1.6 An unsigned burn — **shipped**
+
+`build_burn` (CLI `singularity burn`, Telegram `/burn`) builds an unsigned `BurnChecked`
+for the holder to sign in their own wallet. It is the same seam `build_transfer` uses and
+the same custody boundary — see "Explicit non-goals", which this does not move.
+
+It is here because a burn is the one write a read-only tool can stand behind. There is no
+receiving end, so unlike "send it to an address we control" there is no key to trust,
+nothing to rug and no custody to explain; and the effect is verifiable afterwards by
+anyone, because supply is public. That makes it the only sink this project can offer
+without contradicting what it is.
+
+It is also the one payload here that destroys something, so it refuses rather than builds
+wherever the chain already says the transaction cannot land: no token account for the
+mint (with the address that would have held it), a frozen account (a frozen account
+cannot burn, and `mint_audit` names who can thaw it), a balance below the amount (quoting
+the balance), or an amount of zero. Every refusal is a fact read off the chain rather than
+a guess at intent. An irreversible instruction is the wrong place to discover a wrong
+assumption at signing time.
+
+Two things it says out loud:
+
+- **Whether the burn means anything.** With a live mint authority, a burn reduces one
+  balance and the supply can be put straight back — so every claim of deflation built on
+  it is a claim about somebody’s restraint rather than about the chain. The warning names
+  the authority. A mint that has revoked it gets a clean payload and no warning it has not
+  earned.
+- **That a permanent delegate could already have done this.** If the mint has one, those
+  tokens can be burned out of the wallet without the holder signing anything, which is
+  worth knowing before choosing to do it deliberately.
+
+Both addresses pour through the `settle` funnel from 2.3. That is not ceremony: an alias
+is the one input this tool does not validate against a chain, and a burn is the one
+instruction that cannot be undone, so a pinned alias that has drifted stops the call
+rather than destroying the wrong mint.
+
+EVM chains are refused. An ERC-20 has no standard burn — some contracts expose one, most
+do not, and the usual substitute is a transfer to an address nobody holds the key for,
+which is a different thing and must not be built as though it were the same.
+
+---
+
 ---
 
 ## Phase 2 — Trust boundaries
@@ -540,8 +582,12 @@ consolidated view across all four families.
 **Signing and broadcasting — permanently.** Not a phase, not a flag, not a plugin. Read-
 only is what makes broad autonomy safe to grant; the moment keys enter the process the
 threat model shifts from "wrong answer" to "irreversible loss," and Phase 2's injection
-surface escalates from nuisance to exploit. `build_transfer` hands an unsigned payload to
-a wallet the user already trusts. That seam stays.
+surface escalates from nuisance to exploit. `build_transfer` and `build_burn` hand an unsigned
+payload to a wallet the user already trusts. That seam stays, and the arrival of a burn
+builder does not move it: building an instruction is a read that returns bytes, and every
+key, signature and broadcast remains on the other side of the line. The reason a burn is
+worth building at all is that it needs nothing on *this* side either — no receiving
+address, no treasury, no key anywhere.
 
 **Fiat pricing.** It would convert a deterministic tool into one carrying an oracle
 dependency, a staleness question, and a trust assumption about the price source. Pricing

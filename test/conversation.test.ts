@@ -88,6 +88,7 @@ describe('tool catalogue', () => {
     expect(TOOLS.map((t) => t.name).sort()).toEqual([
       'balance',
       'block',
+      'build_burn',
       'build_transfer',
       'chains',
       'decode',

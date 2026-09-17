@@ -35,6 +35,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   decode: 'decode',
   mint_audit: 'mint',
   build_transfer: 'transfer',
+  build_burn: 'burn',
 };
 
 describe('telegram command surface', () => {

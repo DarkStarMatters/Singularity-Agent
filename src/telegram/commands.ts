@@ -223,6 +223,22 @@ const mint: Command = {
   },
 };
 
+const burn: Command = {
+  name: 'burn',
+  aliases: ['build_burn'],
+  usage: '/burn <mint> <amount> <your wallet> [chain]',
+  summary: 'Build an unsigned burn for you to sign yourself',
+  async run(ctx) {
+    const mint = required(ctx, 0, 'a mint address', burn);
+    const amount = required(ctx, 1, 'an amount', burn);
+    const owner = required(ctx, 2, 'the wallet holding the tokens', burn);
+
+    return formatUnsignedTx(
+      await ops.buildBurn({ mint, amount, owner, chain: ctx.args[3] }),
+    );
+  },
+};
+
 const health: Command = {
   name: 'health',
   usage: '/health [chain,chain,…]',
@@ -335,6 +351,7 @@ const COMMAND_LIST: Command[] = [
   read,
   decode,
   mint,
+  burn,
   health,
   chat,
   x,

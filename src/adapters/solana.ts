@@ -29,7 +29,15 @@ import {
   untrustedText,
   type UntrustedText,
 } from '../core/envelope.js';
-import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress, toIso } from '../core/format.js';
+import {
+  amount,
+  explorerUrl,
+  formatUnits,
+  nativeAmount,
+  parseUnits,
+  shortAddress,
+  toIso,
+} from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { checkImpersonation } from '../core/impersonation.js';
 
@@ -97,6 +105,12 @@ const ACCOUNT_BATCH = 100;
 const BASE_SIGNATURE_FEE = 5_000n;
 /** SPL Token program instruction discriminator for TransferChecked. */
 const IX_TRANSFER_CHECKED = 12;
+/** ...and for BurnChecked, which carries the decimals the same way. */
+const IX_BURN_CHECKED = 15;
+/** Token account layout: the balance at 64, the frozen flag past the delegate. */
+const TOKEN_ACCOUNT_AMOUNT_OFFSET = 64;
+const TOKEN_ACCOUNT_STATE_OFFSET = 108;
+const TOKEN_ACCOUNT_FROZEN = 2;
 /**
  * Most mints an unfiltered scan will return. Solana lets anyone airdrop a token
  * account onto any wallet, so an active address accumulates thousands of dust
@@ -662,6 +676,10 @@ interface MintFacts {
   programId: PublicKey;
   /** Token-2022 extensions, empty under the legacy program. */
   extensions: Map<number, Buffer>;
+  /** Live mint authority, if any. Absent means supply is fixed forever. */
+  mintAuthority?: string;
+  /** Live freeze authority, if any. Absent means no account can be frozen. */
+  freezeAuthority?: string;
 }
 
 /**
@@ -689,10 +707,14 @@ async function readMintFacts(
   const isToken2022 = programId.equals(TOKEN_2022_PROGRAM_ID);
   if (!isToken2022 && !programId.equals(TOKEN_PROGRAM_ID)) throw notAMint;
 
+  const view = Buffer.from(info.data);
+
   return {
-    decimals: Buffer.from(info.data).readUInt8(MINT_DECIMALS_OFFSET),
+    decimals: view.readUInt8(MINT_DECIMALS_OFFSET),
     programId,
     extensions: isToken2022 ? tlvExtensions(info.data) : new Map(),
+    mintAuthority: readOptionalAuthority(view, 0),
+    freezeAuthority: readOptionalAuthority(view, 46),
   };
 }
 
@@ -1372,5 +1394,157 @@ export async function auditMint(chain: ChainSpec, mintAddress: string): Promise<
           : ''),
       explorerUrl: explorerUrl(chain, 'address', mint.toBase58()),
     } satisfies MintAudit;
+  });
+}
+
+/** Manual BurnChecked, alongside the hand-rolled TransferChecked above. */
+function burnCheckedInstruction(args: {
+  account: PublicKey;
+  mint: PublicKey;
+  owner: PublicKey;
+  value: bigint;
+  decimals: number;
+  programId: PublicKey;
+}): TransactionInstruction {
+  const data = Buffer.alloc(10);
+  data.writeUInt8(IX_BURN_CHECKED, 0);
+  data.writeBigUInt64LE(args.value, 1);
+  data.writeUInt8(args.decimals, 9);
+
+  return new TransactionInstruction({
+    programId: args.programId,
+    keys: [
+      { pubkey: args.account, isSigner: false, isWritable: true },
+      { pubkey: args.mint, isSigner: false, isWritable: true },
+      { pubkey: args.owner, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Build an unsigned burn.
+ *
+ * The only write this tool can honestly stand behind. A burn has no receiving
+ * end, so unlike "send it to the treasury" there is no key to trust, nothing to
+ * rug, and no custody to explain — the holder signs it in their own wallet,
+ * exactly as with a transfer, and the effect is then verifiable by anyone,
+ * because supply is public.
+ *
+ * It is also the one payload here that destroys something, so everything below
+ * is refused rather than built when it cannot land. An irreversible instruction
+ * is the wrong place to find out that an assumption was wrong, and every reason
+ * for refusing here is a fact read off the chain rather than a guess at intent.
+ */
+export async function buildBurn(
+  chain: ChainSpec,
+  params: { owner: string; mint: string; amount: string },
+): Promise<UnsignedTx> {
+  const owner = requirePubkey(params.owner, 'owner address');
+  const mint = requirePubkey(params.mint, 'mint address');
+
+  return withConnection(chain, 'buildBurn', async (connection) => {
+    const facts = await readMintFacts(connection, mint, chain);
+    const value = parseUnits(params.amount, facts.decimals);
+
+    if (value === 0n) {
+      throw new SingularityError(
+        'BURN_AMOUNT_ZERO',
+        `${params.amount} rounds to zero at ${facts.decimals} decimals, so this burn would destroy nothing.`,
+        'Pass an amount of at least one base unit.',
+      );
+    }
+
+    const account = deriveAta(owner, mint, facts.programId);
+    const info = await connection.getAccountInfo(account);
+
+    if (!info?.data || info.data.length < TOKEN_ACCOUNT_STATE_OFFSET + 1) {
+      throw new SingularityError(
+        'NO_TOKEN_ACCOUNT',
+        `${shortAddress(owner.toBase58())} holds no token account for mint ${shortAddress(mint.toBase58())} on ${chain.name}.`,
+        `Its associated token account under ${facts.programId.toBase58()} would be ${account.toBase58()}, and that account does not exist. Nothing can be burned from an account that was never created.`,
+      );
+    }
+
+    const view = Buffer.from(info.data);
+    const held = view.readBigUInt64LE(TOKEN_ACCOUNT_AMOUNT_OFFSET);
+
+    if (view.readUInt8(TOKEN_ACCOUNT_STATE_OFFSET) === TOKEN_ACCOUNT_FROZEN) {
+      throw new SingularityError(
+        'TOKEN_ACCOUNT_FROZEN',
+        `Token account ${shortAddress(account.toBase58())} is frozen, and a frozen account cannot burn.`,
+        'Whoever holds the freeze authority has to thaw it first; mint_audit names that address.',
+      );
+    }
+
+    if (held < value) {
+      throw new SingularityError(
+        'INSUFFICIENT_BALANCE',
+        `That account holds ${formatUnits(held, facts.decimals)} and the burn asks for ${params.amount}.`,
+        'A burn larger than the balance fails on submission. Amounts here are whole tokens, never base units.',
+      );
+    }
+
+    const transaction = new Transaction();
+    transaction.add(
+      burnCheckedInstruction({
+        account,
+        mint,
+        owner,
+        value,
+        decimals: facts.decimals,
+        programId: facts.programId,
+      }),
+    );
+
+    transaction.feePayer = owner;
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+
+    const warnings = [
+      'This transaction is unsigned. Review every field before signing.',
+      'A burn is irreversible. These tokens are destroyed rather than moved — nobody receives them, and nobody can send them back.',
+      `After it lands, ${shortAddress(owner.toBase58())} holds ${formatUnits(held - value, facts.decimals)} of this mint.`,
+    ];
+
+    if (chain.testnet) {
+      warnings.push(`${chain.name} is a test network — these tokens have no value.`);
+    }
+
+    // The fact that decides whether a burn means anything at all. With a live
+    // mint authority, a burn reduces one balance and the supply can be put
+    // straight back — every claim of deflation built on that is a claim about
+    // somebody's restraint rather than about the chain.
+    if (facts.mintAuthority) {
+      warnings.push(
+        `This mint can still create more tokens (mint authority ${facts.mintAuthority}), so burning reduces your balance without permanently reducing supply.`,
+      );
+    }
+
+    if (facts.extensions.has(EXT_PERMANENT_DELEGATE)) {
+      warnings.push(
+        'This mint has a permanent delegate, which can already burn these tokens out of any wallet without the holder signing anything.',
+      );
+    }
+
+    return {
+      chain: chain.id,
+      family: 'svm',
+      // The mint address, never its name: nothing read off the chain is
+      // interpolated into a summary, and a burn is the last place to start.
+      summary: `Burn ${params.amount} tokens of mint ${shortAddress(mint.toBase58())} held by ${shortAddress(owner.toBase58())} on ${chain.name}. This destroys them permanently.`,
+      payload: {
+        transaction: transaction
+          .serialize({ requireAllSignatures: false, verifySignatures: false })
+          .toString('base64'),
+        encoding: 'base64',
+        feePayer: owner.toBase58(),
+        recentBlockhash: blockhash,
+        lastValidBlockHeight,
+      },
+      signingHint:
+        'Base64 wire-format transaction. Deserialize with Transaction.from(Buffer.from(tx, "base64")), sign, then sendRawTransaction. The blockhash expires in ~60 seconds — rebuild if it lapses.',
+      warnings,
+    } satisfies UnsignedTx;
   });
 }
