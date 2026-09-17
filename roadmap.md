@@ -254,6 +254,14 @@ it served**, because a proxy that drops the header answers happily with current 
 Solana and UTXO reject `atBlock` outright — Solana RPC addresses state by commitment, not
 by slot, and `minContextSlot` bounds how *new* an answer may be, not how old.
 
+**Some endpoints do not say why.** Asked for a balance at a block it no longer holds,
+Mode's public node answers `0x` — an empty result where a quantity belongs — and the
+client fails decoding it. That matched none of the phrases the classifier knew, so it came
+back as an `RPC_ERROR` carrying a viem stack trace: a message telling a user that
+something broke, when what happened is that this endpoint cannot serve that block. An
+empty answer to a historical read is a claim about the state, not about the connection,
+and it is classified as one now.
+
 The invariant worth naming: a result carrying `atBlock` is always genuinely historical.
 Every path either serves the height or raises — `HISTORICAL_STATE_UNAVAILABLE` for a
 pruned endpoint, `HISTORICAL_STATE_UNSUPPORTED` for a family that cannot address the past
@@ -601,6 +609,38 @@ The limit worth stating: this says what a mint declares and whether that can cha
 cannot say whether the accounts declared are *honest* — a deployer can immutably publish a
 link to somebody else’s Telegram. What it removes is the class where the answer changes
 after you check it.
+
+---
+
+### 1.9 What a transfer costs on a rollup — **shipped**
+
+A rollup charges twice: once for executing the transaction on the L2, and once for posting
+its bytes to Ethereum. Only the first is in `gasPrice`, so `fees` — whose entire stated
+job is "what a simple transfer costs right now" — had been answering the first half of that
+on every rollup here since the day rollups were added.
+
+How wrong it was is not a constant, which is what makes this worth more than a rounding
+fix: the L1 share moves with Ethereum rather than with the L2. Measured across the OP-stack
+chains in this registry on one afternoon, it ran from a rounding error on Base, Optimism
+and Blast, through 1.3x on opBNB and 1.5x on Mode, to **249x on Fraxtal** — where the
+estimate read `0.00000002 FRAX` against a real cost of `0.00000506`. Blob-era L1 fees are
+low enough that four of six chains looked fine, which is exactly the shape of bug that
+survives a spot check.
+
+The L1 component is read from the OP-stack gas price oracle and added, with both halves
+shown separately. Two decisions:
+
+- **Probed, not configured.** A registry flag saying "this one is a rollup" is a
+  hand-maintained fact that goes stale, and every chain added later inherits the mistake.
+  The oracle either answers or it does not, and a chain without one is an L1 whose fee was
+  already complete.
+- **An unreadable oracle costs nothing.** It contributes zero and the estimate goes out
+  without the split, because a fee estimate that refuses to answer is worse than one
+  missing a component it names. A real zero and an unreadable oracle land in the same
+  place, which is honest: both mean the L2 fee is all this tool can show.
+
+It is an estimate rather than a quote — the L1 fee depends on the byte count of the
+transaction being posted, and this prices a fixed sample — and the note says so.
 
 ---
 

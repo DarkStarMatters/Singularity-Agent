@@ -130,9 +130,17 @@ function atBlockArg(options?: StateOptions): { blockNumber?: bigint } {
  * header or block as not found; hosted providers (Alchemy, Infura, QuickNode)
  * answer with a sentence about archive tiers. None of them are transport
  * failures, and none should be retried against the same endpoint.
+ *
+ * The last clause is the one that had to be learned the hard way. Some
+ * endpoints do not say anything at all: asked for a balance at a block they no
+ * longer hold, they answer  — an empty result where a quantity belongs —
+ * and the client fails decoding it. That surfaced as a viem stack trace under
+ * an RPC_ERROR, which tells a user that something broke rather than that this
+ * endpoint cannot serve that block. Mode's public endpoint does exactly this,
+ * and it is a claim about the state, not about the connection.
  */
 const PRUNED_STATE =
-  /missing trie node|state (?:is )?not available|state (?:is )?unavailable|state pruning|archive|header not found|block not found|old block|historical state/i;
+  /missing trie node|state (?:is )?not available|state (?:is )?unavailable|state pruning|archive|header not found|block not found|old block|historical state|decode zero data|zero data \("0x"\)|returned no data/i;
 
 /**
  * Turn a failed historical read into an answer about *why*.
@@ -169,6 +177,53 @@ async function historicalFailure(
     atBlock,
     `The endpoint answered "${message.split('\n')[0]?.slice(0, 160)}".`,
   );
+}
+
+/**
+ * The OP-stack gas price oracle, at the same address on every chain that has one.
+ *
+ * A rollup charges twice: once for execution on the L2, and once for posting the
+ * transaction's bytes to Ethereum. Only the first is in `gasPrice`, which makes
+ * "what a simple transfer costs right now" wrong by whatever the second happens
+ * to be — and *how* wrong moves with Ethereum rather than with the L2, so it
+ * cannot be estimated once and remembered. Measured across the OP-stack chains
+ * here, the L1 share ranged from a rounding error to 249x the L2 fee on the same
+ * afternoon.
+ */
+const GAS_PRICE_ORACLE = '0x420000000000000000000000000000000000000F' as const;
+
+/**
+ * A stand-in for the transaction being priced: roughly the RLP of a signed
+ * native transfer. The fee depends on the byte count, so a fixed sample gives a
+ * fixed approximation rather than a quote — which is what a fee *estimate* is,
+ * and the note says so.
+ */
+const SAMPLE_TRANSFER_BYTES = `0x${'f8'.padEnd(220, 'a')}` as const;
+
+/**
+ * What posting this transaction to Ethereum costs, or nothing on a chain that
+ * does not work that way.
+ *
+ * Probed rather than configured. A registry flag saying "this one is a rollup"
+ * is a hand-maintained fact that goes stale; the oracle either answers or it
+ * does not, and a chain without one is an L1 whose fee is already complete.
+ */
+async function l1DataFee(chain: ChainSpec): Promise<bigint> {
+  try {
+    const client = clientFor(chain);
+    const fee = await client.readContract({
+      address: GAS_PRICE_ORACLE,
+      abi: parseAbi(['function getL1Fee(bytes) view returns (uint256)']),
+      functionName: 'getL1Fee',
+      args: [SAMPLE_TRANSFER_BYTES],
+    });
+    return typeof fee === 'bigint' ? fee : 0n;
+  } catch {
+    // No oracle, or one that will not answer. Either way the L2 fee is the
+    // whole fee as far as this tool can show — and saying so by adding zero is
+    // better than failing a fee estimate over a component that may not exist.
+    return 0n;
+  }
 }
 
 export const evmAdapter: ChainAdapter = {
@@ -466,16 +521,27 @@ export const evmAdapter: ChainAdapter = {
 
       const maxFee = fees.maxFeePerGas ?? 0n;
       const priority = fees.maxPriorityFeePerGas ?? 0n;
+      const execution = maxFee * SIMPLE_TRANSFER_GAS;
+      const posting = await l1DataFee(chain);
 
       return {
         chain: chain.id,
-        simpleTransfer: nativeAmount(maxFee * SIMPLE_TRANSFER_GAS, chain),
+        simpleTransfer: nativeAmount(execution + posting, chain),
         details: {
           maxFeePerGas: `${formatGwei(maxFee)} gwei`,
           maxPriorityFeePerGas: `${formatGwei(priority)} gwei`,
           gasForSimpleTransfer: SIMPLE_TRANSFER_GAS.toString(),
+          ...(posting > 0n
+            ? {
+                l2ExecutionFee: nativeAmount(execution, chain).formatted,
+                l1DataFee: nativeAmount(posting, chain).formatted,
+              }
+            : {}),
         },
-        note: 'EIP-1559 estimate from the node. A token transfer costs roughly 3x a native transfer.',
+        note:
+          posting > 0n
+            ? 'EIP-1559 estimate from the node, plus what posting the transaction to Ethereum costs — on a rollup that second part is charged too, and it moves with Ethereum rather than with this chain. Priced against a sample transfer, so it is an estimate and not a quote. A token transfer costs roughly 3x a native transfer.'
+            : 'EIP-1559 estimate from the node. A token transfer costs roughly 3x a native transfer.',
       } satisfies FeeEstimate;
     } catch (err) {
       wrapRpc(chain, 'eth_feeHistory', err);

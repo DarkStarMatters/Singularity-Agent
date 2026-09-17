@@ -155,6 +155,25 @@ describe('EVM historical reads', () => {
     expect(err.hint).toMatch(/not an empty balance/i);
   });
 
+  it('reads an endpoint that answers with nothing as state it does not have', async () => {
+    evmHandler = (call) => {
+      if (call === 'getBlockNumber') return 21_000_000n;
+      // Not every endpoint says why. Mode’s public node, asked for a balance at
+      // a block it no longer holds, answers  where a quantity belongs and
+      // the client fails decoding it — which surfaced as a viem stack trace
+      // under RPC_ERROR, telling the user something broke rather than that this
+      // endpoint cannot serve that block.
+      throw new Error('Cannot decode zero data ("0x") with ABI parameters.');
+    };
+
+    const err = await failure(() =>
+      evmAdapter.getNativeBalance(ETHEREUM, ALICE, { atBlock: 1_000_000 }),
+    );
+
+    expect(err.code).toBe('HISTORICAL_STATE_UNAVAILABLE');
+    expect(err.hint).toMatch(/archive node/i);
+  });
+
   it('leaves an unrelated RPC failure as an RPC failure', async () => {
     evmHandler = () => {
       throw new Error('429 Too Many Requests');
