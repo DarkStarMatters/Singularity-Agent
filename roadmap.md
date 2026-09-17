@@ -293,9 +293,104 @@ Three decisions worth recording:
   did not run. The `kind` stays `exhaustive`, because the *token list* really is complete;
   it is the naming that is not.
 
-Still open here: **Token-2022 metadata-extension mints**, whose text sits in the mint
-account rather than a Metaplex PDA. They fall back to the short mint today, which is the
-honest answer for them rather than a wrong one.
+**Token-2022 metadata-extension mints are read too**, which closes what this item left
+open. Their text sits in the mint account rather than a Metaplex PDA — a base record
+padded out to a token account's 165 bytes, an account-type byte, then type-length-value
+entries — and falling back to the short mint stopped being good enough once the newer
+program became where new mints are created. The read is three passes, cheapest first, each
+covering only what the one before it could not name: the Metaplex PDA, then the mint
+account itself, then a pointed-to account for a mint that keeps its text elsewhere. A
+wallet of ordinary SPL tokens still costs one round trip.
+
+Two things worth recording:
+
+- **A metadata record has to name the mint back.** `MetadataPointer` is set by whoever
+  controls the mint and may name *any* account on the chain, so following it is reading an
+  address an attacker chose. The record it finds carries the mint it describes; if that is
+  a different mint, it is not this mint's name and it is dropped rather than shown with a
+  caveat. Without that check, pointing a worthless mint at USDC's metadata record makes it
+  read as USD Coin in every balance printed — impersonation with no deployment cost at all,
+  against the one field a reader treats as identity.
+- **The tests passed against the wrong offset.** The obvious guess is that extensions start
+  after the 82-byte base mint; the padding to 165 exists so a mint and an account cannot be
+  told apart by length. The fixture was built from the same guess as the decoder, so eleven
+  tests went green against a decoder that found nothing on a real mint. It took running the
+  CLI against a live one to see it — the Contributing §2 lesson again, from the other side.
+
+**And the Token-2022 half of a scan no longer fails open.** `getTokenBalances` listed
+Token-2022 accounts with `.catch(() => ({ value: [] }))`, so an endpoint that would not
+answer that one call — an old validator, a public node rate-limiting it — cost the wallet
+every Token-2022 holding it has, under a completeness note still promising "every SPL and
+Token-2022 mint held". That is the dropped-failure-comes-back-as-`[]` bug named at the top
+of this file, sitting in the middle of the newest half of Solana's supply. It throws now:
+`withConnection` fails over to the next endpoint, and a caller whose endpoints all refuse
+gets an error instead of a short list that reads as a complete one.
+
+**And `build_transfer` follows the mint to its program.** Both the instruction's program id
+and the associated token accounts were hardcoded to legacy SPL Token. TransferChecked has
+the same discriminator under Token-2022, and the token program is part of the ATA seeds, so
+a Token-2022 transfer was built against a program that does not own the accounts, pointing
+at addresses that do not exist — a payload that serializes cleanly, reads correctly in a
+summary, and cannot land. The mint is now read for its owning program, its decimals and its
+extensions, and all three are used.
+
+Reading the extensions turns out to be the more valuable half, because none of it shows up
+in a wallet's confirmation screen. A **transfer hook** calls a program chosen by whoever
+controls the mint and needs accounts this builder cannot resolve, and a **non-transferable**
+mint cannot be sent at all: both are refused rather than built wrong. A **transfer fee**
+(the recipient receives less than was sent), a **permanent delegate** (an address that can
+move or burn these tokens out of any wallet, at any time, afterwards) and a **default
+account state** (the recipient's new account can arrive frozen) are warnings on the payload.
+The fee is stated without a figure, because this build does not decode the rate and a wrong
+number is worse than a named gap.
+
+### 1.5 What a mint permits — **shipped**
+
+`mint_audit` (CLI `singularity mint`, Telegram `/mint`) answers the questions people
+actually ask about a token — can more be printed, can my account be frozen, can somebody
+take these out of my wallet, can the name change after I buy — from a single account read.
+Every one of those is a fixed field on a Solana mint, and almost nothing surfaces them: a
+wallet shows a balance and a ticker, the ticker is a string the deployer chose, and these
+powers sit in the bytes next to it.
+
+The result is **powers** (what is still possible, with the address holding each one) and
+**settled** (what is permanently closed off, and therefore worth stating). Both halves
+matter. A token that has revoked its mint and freeze authorities and locked its metadata
+can *prove* it, and the proof is three lines anyone can reproduce.
+
+Four decisions worth recording:
+
+- **There is no score, grade, or field called `safe`.** Every finding is a fact about what
+  the mint account permits. Liquidity, who holds the supply, and what the deployer does next
+  are not in these bytes, and a verdict implying otherwise is precisely the confidently
+  wrong answer this file opens by describing. A `kind` a consumer can branch on is what
+  makes the finding actionable; a number pretending to summarize it is not.
+- **The metadata `uri` is reported and never fetched.** It is a URL chosen by whoever
+  deployed the mint, and fetching it would turn a chain read into an outbound request to an
+  address of their choosing from whatever host this runs on. It travels as `UntrustedText`
+  for the same reason a memo does.
+- **An unconfigured transfer hook is not a transfer hook.** The extension carries an
+  authority and a program, and the program is routinely unset — PYUSD ships exactly that
+  shape. The first version of `build_transfer`'s gate refused on the presence of the
+  extension, which would have refused transfers of a major stablecoin that work perfectly
+  well. Contributing §3, caught by auditing a real mint rather than a fixture. The power is
+  still reported, because the authority can set a program at any time; what it does *today*
+  is simply a different sentence.
+- **Metaplex mutability is left unclaimed.** A Token-2022 record settles it either way — an
+  all-zero update authority means the text can never be rewritten. Metaplex spells it out in
+  an `isMutable` flag past variable-length creator data, so for a legacy mint the audit says
+  that whether the name can change is *unknown rather than settled*. Silence there would
+  read as "nothing can change", which is the same shape of wrong answer as an empty list
+  reading as "holds nothing". An early build of this did report an authority for USDC — by
+  decoding the Metaplex account at the Token-2022 offset, which yields a valid-looking
+  pubkey that is not the authority. Plausible and wrong is the failure mode to fear.
+
+EVM chains are refused rather than answered thinly. The same *questions* apply to an ERC-20,
+but the answers live in contract code rather than fixed fields, and reading them takes
+bytecode analysis this tool does not do. An empty finding list for a token contract would
+read as "nothing here can happen to you", which is the one thing it must never say.
+
+---
 
 ---
 

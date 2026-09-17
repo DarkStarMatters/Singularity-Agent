@@ -22,7 +22,7 @@ import {
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
-  esc,
+  esc,  formatMintAudit,
 } from './format.js';
 
 export interface CommandContext {
@@ -212,6 +212,17 @@ const read: Command = {
   },
 };
 
+const mint: Command = {
+  name: 'mint',
+  aliases: ['mint_audit', 'audit'],
+  usage: '/mint <mint address> [chain]',
+  summary: 'Audit a Solana mint: what it can still do to a holder',
+  async run(ctx) {
+    const address = required(ctx, 0, 'a mint address', mint);
+    return formatMintAudit(await ops.auditMint({ mint: address, chain: ctx.args[1] }));
+  },
+};
+
 const health: Command = {
   name: 'health',
   usage: '/health [chain,chain,…]',
@@ -323,6 +334,7 @@ const COMMAND_LIST: Command[] = [
   transfer,
   read,
   decode,
+  mint,
   health,
   chat,
   x,

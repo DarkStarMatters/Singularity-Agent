@@ -1,6 +1,7 @@
 import type {
   DecodedCall,
   FeeEstimate,
+  MintAudit,
   NormalizedBlock,
   NormalizedTx,
   ResolvedIdentity,
@@ -359,4 +360,49 @@ function indent(text: string, spaces: number): string {
 
 function shorten(value: string): string {
   return value.length <= 20 ? value : `${value.slice(0, 10)}…${value.slice(-6)}`;
+}
+
+export function renderMintAudit(audit: MintAudit): string {
+  const name = audit.metadata ? `${audit.metadata.name} (${audit.metadata.symbol})` : audit.mint;
+  const lines = [heading(`Mint audit — ${name}`)];
+
+  lines.push(
+    '',
+    table([
+      [dim('mint'), audit.mint],
+      [dim('program'), audit.program],
+      [dim('supply'), `${audit.supply.formatted} ${audit.supply.symbol}`],
+      [dim('decimals'), String(audit.decimals)],
+      ...(audit.metadata?.uri ? [[dim('metadata'), audit.metadata.uri.text]] : []),
+      ...(audit.extensions.length ? [[dim('extensions'), audit.extensions.join(', ')]] : []),
+    ]),
+  );
+
+  if (audit.metadata) {
+    lines.push('', `  ${dim('The name and ticker above were chosen by whoever deployed the mint.')}`);
+  }
+
+  // Powers first. Someone reading this in a terminal is deciding whether to
+  // hold the thing, and what can still be done to them is the answer.
+  if (audit.powers.length) {
+    lines.push('', `  ${yellow(bold('Still possible'))}`);
+    for (const power of audit.powers) {
+      lines.push(`    ${yellow('!')} ${bold(power.kind)}  ${power.what}`);
+      if (power.holder) lines.push(`        ${dim(power.holder)}`);
+    }
+  }
+
+  if (audit.settled.length) {
+    lines.push('', `  ${green(bold('Settled'))}`);
+    for (const fact of audit.settled) lines.push(`    ${green('✓')} ${fact}`);
+  }
+
+  if (audit.impersonation) {
+    lines.push('', `  ${red(bold('Impersonation'))}`, `    ${audit.impersonation.note}`);
+  }
+
+  lines.push('', `  ${dim(audit.completeness.note)}`, `  ${dim(audit.note)}`);
+  if (audit.explorerUrl) lines.push(`  ${cyan(audit.explorerUrl)}`);
+
+  return lines.join('\n');
 }

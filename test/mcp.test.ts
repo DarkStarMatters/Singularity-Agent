@@ -33,6 +33,7 @@ describe('MCP server', () => {
       'chains',
       'decode',
       'fees',
+      'mint_audit',
       'portfolio',
       'read_contract',
       'resolve',

@@ -12,6 +12,7 @@ import type {
   Amount,
   BalanceEntry,
   DecodedCall,
+  MintAudit,
   FeeEstimate,
   NormalizedBlock,
   NormalizedTx,
@@ -316,4 +317,50 @@ export function formatError(err: unknown): string {
     return lines.join('\n');
   }
   return `⚠️ ${esc((err as Error)?.message ?? String(err))}`;
+}
+
+/**
+ * A mint audit in a chat bubble.
+ *
+ * Powers first and settled facts second, because someone asking this in a group
+ * is deciding whether to hold the thing, and what can still be done to them is
+ * the answer. The holder address goes on its own line rather than inline: a
+ * phone-width bubble wraps a 44-character key into unreadable soup.
+ */
+export function formatMintAudit(audit: MintAudit): string {
+  const name = audit.metadata
+    ? `${esc(audit.metadata.name)} (${esc(audit.metadata.symbol)})`
+    : code(shortAddress(audit.mint));
+
+  const lines = [
+    `${bold('Mint audit')} — ${name}`,
+    `${code(audit.mint)}`,
+    `${esc(audit.program)} · supply ${amountLine(audit.supply)}`,
+  ];
+
+  if (audit.impersonation) {
+    lines.push('', `⚠️ ${esc(audit.impersonation.note)}`);
+  }
+
+  if (audit.powers.length) {
+    lines.push('', bold('Still possible'));
+    for (const power of audit.powers) {
+      lines.push(`  • ${bold(power.kind)} — ${esc(power.what)}`);
+      if (power.holder) lines.push(`    ${code(power.holder)}`);
+    }
+  }
+
+  if (audit.settled.length) {
+    lines.push('', bold('Settled'));
+    for (const fact of audit.settled) lines.push(`  ✅ ${esc(fact)}`);
+  }
+
+  if (audit.metadata) {
+    lines.push('', `<i>${esc('The name and ticker above were chosen by whoever deployed the mint.')}</i>`);
+  }
+
+  lines.push(`<i>${esc(audit.note)}</i>`);
+  if (audit.explorerUrl) lines.push(link(audit.explorerUrl, 'explorer'));
+
+  return lines.join('\n');
 }

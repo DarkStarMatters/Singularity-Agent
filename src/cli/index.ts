@@ -153,6 +153,15 @@ program
   );
 
 program
+  .command('mint')
+  .description('Audit a Solana mint: its authorities, its extensions, and what they let someone do.')
+  .argument('<mint>', 'Mint address.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
+  .action(async (mint: string, options: { chain: string }) => {
+    emit(await ops.auditMint({ mint, chain: options.chain }), render.renderMintAudit);
+  });
+
+program
   .command('decode')
   .description('Decode EVM calldata into a function signature and arguments.')
   .argument('<data>', 'Hex calldata, with or without the 0x prefix.')

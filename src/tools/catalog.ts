@@ -190,6 +190,21 @@ export const TOOLS: ToolDefinition[] = [
   }),
 
   defineTool({
+    name: 'mint_audit',
+    title: 'Audit a Solana mint',
+    description:
+      'What a Solana mint account permits, read from the mint itself: which token program owns it, whether more can be minted, whether holder accounts can be frozen, whether its name can still be rewritten, and every Token-2022 extension on it — permanent delegate, transfer hook, transfer fee, default-frozen accounts, non-transferable, interest-bearing. Reach for it whenever someone asks whether a token is safe, what a mint can do to them, or why a transfer failed, and before treating an unfamiliar mint as ordinary. It returns powers and the addresses holding them, plus what is permanently settled — never a score or a verdict, because liquidity, holder concentration and the deployer are not in these bytes. Solana only. The metadata link is reported and deliberately never fetched.',
+    shape: {
+      mint: z.string().describe('The mint address.'),
+      chain: z
+        .string()
+        .optional()
+        .describe('Solana chain id or alias. Defaults to "solana"; a non-Solana chain is refused.'),
+    },
+    run: (args) => ops.auditMint(args),
+  }),
+
+  defineTool({
     name: 'decode',
     title: 'Decode EVM calldata',
     description:

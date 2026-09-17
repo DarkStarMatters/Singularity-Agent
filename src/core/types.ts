@@ -7,7 +7,7 @@
  */
 
 import type { Impersonation } from './impersonation.js';
-import type { UntrustedText } from './envelope.js';
+import type { Completeness, UntrustedText } from './envelope.js';
 
 export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos';
 
@@ -315,4 +315,72 @@ export interface ResolvedIdentity {
    */
   equivalents?: Record<string, string>;
   note?: string;
+}
+
+/**
+ * What somebody can still do to a holder of this mint.
+ *
+ * The finding is a value rather than a sentence for the same reason
+ * `Completeness` and `Impersonation` are: something downstream has to be able
+ * to act on it. A paragraph saying "this mint has a permanent delegate" reads
+ * past a model composing a reply; a `kind` it can branch on does not.
+ *
+ * Note what is deliberately absent: a score, a grade, or a boolean called
+ * `safe`. Every one of these is a fact about what the mint's own account
+ * permits. Whether a token is worth buying depends on liquidity, on who holds
+ * it, and on what its deployer does next — none of which is in these bytes, and
+ * a verdict implying otherwise would be exactly the confidently-wrong answer
+ * this tool exists to not give.
+ */
+export type MintPowerKind =
+  | 'mint'
+  | 'freeze'
+  | 'close-mint'
+  | 'metadata-update'
+  | 'permanent-delegate'
+  | 'transfer-hook'
+  | 'transfer-fee'
+  | 'default-frozen'
+  | 'non-transferable'
+  | 'interest-bearing'
+  | 'confidential-transfer';
+
+export interface MintPower {
+  kind: MintPowerKind;
+  /** The address holding it, where the power belongs to somebody in particular. */
+  holder?: string;
+  /** One sentence, written for whoever is deciding whether to hold this token. */
+  what: string;
+}
+
+/** What a mint's own account says about itself. */
+export interface MintAudit {
+  chain: string;
+  mint: string;
+  /** Which token program owns the mint — they are different programs, not versions. */
+  program: 'spl-token' | 'token-2022';
+  decimals: number;
+  supply: Amount;
+  /** Deployer-chosen text, so it travels marked exactly like a symbol does. */
+  metadata?: {
+    name: string;
+    symbol: string;
+    /**
+     * Reported, never fetched — see the note on the audit. Free text rather
+     * than a label, so it travels the way a memo does: defanged, capped at the
+     * free-text limit, and carrying the clause that says who wrote it.
+     */
+    uri?: UntrustedText;
+    untrusted: true;
+  };
+  /** What is still possible. Empty means nothing in this list is. */
+  powers: MintPower[];
+  /** What is permanently closed off, and therefore worth stating. */
+  settled: string[];
+  /** Every extension found, including ones with no power attached, so nothing is hidden. */
+  extensions: string[];
+  impersonation?: Impersonation;
+  completeness: Completeness;
+  note: string;
+  explorerUrl?: string;
 }

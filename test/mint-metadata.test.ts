@@ -329,6 +329,9 @@ describe('what the scan bothers to read', () => {
     const { entries } = await scan();
 
     expect(entries).toHaveLength(50);
-    expect(metadataCalls.reduce((sum, n) => sum + n, 0)).toBe(50);
+    // Two passes of exactly fifty: the Metaplex PDAs, then the mint accounts
+    // themselves for the ones that had none. The number that matters is that
+    // neither pass is sixty — a mint about to be thrown away is never read.
+    expect(metadataCalls).toEqual([50, 50]);
   });
 });

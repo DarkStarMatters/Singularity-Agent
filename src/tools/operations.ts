@@ -1,4 +1,5 @@
 import { adapterFor } from '../adapters/index.js';
+import { auditMint as auditSolanaMint } from '../adapters/solana.js';
 import { allChains, getChain, portfolioChains } from '../core/registry.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
@@ -12,6 +13,7 @@ import { completeness, weakest, type Completeness } from '../core/envelope.js';
 import type {
   BalanceEntry,
   ChainSpec,
+  MintAudit,
   DecodedCall,
   FeeEstimate,
   NormalizedBlock,
@@ -645,4 +647,29 @@ export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthR
       }
     }),
   );
+}
+
+/**
+ * What a mint account permits.
+ *
+ * Solana only, and the refusal for everything else is deliberate rather than a
+ * gap waiting to be filled quietly: "can more be minted, can I be frozen, can
+ * somebody take these out of my wallet" are the same *questions* on an EVM
+ * chain, but the answers live in contract code rather than in fixed fields, and
+ * reading them takes bytecode analysis this tool does not do. Returning a
+ * cheerful empty finding list for an ERC-20 would read as "nothing here can
+ * happen to you", which is the one thing it must never say.
+ */
+export async function auditMint(options: { mint: string; chain?: string }): Promise<MintAudit> {
+  const chain = getChain(options.chain ?? 'solana');
+
+  if (chain.family !== 'svm') {
+    throw new SingularityError(
+      'MINT_AUDIT_UNSUPPORTED',
+      `${chain.name} is not a Solana chain, and mint authorities and Token-2022 extensions are Solana concepts.`,
+      'On an EVM chain the equivalent powers live in contract code rather than in fixed account fields, and this tool does not read bytecode. Use `read_contract` against the specific function you care about.',
+    );
+  }
+
+  return auditSolanaMint(chain, options.mint);
 }

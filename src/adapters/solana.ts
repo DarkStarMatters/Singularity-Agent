@@ -11,6 +11,8 @@ import type {
   BalanceEntry,
   ChainSpec,
   FeeEstimate,
+  MintAudit,
+  MintPower,
   NormalizedBlock,
   NormalizedTx,
   UnsignedTx,
@@ -46,6 +48,47 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xW
  * is three Borsh strings at a fixed offset and the dependency is enormous.
  */
 const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+/**
+ * Token-2022 puts the text back in the mint account.
+ *
+ * A mint under the newer program is the same 82-byte base record, then an
+ * account-type byte, then type-length-value entries. Two of them matter here:
+ * `TokenMetadata` holds the name and symbol inline, and `MetadataPointer`
+ * names the account holding them when they are kept somewhere else. Roadmap 1.4
+ * shipped reading the Metaplex PDA and left this case falling back to the short
+ * mint — honest, and no longer good enough, because every pump.fun mint since
+ * the program switch lands here, including this project's own.
+ */
+/**
+ * Where a mint's extensions actually begin.
+ *
+ * Not at the end of the 82-byte base mint, which is the obvious guess and is
+ * wrong: a mint that carries extensions is first padded out to the 165 bytes of
+ * a *token account*, precisely so that a mint and an account can never be told
+ * apart by length alone, and only then comes the account-type byte and the TLV.
+ * Guessing 83 finds a run of zero bytes, reads as "no extensions here", and
+ * leaves every Token-2022 mint unnamed — which is exactly what the tests
+ * asserted was fixed, because the fixture was built from the same wrong guess.
+ * It took running the CLI against a real mint to see it.
+ */
+const EXTENSION_TLV_START = 165 + 1;
+const EXT_TRANSFER_FEE_CONFIG = 1;
+const EXT_MINT_CLOSE_AUTHORITY = 3;
+const EXT_CONFIDENTIAL_TRANSFER = 4;
+const EXT_INTEREST_BEARING = 10;
+const EXT_DEFAULT_ACCOUNT_STATE = 6;
+const EXT_NON_TRANSFERABLE = 9;
+const EXT_PERMANENT_DELEGATE = 12;
+const EXT_TRANSFER_HOOK = 14;
+const EXT_METADATA_POINTER = 18;
+const EXT_TOKEN_METADATA = 19;
+/** The base mint record, before any padding or extensions. */
+const MINT_BASE_SIZE = 82;
+/** Offset of `decimals` in it: a 36-byte authority option, then an 8-byte supply. */
+const MINT_DECIMALS_OFFSET = 44;
+/** An all-zero pubkey is Token-2022's "unset", not an account to go and read. */
+const UNSET_PUBKEY = PublicKey.default.toBase58();
 
 /** `getMultipleAccountsInfo` refuses more than this many keys in one call. */
 const ACCOUNT_BATCH = 100;
@@ -135,7 +178,12 @@ function requirePubkey(address: string, label = 'address'): PublicKey {
   }
 }
 
-function deriveAta(owner: PublicKey, mint: PublicKey, programId = TOKEN_PROGRAM_ID): PublicKey {
+/**
+ * The associated token account for a mint — and the token program is part of
+ * the seeds, so the same wallet and mint under Token-2022 give a *different*
+ * address. Passing the wrong one derives an account that does not exist.
+ */
+function deriveAta(owner: PublicKey, mint: PublicKey, programId: PublicKey): PublicKey {
   const [ata] = PublicKey.findProgramAddressSync(
     [owner.toBuffer(), programId.toBuffer(), mint.toBuffer()],
     ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -185,7 +233,19 @@ export const solanaAdapter: ChainAdapter = {
         connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
         connection
           .getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID })
-          .catch(() => ({ value: [] as never[] })),
+          // Deliberately not caught into an empty list. An endpoint that will
+          // not enumerate Token-2022 — an old validator, or a public node
+          // rate-limiting this one call — used to cost the wallet every
+          // Token-2022 holding it has, under a completeness note still
+          // promising "every SPL and Token-2022 mint held". That is the
+          // dropped-failure-comes-back-as-`[]` bug this repo keeps closing,
+          // and half of Solana's newer supply is Token-2022. Letting it throw
+          // costs nothing: `withConnection` fails over to the next endpoint,
+          // and if none of them can answer the caller gets an error rather
+          // than a short list that reads as a complete one.
+          .catch((err: unknown) => {
+            throw new Error(`Token-2022 accounts could not be listed: ${(err as Error).message}`);
+          }),
       ]);
 
       const filter = tokens?.length
@@ -443,11 +503,16 @@ export const solanaAdapter: ChainAdapter = {
         const known = tokenBySymbol(chain.id, params.token);
         const mint = requirePubkey(known?.address ?? params.token, 'mint address');
 
-        const decimals = known?.decimals ?? (await mintDecimals(connection, mint, chain));
+        // Always read the mint, even for a curated token: the decimals are in
+        // the map but the owning program is not, and it decides both the
+        // instruction's program id and the addresses the accounts derive to.
+        const facts = await readMintFacts(connection, mint, chain);
+        const decimals = facts.decimals;
         const value = parseUnits(params.amount, decimals);
+        warnings.push(...transferExtensionWarnings(facts, mint, chain));
 
-        const source = deriveAta(from, mint);
-        const destination = deriveAta(to, mint);
+        const source = deriveAta(from, mint, facts.programId);
+        const destination = deriveAta(to, mint, facts.programId);
 
         const destinationExists = await connection.getAccountInfo(destination).catch(() => null);
         if (!destinationExists) {
@@ -457,7 +522,15 @@ export const solanaAdapter: ChainAdapter = {
         }
 
         transaction.add(
-          transferCheckedInstruction({ source, mint, destination, owner: from, value, decimals }),
+          transferCheckedInstruction({
+            source,
+            mint,
+            destination,
+            owner: from,
+            value,
+            decimals,
+            programId: facts.programId,
+          }),
         );
         summary = `Send ${params.amount} ${known?.symbol ?? 'tokens'} (mint ${shortAddress(mint.toBase58())}) from ${shortAddress(from.toBase58())} to ${shortAddress(to.toBase58())} on ${chain.name}.`;
       } else {
@@ -559,6 +632,7 @@ function transferCheckedInstruction(args: {
   owner: PublicKey;
   value: bigint;
   decimals: number;
+  programId: PublicKey;
 }): TransactionInstruction {
   const data = Buffer.alloc(10);
   data.writeUInt8(IX_TRANSFER_CHECKED, 0);
@@ -566,7 +640,11 @@ function transferCheckedInstruction(args: {
   data.writeUInt8(args.decimals, 9);
 
   return new TransactionInstruction({
-    programId: TOKEN_PROGRAM_ID,
+    // Not TOKEN_PROGRAM_ID. TransferChecked has the same discriminator under
+    // both programs, so sending a Token-2022 transfer to the legacy program
+    // builds a transaction that looks right and cannot execute: the program
+    // does not own the accounts it is handed.
+    programId: args.programId,
     keys: [
       { pubkey: args.source, isSigner: false, isWritable: true },
       { pubkey: args.mint, isSigner: false, isWritable: false },
@@ -577,17 +655,111 @@ function transferCheckedInstruction(args: {
   });
 }
 
-async function mintDecimals(connection: Connection, mint: PublicKey, chain: ChainSpec): Promise<number> {
-  const info = await connection.getParsedAccountInfo(mint);
-  const data = info.value?.data;
-  if (!data || !('parsed' in data) || data.parsed?.type !== 'mint') {
+/** What a transfer has to know about a mint before it can be built correctly. */
+interface MintFacts {
+  decimals: number;
+  /** The program that owns the mint — legacy SPL Token, or Token-2022. */
+  programId: PublicKey;
+  /** Token-2022 extensions, empty under the legacy program. */
+  extensions: Map<number, Buffer>;
+}
+
+/**
+ * Read the mint: its decimals, the program that owns it, and its extensions.
+ *
+ * The owning program is the part that used to be assumed. Every Solana token
+ * was an SPL Token mint once, and that assumption is now wrong for a large and
+ * growing share of new supply — including mints this project's own agent is
+ * asked about daily.
+ */
+async function readMintFacts(
+  connection: Connection,
+  mint: PublicKey,
+  chain: ChainSpec,
+): Promise<MintFacts> {
+  const info = await connection.getAccountInfo(mint);
+  const notAMint = new SingularityError(
+    'NOT_A_MINT',
+    `${shortAddress(mint.toBase58())} is not an SPL mint on ${chain.name}.`,
+    'Pass the mint address, not a token account address.',
+  );
+
+  if (!info?.data || info.data.length < MINT_BASE_SIZE) throw notAMint;
+  const programId = info.owner;
+  const isToken2022 = programId.equals(TOKEN_2022_PROGRAM_ID);
+  if (!isToken2022 && !programId.equals(TOKEN_PROGRAM_ID)) throw notAMint;
+
+  return {
+    decimals: Buffer.from(info.data).readUInt8(MINT_DECIMALS_OFFSET),
+    programId,
+    extensions: isToken2022 ? tlvExtensions(info.data) : new Map(),
+  };
+}
+
+/**
+ * What a mint's extensions mean for a transfer of it.
+ *
+ * Two of these make a built transaction wrong rather than merely surprising, so
+ * they are refused: a hook needs accounts this builder cannot resolve, and a
+ * non-transferable mint cannot be sent at all. The rest are facts the signer
+ * needs before they sign, and the reason they belong *here* is that none of
+ * them are visible in a wallet's confirmation screen.
+ */
+function transferExtensionWarnings(facts: MintFacts, mint: PublicKey, chain: ChainSpec): string[] {
+  const { extensions } = facts;
+  const short = shortAddress(mint.toBase58());
+
+  if (extensions.has(EXT_NON_TRANSFERABLE)) {
     throw new SingularityError(
-      'NOT_A_MINT',
-      `${shortAddress(mint.toBase58())} is not an SPL mint on ${chain.name}.`,
-      'Pass the mint address, not a token account address.',
+      'NON_TRANSFERABLE_TOKEN',
+      `Mint ${short} is marked non-transferable on ${chain.name}, so no transfer of it can succeed.`,
+      'A soulbound token can only be burned by its holder, never moved.',
     );
   }
-  return (data.parsed.info as { decimals: number }).decimals;
+
+  // The extension carries an authority and a program, and the program is
+  // routinely unset — PYUSD ships exactly that shape. An unset program means no
+  // hook runs and an ordinary transfer is correct, so refusing on the presence
+  // of the extension alone would refuse transfers of a major stablecoin that
+  // work fine. Contributing §3: a gate is worth what it does to the traffic it
+  // should pass, and this one was measured only against what it should block.
+  const hook = extensions.get(EXT_TRANSFER_HOOK);
+  const hookProgram = hook ? readAuthority(hook, 32) : undefined;
+  if (hookProgram) {
+    throw new SingularityError(
+      'TRANSFER_HOOK_UNSUPPORTED',
+      `Mint ${short} has a transfer hook: every transfer calls program ${hookProgram}, which requires extra accounts this tool cannot resolve.`,
+      'Building the transfer without them would produce a transaction that fails on submission. Use a wallet or SDK that resolves hook accounts.',
+    );
+  }
+
+  const warnings: string[] = [];
+
+  if (hook) {
+    warnings.push(
+      `Mint ${short} has a transfer hook extension with no program set, so transfers behave normally today. Whoever holds the hook authority can set one at any time, and transfers built the ordinary way will start failing when they do.`,
+    );
+  }
+
+  if (extensions.has(EXT_TRANSFER_FEE_CONFIG)) {
+    warnings.push(
+      `Mint ${short} charges a transfer fee, so the recipient receives less than the amount sent. This build does not compute the fee — check it before signing.`,
+    );
+  }
+
+  if (extensions.has(EXT_PERMANENT_DELEGATE)) {
+    warnings.push(
+      `Mint ${short} has a permanent delegate: an address chosen by whoever controls the mint can move or burn these tokens out of any wallet, including the recipient's, at any time after this transfer.`,
+    );
+  }
+
+  if (extensions.has(EXT_DEFAULT_ACCOUNT_STATE)) {
+    warnings.push(
+      `Mint ${short} sets a default state on new token accounts, which can mean the recipient's account arrives frozen and unable to send.`,
+    );
+  }
+
+  return warnings;
 }
 
 /** mint -> metadata, memoized per chain, so token lists render real symbols. */
@@ -674,10 +846,22 @@ async function withMetadata(
   return { entries, caveat };
 }
 
-/** What a mint's metadata account says it is called. Both strings are the deployer's. */
+/** What a mint's metadata account says it is called. Every string is the deployer's. */
 interface MintMetadata {
   name: string;
   symbol: string;
+  uri?: string;
+  /**
+   * Who may rewrite all three. Absent means nobody can — which is a fact worth
+   * having, because a mint whose text is still editable can be called one thing
+   * when you buy it and another thing afterwards, at the same address.
+   *
+   * Only populated for a Token-2022 record, where an all-zero authority means
+   * immutable and says so unambiguously. Metaplex spells mutability out in a
+   * separate flag past variable-length creator data, so it is left unclaimed
+   * rather than guessed at.
+   */
+  updateAuthority?: string;
 }
 
 /** The metadata account for a mint is a PDA — derivable, so no lookup is needed. */
@@ -718,11 +902,121 @@ function decodeMintMetadata(data: Uint8Array): MintMetadata | null {
   const name = readString();
   const symbol = readString();
   if (name === null || symbol === null) return null;
-  return { name, symbol };
+  const uri = readString() ?? undefined;
+  // No update authority is read here, on purpose. Metaplex spells mutability
+  // out in an `isMutable` flag sitting past variable-length creator data, and
+  // the authority field alone does not settle whether the text can be changed.
+  // Leaving it unclaimed is better than a confident wrong answer — and the
+  // audit says it is unclaimed rather than staying quiet about it.
+  return { name, symbol, uri };
+}
+
+/**
+ * Walk a mint account's TLV extensions.
+ *
+ * Runs against whatever bytes an account holds, so every bound is checked and
+ * anything unexpected ends the walk rather than throwing: a wallet holding one
+ * malformed mint must not lose its other forty-nine balances. A legacy SPL mint
+ * is 82 bytes with no padding and no TLV after it, so the walk starts past the
+ * end of it and finds nothing, which is the right answer for it.
+ */
+function tlvExtensions(data: Uint8Array): Map<number, Buffer> {
+  const found = new Map<number, Buffer>();
+  const view = Buffer.from(data);
+  let offset = EXTENSION_TLV_START;
+
+  while (offset + 4 <= view.length) {
+    const type = view.readUInt16LE(offset);
+    const length = view.readUInt16LE(offset + 2);
+    offset += 4;
+    if (type === 0 || offset + length > view.length) break;
+    // First entry of a type wins. A duplicate is malformed either way, and
+    // taking the later one would let trailing bytes overwrite a real field.
+    if (!found.has(type)) found.set(type, view.subarray(offset, offset + length));
+    offset += length;
+  }
+
+  return found;
+}
+
+/**
+ * Decode a `TokenMetadata` record: an update authority, the mint it describes,
+ * then three Borsh strings — name, symbol, uri.
+ *
+ * Unlike Metaplex these lengths are exact rather than allocated, so nothing is
+ * null-padded. The check worth having is the second field. A `MetadataPointer`
+ * is set by whoever controls the mint and may name **any** account on the chain,
+ * so without it, pointing a worthless mint at USDC's metadata record would make
+ * that mint read as USD Coin in every balance this tool prints — impersonation
+ * at no deployment cost, against the one field a reader treats as identity. A
+ * record naming a different mint is not this mint's name, so it is dropped
+ * rather than shown with a caveat; the mint falls back to its address, which is
+ * what this tool shows when it does not know a name.
+ */
+function decodeTokenMetadataExtension(data: Uint8Array, mint: string): MintMetadata | null {
+  const view = Buffer.from(data);
+  if (view.length < 64) return null;
+
+  let declared: string;
+  try {
+    declared = new PublicKey(view.subarray(32, 64)).toBase58();
+  } catch {
+    return null;
+  }
+  if (declared !== mint) return null;
+
+  let offset = 64;
+  const readString = (): string | null => {
+    if (offset + 4 > view.length) return null;
+    const length = view.readUInt32LE(offset);
+    offset += 4;
+    // Same bound as the Metaplex decoder: these are a name and a ticker.
+    if (length > 512 || offset + length > view.length) return null;
+    const text = view.subarray(offset, offset + length).toString('utf8');
+    offset += length;
+    return text.replace(/\u0000+$/, '').replace(/ +$/, '');
+  };
+
+  const name = readString();
+  const symbol = readString();
+  if (name === null || symbol === null) return null;
+  const uri = readString() ?? undefined;
+
+  // The first 32 bytes are an `OptionalNonZeroPubkey`: all zeroes means nobody
+  // can rewrite the name, the ticker or the link, ever. Unlike Metaplex, that
+  // is unambiguous from these bytes alone, which is why it is claimed here and
+  // not there.
+  let updateAuthority: string | undefined;
+  try {
+    const authority = new PublicKey(view.subarray(0, 32)).toBase58();
+    if (authority !== UNSET_PUBKEY) updateAuthority = authority;
+  } catch {
+    // An unreadable authority is not a claim that there is none.
+    updateAuthority = undefined;
+  }
+
+  return { name, symbol, uri, updateAuthority };
+}
+
+/** Where a `MetadataPointer` says the text lives: an authority, then the address. */
+function metadataPointerTarget(data: Uint8Array): string | null {
+  if (data.length < 64) return null;
+  try {
+    const target = new PublicKey(Buffer.from(data).subarray(32, 64)).toBase58();
+    return target === UNSET_PUBKEY ? null : target;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Read metadata for a set of mints, in as few round trips as possible.
+ *
+ * Three passes, cheapest first, each one covering only the mints the pass before
+ * it could not name: the Metaplex PDA, then the mint account itself for a
+ * Token-2022 mint carrying its text inline, then a pointed-to account for one
+ * that keeps it elsewhere. A wallet of ordinary SPL tokens still costs exactly
+ * one round trip, which is what the ordering is for.
  *
  * The failure path is the interesting one. If this throws and the caller
  * swallows it, every mint silently falls back to its short address — which
@@ -738,9 +1032,14 @@ async function readMintMetadata(
   const found = new Map<string, MintMetadata>();
   if (!mints.length) return { found };
 
+  const batched = async <T>(keys: T[], read: (batch: T[]) => Promise<void>): Promise<void> => {
+    for (let start = 0; start < keys.length; start += ACCOUNT_BATCH) {
+      await read(keys.slice(start, start + ACCOUNT_BATCH));
+    }
+  };
+
   try {
-    for (let start = 0; start < mints.length; start += ACCOUNT_BATCH) {
-      const batch = mints.slice(start, start + ACCOUNT_BATCH);
+    await batched(mints, async (batch) => {
       const accounts = await connection.getMultipleAccountsInfo(
         batch.map((mint) => metadataPda(new PublicKey(mint))),
       );
@@ -749,7 +1048,50 @@ async function readMintMetadata(
         const decoded = decodeMintMetadata(account.data);
         if (decoded) found.set(batch[index]!, decoded);
       });
-    }
+    });
+
+    // Pass two: a Token-2022 mint keeps its text inside the mint account.
+    const unnamed = mints.filter((mint) => !found.has(mint));
+    const elsewhere: Array<{ mint: string; account: string }> = [];
+
+    await batched(unnamed, async (batch) => {
+      const accounts = await connection.getMultipleAccountsInfo(
+        batch.map((mint) => new PublicKey(mint)),
+      );
+      accounts.forEach((account, index) => {
+        const mint = batch[index]!;
+        if (!account?.data) return;
+        const extensions = tlvExtensions(account.data);
+
+        const inline = extensions.get(EXT_TOKEN_METADATA);
+        if (inline) {
+          const decoded = decodeTokenMetadataExtension(inline, mint);
+          if (decoded) found.set(mint, decoded);
+          return;
+        }
+
+        const pointer = extensions.get(EXT_METADATA_POINTER);
+        const target = pointer ? metadataPointerTarget(pointer) : null;
+        // A pointer naming the mint itself is the inline case, and there was no
+        // inline record to find — so there is nothing further to read.
+        if (target && target !== mint) elsewhere.push({ mint, account: target });
+      });
+    });
+
+    // Pass three: follow the pointer. Same record, same mint check — which is
+    // what makes reading an account an attacker chose safe to do at all.
+    await batched(elsewhere, async (batch) => {
+      const accounts = await connection.getMultipleAccountsInfo(
+        batch.map((entry) => new PublicKey(entry.account)),
+      );
+      accounts.forEach((account, index) => {
+        const { mint } = batch[index]!;
+        if (!account?.data) return;
+        const decoded = decodeTokenMetadataExtension(account.data, mint);
+        if (decoded) found.set(mint, decoded);
+      });
+    });
+
     return { found };
   } catch (err) {
     // Partial results are kept: the mints already read are genuinely read, and
@@ -765,4 +1107,270 @@ function knownMintSymbol(chainId: string, mint: string): { symbol: string; name:
     mintIndexCache.set(chainId, index);
   }
   return index.get(mint);
+}
+
+/** Extension ids this tool can name, for the list the audit shows verbatim. */
+const EXTENSION_NAMES: Record<number, string> = {
+  1: 'transferFeeConfig',
+  3: 'mintCloseAuthority',
+  4: 'confidentialTransferMint',
+  6: 'defaultAccountState',
+  9: 'nonTransferable',
+  10: 'interestBearingConfig',
+  12: 'permanentDelegate',
+  14: 'transferHook',
+  16: 'confidentialTransferFeeConfig',
+  18: 'metadataPointer',
+  19: 'tokenMetadata',
+  20: 'groupPointer',
+  21: 'tokenGroup',
+  22: 'groupMemberPointer',
+  23: 'tokenGroupMember',
+};
+
+/** A `COption<Pubkey>`: a four-byte tag, then the key. Tag 0 means none. */
+function readOptionalAuthority(view: Buffer, offset: number): string | undefined {
+  if (offset + 36 > view.length) return undefined;
+  if (view.readUInt32LE(offset) !== 1) return undefined;
+  try {
+    return new PublicKey(view.subarray(offset + 4, offset + 36)).toBase58();
+  } catch {
+    return undefined;
+  }
+}
+
+/** The first 32 bytes of an extension, where that is where its authority lives. */
+function readAuthority(data: Buffer, offset = 0): string | undefined {
+  if (data.length < offset + 32) return undefined;
+  try {
+    const key = new PublicKey(data.subarray(offset, offset + 32)).toBase58();
+    return key === UNSET_PUBKEY ? undefined : key;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a mint's own account says about itself.
+ *
+ * This exists because the questions people actually ask about a token — can
+ * more be printed, can my account be frozen, can somebody take these out of my
+ * wallet, can the name change after I buy — are all answerable from one account
+ * read, and are answered almost nowhere. A wallet shows a balance and a ticker.
+ * The ticker is a string the deployer chose, and every one of those powers is a
+ * field sitting next to it.
+ *
+ * Two things this deliberately does not do. It does not fetch the metadata
+ * `uri`: that is a URL an attacker picks, and fetching it would turn a chain
+ * read into an outbound request to an address of their choosing, from whatever
+ * host this runs on. And it does not return a verdict — see `MintPower` for
+ * why a score would be the one kind of wrong answer this tool must not give.
+ */
+export async function auditMint(chain: ChainSpec, mintAddress: string): Promise<MintAudit> {
+  const mint = requirePubkey(mintAddress, 'mint address');
+
+  return withConnection(chain, 'auditMint', async (connection) => {
+    const info = await connection.getAccountInfo(mint);
+    if (!info?.data || info.data.length < MINT_BASE_SIZE) {
+      throw new SingularityError(
+        'NOT_A_MINT',
+        `${shortAddress(mint.toBase58())} is not an SPL mint on ${chain.name}.`,
+        'Pass the mint address, not a token account or a wallet.',
+      );
+    }
+
+    const programId = info.owner;
+    const isToken2022 = programId.equals(TOKEN_2022_PROGRAM_ID);
+    if (!isToken2022 && !programId.equals(TOKEN_PROGRAM_ID)) {
+      throw new SingularityError(
+        'NOT_A_MINT',
+        `${shortAddress(mint.toBase58())} is owned by ${shortAddress(programId.toBase58())}, which is not a token program on ${chain.name}.`,
+        'An account can look like a mint and be something else entirely; the owning program is what settles it.',
+      );
+    }
+
+    const view = Buffer.from(info.data);
+    const decimals = view.readUInt8(MINT_DECIMALS_OFFSET);
+    const rawSupply = view.readBigUInt64LE(36);
+    const extensions = isToken2022 ? tlvExtensions(view) : new Map<number, Buffer>();
+
+    const powers: MintPower[] = [];
+    const settled: string[] = [];
+
+    const mintAuthority = readOptionalAuthority(view, 0);
+    if (mintAuthority) {
+      powers.push({
+        kind: 'mint',
+        holder: mintAuthority,
+        what: 'More of this token can be created at any time, diluting every existing holder.',
+      });
+    } else {
+      settled.push('Supply is fixed: the mint authority is revoked, so no more can ever be created.');
+    }
+
+    const freezeAuthority = readOptionalAuthority(view, 46);
+    if (freezeAuthority) {
+      powers.push({
+        kind: 'freeze',
+        holder: freezeAuthority,
+        what: 'Any holder\u2019s account can be frozen, leaving the balance visible and unsendable.',
+      });
+    } else {
+      settled.push('No account can be frozen: the freeze authority is revoked.');
+    }
+
+    const closeAuthority = extensions.get(EXT_MINT_CLOSE_AUTHORITY);
+    if (closeAuthority) {
+      powers.push({
+        kind: 'close-mint',
+        holder: readAuthority(closeAuthority),
+        what: 'The mint account itself can be closed once supply reaches zero, after which the address can be reused for something else.',
+      });
+    }
+
+    const delegate = extensions.get(EXT_PERMANENT_DELEGATE);
+    if (delegate) {
+      powers.push({
+        kind: 'permanent-delegate',
+        holder: readAuthority(delegate),
+        what: 'One address can transfer or burn these tokens out of any wallet holding them, at any time, without the holder signing.',
+      });
+    }
+
+    const hook = extensions.get(EXT_TRANSFER_HOOK);
+    if (hook) {
+      const program = readAuthority(hook, 32);
+      powers.push({
+        kind: 'transfer-hook',
+        holder: readAuthority(hook),
+        // Worth telling apart: with no program set nothing runs on a transfer
+        // today, and calling that "every transfer calls a program" would be
+        // false about several large stablecoins. The power is still real — the
+        // authority can set one whenever it likes — so it stays in the list.
+        what: program
+          ? `Every transfer calls program ${program}, which can make transfers fail on conditions its author chooses.`
+          : 'No hook program is set, so transfers run normally today — but the hook authority can set one at any time, after which every transfer calls it and can be made to fail.',
+      });
+    }
+
+    if (extensions.has(EXT_TRANSFER_FEE_CONFIG)) {
+      powers.push({
+        kind: 'transfer-fee',
+        holder: readAuthority(extensions.get(EXT_TRANSFER_FEE_CONFIG)!),
+        what: 'A fee is withheld from every transfer, so a recipient receives less than was sent. The rate is set on the mint and is not decoded here.',
+      });
+    }
+
+    const defaultState = extensions.get(EXT_DEFAULT_ACCOUNT_STATE);
+    // State 2 is frozen; 1 is the ordinary initialized state and means nothing.
+    if (defaultState?.length && defaultState.readUInt8(0) === 2) {
+      powers.push({
+        kind: 'default-frozen',
+        what: 'New token accounts for this mint are created frozen, so a buyer can receive it and be unable to send it until somebody thaws them.',
+      });
+    }
+
+    if (extensions.has(EXT_NON_TRANSFERABLE)) {
+      powers.push({
+        kind: 'non-transferable',
+        what: 'This token cannot be transferred at all. A holder can only burn it.',
+      });
+    }
+
+    const interest = extensions.get(EXT_INTEREST_BEARING);
+    if (interest) {
+      powers.push({
+        kind: 'interest-bearing',
+        holder: readAuthority(interest),
+        what: 'The displayed balance grows by a rate set on the mint. The underlying amount does not change, so a UI figure and the real balance are different numbers.',
+      });
+    }
+
+    if (extensions.has(EXT_CONFIDENTIAL_TRANSFER)) {
+      powers.push({
+        kind: 'confidential-transfer',
+        what: 'Balances and transfer amounts can be held encrypted, so a public balance read is not the whole holding.',
+      });
+    }
+
+    const { found, failure } = await readMintMetadata(connection, [mint.toBase58()]);
+    const raw = found.get(mint.toBase58());
+    const curated = knownMintSymbol(chain.id, mint.toBase58());
+
+    const metadata = raw
+      ? {
+          name: sanitizeOnchainText(raw.name, ''),
+          symbol: sanitizeOnchainText(raw.symbol, ''),
+          uri: untrustedText(raw.uri, 'the metadata link on the mint, chosen by whoever deployed it'),
+          untrusted: true as const,
+        }
+      : undefined;
+
+    if (raw?.updateAuthority) {
+      powers.push({
+        kind: 'metadata-update',
+        holder: raw.updateAuthority,
+        what: 'The name, ticker and metadata link can all be rewritten, at this same address, after anyone buys.',
+      });
+    } else if (raw && extensions.has(EXT_TOKEN_METADATA)) {
+      settled.push(
+        'The name and ticker are immutable: the metadata update authority is revoked, so the text cannot be rewritten later.',
+      );
+    }
+
+    // Only where a deployer actually chose the string. A curated mint carries
+    // this tool's own text, and there is nothing to impersonate itself with.
+    const impersonation =
+      metadata && !curated
+        ? checkImpersonation(chain, {
+            symbol: metadata.symbol,
+            name: metadata.name,
+            address: mint.toBase58(),
+          })
+        : undefined;
+
+    // A Token-2022 record settles mutability either way. A Metaplex one does
+    // not, and silence there would read as "nothing can change" — the same
+    // shape of wrong answer as an empty list reading as "holds nothing".
+    const mutabilityUnknown = Boolean(raw) && !extensions.has(EXT_TOKEN_METADATA);
+
+    const unnamed = extensions.size
+      ? [...extensions.keys()].filter((id) => !EXTENSION_NAMES[id]).length
+      : 0;
+
+    return {
+      chain: chain.id,
+      mint: mint.toBase58(),
+      program: isToken2022 ? 'token-2022' : 'spl-token',
+      decimals,
+      supply: amount(rawSupply, decimals, curated?.symbol ?? metadata?.symbol ?? 'tokens'),
+      metadata,
+      powers,
+      settled,
+      // Unrecognized ids are listed as ids rather than dropped, for the same
+      // reason an unrecognized log keeps its topic: a short list reads as a
+      // short list of what is there, not of what was understood.
+      extensions: [...extensions.keys()]
+        .sort((a, b) => a - b)
+        .map((id) => EXTENSION_NAMES[id] ?? `extension ${id}`),
+      ...(impersonation ? { impersonation } : {}),
+      completeness: completeness.exhaustive(
+        `Every authority and extension on the mint account, read in one go.${
+          failure
+            ? ` The metadata could not be read (${sanitizeOnchainText(failure, 'the RPC gave no reason')}), so the name, ticker and any impersonation finding are missing — not absent.`
+            : ''
+        }${unnamed ? ` ${unnamed} extension(s) present here have no description in this tool and are listed by id.` : ''}${
+          mutabilityUnknown
+            ? ' The name came from a Metaplex metadata account, whose mutability flag sits past variable-length creator data and is not decoded here, so whether this text can be rewritten later is unknown rather than settled.'
+            : ''
+        }`,
+      ),
+      note:
+        'This says what the mint account permits, and nothing else. It is not a verdict on whether the token is worth holding: liquidity, who owns the supply, and what the deployer does next are not in these bytes. ' +
+        (metadata?.uri
+          ? 'The metadata link is reported as found and deliberately not fetched — it is a URL chosen by whoever deployed the mint.'
+          : ''),
+      explorerUrl: explorerUrl(chain, 'address', mint.toBase58()),
+    } satisfies MintAudit;
+  });
 }
