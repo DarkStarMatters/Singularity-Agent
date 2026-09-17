@@ -174,6 +174,16 @@ describe('reading a burn off the chain', () => {
     await expect(verifyBurn(SOLANA, 'not base58 at all!!')).rejects.toThrow(/not a Solana/);
   });
 
+  it('recognises the payload it handed over a minute ago', async () => {
+    // The likeliest wrong string is the one this tool produced: a build returns
+    // base64 and a redemption wants base58, and both are opaque. Saying only
+    // "that is not a signature" to somebody holding exactly what they were
+    // given is true and useless.
+    const payload = 'AQAAAAAAAA' + 'A'.repeat(120) + '/wBAAIF+abc=';
+
+    await expect(verifyBurn(SOLANA, payload)).rejects.toThrow(/unsigned payload, not a signature/);
+  });
+
   it('accepts a real signature, which is the point of checking the shape', async () => {
     transaction = parsedTransaction({ instructions: [burnChecked()] });
 

@@ -238,10 +238,21 @@ function requireSignature(signature: string): string {
   }
 
   if (!bytes || bytes.length !== 64) {
+    // The likeliest wrong string is the one this tool handed over a minute ago.
+    // Base58 has no `+`, `/` or `=`, so anything carrying them is base64 — and
+    // the only base64 in this workflow is the unsigned payload from a build.
+    // Telling someone "that is not a signature" when they have pasted the exact
+    // thing they were given is technically true and useless.
+    const looksBase64 = /[+/=]/.test(value) && value.length > 100;
+
     throw new SingularityError(
       'INVALID_SIGNATURE',
-      `"${shortAddress(value, 10, 6)}" is not a Solana transaction signature.`,
-      'A signature is 64 bytes of base58, usually 87 or 88 characters. An address is 32 bytes and will not work here — check the argument order.',
+      looksBase64
+        ? 'That is the unsigned payload, not a signature.'
+        : `"${shortAddress(value, 10, 6)}" is not a Solana transaction signature.`,
+      looksBase64
+        ? 'A payload is a proposal: it is what you sign. A signature is what the network gives back once you have signed and sent it, and it is roughly 88 characters of base58 with no "+", "/" or "=". Sign the payload in your own wallet first, then bring back the signature it produces.'
+        : 'A signature is 64 bytes of base58, usually 87 or 88 characters. An address is 32 bytes and will not work here — check the argument order.',
     );
   }
 
