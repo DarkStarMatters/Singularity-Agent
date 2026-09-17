@@ -644,6 +644,52 @@ transaction being posted, and this prices a fixed sample — and the note says s
 
 ---
 
+### 1.10 A burn somebody can approve — **shipped**
+
+The signing seam does not move and never will: this tool holds no keys, and only the
+holder can turn a payload into a signed transaction. What was wrong was *how the payload
+reached them*. A chat message containing base64 asks a person to own the hardest step,
+and it puts two long opaque strings in front of them — the payload, and minutes later the
+signature — with nothing but a field name to tell them apart.
+
+That failed four times in a row in one sitting, which is the only evidence this file
+accepts. The sequence is worth recording because every individual response was correct:
+the wallet address pasted where a signature goes (correct error, unhelpful), the payload
+pasted where a signature goes (correct error, unhelpful), the payload labelled
+`transaction` under a heading of "Payload" (accurate field name, misleading in context),
+and finally the observation that the bot "gives the payload, not the signature" — which
+was true, and was the design working as written.
+
+**`api/burn` is a Solana Pay transaction request.** The bot posts a `solana:` link; the
+wallet fetches it, is told what it is, posts back the account that will sign, and receives
+a burn built for that account; the holder sees the amount and the memo and approves, or
+does not. Nothing is exported, nothing is pasted, and no one ever sees base64. The quiet
+improvement is that the account arrives in the POST, so nobody has to know or type their
+own address — the wallet already knows it.
+
+Three decisions:
+
+- **The endpoint serves a named set of mints, not any mint.** A transaction request is a
+  URL anybody can craft and send to anybody, and wallets display its origin — so an open
+  burn endpoint is a phishing primitive wearing this project’s domain, and it works
+  better the more that domain comes to be trusted. `SINGULARITY_BURN_MINTS` is the list,
+  and it defaults to this project’s own mint.
+- **The link degrades rather than disappears.** With no endpoint configured, `/burn`
+  builds the payload exactly as before and says what would replace it. Naming a wallet
+  explicitly still returns the raw payload too, because signing with your own tooling is
+  a legitimate thing to want.
+- **`api/` is deployed, not published.** It gets its own tsconfig rather than a widened
+  `include`, so it is typechecked by `npm run typecheck` and can never end up in `dist/`
+  or in the npm package. Vercel now installs dependencies, which the static-site config
+  had switched off — a function importing `@solana/web3.js` would have failed at runtime
+  and nowhere else.
+
+The signing helper that came out of the same afternoon lives in `local/`, which is
+gitignored. A user signing with their own key on their own machine is the seam working
+as designed; the same code inside the package would make the central claim false.
+
+---
+
 ---
 
 ## Phase 2 — Trust boundaries

@@ -6,6 +6,7 @@
  * a rendered string or throws; the runtime turns a throw into a formatted error.
  */
 import * as ops from '../tools/operations.js';
+import { burnLink } from '../pay/transaction-request.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
@@ -22,7 +23,12 @@ import {
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
-  esc,  formatMintAudit,  formatBurnClaim,  formatTokenIdentity,  code,
+  formatMintAudit,
+  formatBurnClaim,
+  formatTokenIdentity,
+  bold,
+  code,
+  esc,
 } from './format.js';
 
 export interface CommandContext {
@@ -244,24 +250,64 @@ function burnClaim(chatId: number): string {
 const burn: Command = {
   name: 'burn',
   aliases: ['build_burn'],
-  usage: '/burn <mint> <amount> <your wallet> [chain]',
-  summary: 'Build an unsigned burn for you to sign yourself',
+  usage: '/burn <mint> <amount> [your wallet] [chain]',
+  summary: 'Burn tokens — tap to approve in your wallet',
   async run(ctx) {
     const mint = required(ctx, 0, 'a mint address', burn);
     const amount = required(ctx, 1, 'an amount', burn);
-    const owner = required(ctx, 2, 'the wallet holding the tokens', burn);
-
+    const owner = ctx.args[2];
     const claim = burnClaim(ctx.chatId);
-    const built = await ops.buildBurn({ mint, amount, owner, memo: claim, chain: ctx.args[3] });
+    const whose = ctx.chatType === 'private' ? 'you' : 'this group';
 
-    // Said on the way out rather than left in the payload for someone to
-    // notice: the memo is already in the transaction they are about to sign,
-    // and it is the only reason this burn can be credited to them at all.
+    const endpoint = process.env.SINGULARITY_PAY_ENDPOINT?.trim();
+
+    // The link is the answer wherever one can be made. Handing somebody base64
+    // in a chat message asks them to own the signing step *and* to tell two
+    // long opaque strings apart — the payload and, minutes later, the
+    // signature. Everything below exists because watching that fail is what
+    // paid for it.
+    if (endpoint && !owner) {
+      const link = burnLink(endpoint, { mint, amount, memo: claim, chain: ctx.args[3] });
+
+      return [
+        `${bold('Burn')} ${esc(amount)} — tap to approve in your wallet`,
+        '',
+        link,
+        '',
+        `Your wallet supplies the address, so there is nothing to type and nothing to paste. ` +
+          `It will show you the burn and the memo ${code(claim)} before you approve, and ` +
+          `nothing happens until you do.`,
+        '',
+        `<i>${esc(
+          `The memo is what credits this burn to ${whose} when you /redeem the signature your wallet gives back. Burn without one and anyone who sees the signature can claim it first.`,
+        )}</i>`,
+        '',
+        `<i>${esc(
+          'Singularity holds no keys and cannot sign. The link asks your wallet to build and show you a transaction; approving it is entirely yours.',
+        )}</i>`,
+      ].join('\n');
+    }
+
+    // Naming a wallet explicitly still produces the raw payload, for anyone
+    // signing with their own tooling — and it is the whole flow when no
+    // endpoint is configured.
+    const built = await ops.buildBurn({
+      mint,
+      amount,
+      owner: required(ctx, 2, 'the wallet holding the tokens', burn),
+      memo: claim,
+      chain: ctx.args[3],
+    });
+
     const note =
       `\n\nThis burn carries the memo ${code(claim)}, which is what credits it ` +
-      `to ${ctx.chatType === 'private' ? 'you' : 'this group'} when you ` +
-      `${code('/redeem')} the signature. Burn without it and anyone who sees the ` +
-      'signature can claim it first.';
+      `to ${whose} when you ${code('/redeem')} the signature. Burn without it and ` +
+      'anyone who sees the signature can claim it first.' +
+      (endpoint
+        ? ''
+        : `\n\n<i>${esc(
+            'Set SINGULARITY_PAY_ENDPOINT to a deployed /api/burn and this command hands you a link to tap instead of a string to sign.',
+          )}</i>`);
 
     return formatUnsignedTx(built) + note;
   },

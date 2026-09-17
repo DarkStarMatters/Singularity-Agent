@@ -37,7 +37,7 @@ export function code(value: unknown): string {
   return `<code>${esc(value)}</code>`;
 }
 
-function bold(value: unknown): string {
+export function bold(value: unknown): string {
   return `<b>${esc(value)}</b>`;
 }
 

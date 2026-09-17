@@ -149,6 +149,15 @@ that mapping so the three cannot drift:
 | `/burn` | build an **unsigned** burn | `/verifyburn` | confirm a burn happened |
 | `/redeem` | spend a burn, once | | |
 
+`/burn` posts a `solana:` link when `SINGULARITY_PAY_ENDPOINT` names a deployed
+`/api/burn` — tap it, approve in your wallet, done. Your wallet supplies the address, and
+the memo that makes the burn redeemable is already inside what you approve. Without that
+variable set it falls back to handing you an unsigned payload to sign yourself.
+
+The endpoint only builds burns for the mints in `SINGULARITY_BURN_MINTS` (default: this
+project's own). An endpoint that will build a burn of anything is a link worth sending to
+strangers.
+
 | Where | When it answers conversationally |
 | --- | --- |
 | DM | every message |

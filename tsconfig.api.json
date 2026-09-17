@@ -1,0 +1,15 @@
+{
+  // The serverless endpoint under `api/`, which Vercel compiles on its own and
+  // which therefore had nothing checking it. A third config rather than a
+  // widened `include` in the main one: `api/` is deployed, not published, and
+  // it must never end up in `dist/` or in the npm package.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["api/**/*.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "src/eliza"]
+}
