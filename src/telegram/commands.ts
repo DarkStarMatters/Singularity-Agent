@@ -22,7 +22,7 @@ import {
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
-  esc,  formatMintAudit,
+  esc,  formatMintAudit,  formatBurnClaim,
 } from './format.js';
 
 export interface CommandContext {
@@ -239,6 +239,38 @@ const burn: Command = {
   },
 };
 
+const verifyburn: Command = {
+  name: 'verifyburn',
+  aliases: ['verify_burn'],
+  usage: '/verifyburn <signature> [mint] [owner]',
+  summary: 'Confirm a burn from its signature',
+  async run(ctx) {
+    const signature = required(ctx, 0, 'a transaction signature', verifyburn);
+
+    return formatBurnClaim(
+      await ops.verifyBurn({ signature, mint: ctx.args[1], owner: ctx.args[2] }),
+    );
+  },
+};
+
+const redeem: Command = {
+  name: 'redeem',
+  usage: '/redeem <signature> <mint> [purpose]',
+  summary: 'Redeem a burn once, and record it as spent',
+  async run(ctx) {
+    const signature = required(ctx, 0, 'a transaction signature', redeem);
+    const mint = required(ctx, 1, 'the mint the burn must be of', redeem);
+
+    return formatBurnClaim(
+      await ops.redeemBurn({
+        signature,
+        mint,
+        purpose: ctx.args.slice(2).join(' ').trim() || undefined,
+      }),
+    );
+  },
+};
+
 const health: Command = {
   name: 'health',
   usage: '/health [chain,chain,…]',
@@ -352,6 +384,8 @@ const COMMAND_LIST: Command[] = [
   decode,
   mint,
   burn,
+  verifyburn,
+  redeem,
   health,
   chat,
   x,

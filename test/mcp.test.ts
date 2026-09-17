@@ -39,6 +39,7 @@ describe('MCP server', () => {
       'read_contract',
       'resolve',
       'transaction',
+      'verify_burn',
     ]);
   });
 

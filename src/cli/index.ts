@@ -208,6 +208,66 @@ program
   });
 
 program
+  .command('verify-burn')
+  .description('Confirm a burn from its signature, and check it against a claim.')
+  .argument('<signature>', 'The transaction signature.')
+  .option('-m, --mint <mint>', 'The mint the burn must be of.')
+  .option('-o, --owner <owner>', 'The wallet that must have signed it.')
+  .option('--min <amount>', 'The least that must have been destroyed.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
+  .action(
+    async (
+      signature: string,
+      options: { mint?: string; owner?: string; min?: string; chain: string },
+    ) => {
+      emit(
+        await ops.verifyBurn({
+          signature,
+          mint: options.mint,
+          owner: options.owner,
+          minimum: options.min,
+          chain: options.chain,
+        }),
+        render.renderBurnClaim,
+      );
+    },
+  );
+
+program
+  .command('redeem')
+  .description('Redeem a burn once: confirm it, then record it as spent.')
+  .argument('<signature>', 'The transaction signature.')
+  .requiredOption('-m, --mint <mint>', 'The mint the burn must be of.')
+  .option('-o, --owner <owner>', 'The wallet that must have signed it.')
+  .option('--min <amount>', 'The least that must have been destroyed.')
+  .option('-p, --purpose <purpose>', 'What this burn is being redeemed for.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
+  .action(
+    async (
+      signature: string,
+      options: {
+        mint: string;
+        owner?: string;
+        min?: string;
+        purpose?: string;
+        chain: string;
+      },
+    ) => {
+      emit(
+        await ops.redeemBurn({
+          signature,
+          mint: options.mint,
+          owner: options.owner,
+          minimum: options.min,
+          purpose: options.purpose,
+          chain: options.chain,
+        }),
+        render.renderBurnClaim,
+      );
+    },
+  );
+
+program
   .command('mcp')
   .description('Run the MCP server on stdio, for Claude Code and other MCP clients.')
   .action(async () => {

@@ -98,6 +98,7 @@ describe('tool catalogue', () => {
       'read_contract',
       'resolve',
       'transaction',
+      'verify_burn',
     ]);
   });
 

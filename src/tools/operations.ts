@@ -2,19 +2,30 @@ import { adapterFor } from '../adapters/index.js';
 import {
   auditMint as auditSolanaMint,
   buildBurn as buildSolanaBurn,
+  verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
+import {
+  alreadyRedeemed,
+  findRedemption,
+  recordRedemption,
+  selectBurn,
+  type BurnCriteria,
+  type Redemption,
+} from '../core/burn-ledger.js';
 import { allChains, getChain, portfolioChains } from '../core/registry.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
 import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
 import { lookupSelector } from '../core/selectors.js';
-import { explorerUrl, shortAddress } from '../core/format.js';
+import { explorerUrl, parseUnits, shortAddress } from '../core/format.js';
 import { convertBech32Prefix } from '../core/address-codec.js';
 import type { StateOptions, TransferParams } from '../core/adapter.js';
 import { completeness, weakest, type Completeness } from '../core/envelope.js';
 import type {
   BalanceEntry,
+  BurnEvent,
+  BurnReceipt,
   ChainSpec,
   MintAudit,
   DecodedCall,
@@ -709,4 +720,120 @@ export async function buildBurn(options: {
   const mint = await toAddress(options.mint, chain);
 
   return buildSolanaBurn(chain, { owner, mint, amount: options.amount });
+}
+
+/** A burn, and what it satisfies. */
+export interface BurnClaim {
+  receipt: BurnReceipt;
+  /** The burn that met the claim, where the caller made one. */
+  matched?: BurnEvent;
+  /** Set when this signature has already been redeemed, and by what.
+   *  Present on a verify; a redeem raises instead. */
+  redeemed?: Redemption;
+}
+
+function solanaChain(named: string | undefined, verb: string): ChainSpec {
+  const chain = getChain(named ?? 'solana');
+  if (chain.family !== 'svm') {
+    throw new SingularityError(
+      'BURN_UNSUPPORTED',
+      `${verb} is only implemented for Solana, and ${chain.name} is not a Solana chain.`,
+      'An ERC-20 has no standard burn, so there is nothing general to read on an EVM chain.',
+    );
+  }
+  return chain;
+}
+
+async function criteriaFor(
+  chain: ChainSpec,
+  options: { mint?: string; owner?: string; minimum?: string },
+  receipt: BurnReceipt,
+): Promise<BurnCriteria | undefined> {
+  if (!options.mint) return undefined;
+
+  const mint = await toAddress(options.mint, chain);
+  const owner = options.owner ? await toAddress(options.owner, chain) : undefined;
+
+  // The minimum is a human amount, and the decimals come from the burn the
+  // chain recorded rather than from the caller — a claim stated in base units
+  // would be off by a factor of a million the first time somebody guessed.
+  const decimals = receipt.burns.find((burn) => burn.mint === mint)?.amount.decimals;
+  const minimum =
+    options.minimum !== undefined && decimals !== undefined
+      ? parseUnits(options.minimum, decimals)
+      : undefined;
+
+  return { mint, owner, minimum };
+}
+
+/**
+ * Confirm a burn, and say whether it satisfies a claim.
+ *
+ * Read-only in the strict sense: it touches the ledger to *report* that a
+ * signature was already redeemed, and never writes to it. A model asking
+ * whether a burn is good for something should get an answer without that
+ * question spending it.
+ */
+export async function verifyBurn(options: {
+  signature: string;
+  chain?: string;
+  mint?: string;
+  owner?: string;
+  minimum?: string;
+}): Promise<BurnClaim> {
+  const chain = solanaChain(options.chain, 'Burn verification');
+  const receipt = await verifySolanaBurn(chain, options.signature);
+  const criteria = await criteriaFor(chain, options, receipt);
+
+  return {
+    receipt,
+    ...(criteria ? { matched: selectBurn(receipt, criteria) } : {}),
+    ...(findRedemption(options.signature) ? { redeemed: findRedemption(options.signature)! } : {}),
+  };
+}
+
+/**
+ * Redeem a burn: confirm it, then spend it, once.
+ *
+ * `mint` is required here and optional on a verify, because redeeming "some
+ * burn" is not a thing anybody means. A transaction that burned a worthless
+ * token instead of the intended one is the whole reason the check exists.
+ *
+ * Deliberately absent from the tool catalogue. Every tool there is annotated
+ * read-only and this one writes, and it should be a decision somebody takes
+ * rather than something a model reaches for mid-sentence. It is reachable from
+ * the CLI and the bot, where an operator is driving.
+ */
+export async function redeemBurn(options: {
+  signature: string;
+  mint: string;
+  chain?: string;
+  owner?: string;
+  minimum?: string;
+  purpose?: string;
+}): Promise<BurnClaim & { redemption: Redemption }> {
+  const chain = solanaChain(options.chain, 'Burn redemption');
+
+  // Checked before the network call as well as inside `recordRedemption`. The
+  // early one saves a round trip on a replay; the late one is the guarantee.
+  const already = findRedemption(options.signature);
+  if (already) throw alreadyRedeemed(already);
+
+  const receipt = await verifySolanaBurn(chain, options.signature);
+  const criteria = await criteriaFor(chain, options, receipt);
+  const matched = selectBurn(receipt, criteria!);
+
+  const redemption = recordRedemption({
+    signature: receipt.signature,
+    chain: chain.id,
+    mint: matched.mint,
+    owner: matched.owner,
+    amount: matched.amount.raw,
+    decimals: matched.amount.decimals,
+    ...(receipt.memo ? { memo: receipt.memo.text } : {}),
+    ...(options.purpose ? { purpose: options.purpose } : {}),
+    redeemedAt: new Date().toISOString(),
+  });
+
+  return { receipt, matched, redemption };
 }

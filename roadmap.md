@@ -434,6 +434,64 @@ which is a different thing and must not be built as though it were the same.
 
 ---
 
+### 1.7 Redeeming a burn — **shipped**
+
+`verify_burn` confirms a burn from its signature — which mint, which owner, how much, at
+finalized commitment — and `redeem` (CLI and bot only) spends it once. Together with 1.6
+that is a complete sink: the holder burns from an unsigned payload, hands over the
+signature, and the agent credits it without ever holding a key, an address, or a balance.
+
+The parts worth arguing with:
+
+- **A signature proves a burn, not a claimant.** Signatures are public the moment they
+  land, so anyone can quote somebody else’s. There is no version of this that a read can
+  fix, so it is stated on every receipt rather than papered over. What *does* bind a burn
+  to a claimant is the memo: text the burner wrote into the transaction and signed along
+  with everything else, which nobody can forge without making a burn of their own. It is
+  returned, and it travels as `UntrustedText` — the field most likely to be read as an
+  instruction is the one whose entire purpose is to carry a message.
+- **Finalized, or nothing.** A transaction below finalized commitment can still be
+  dropped, so crediting one would be crediting something that might un-happen. The two
+  failure modes are told apart with a second call: a signature the cluster knows but has
+  not finalized is "come back in a moment", and one it has never heard of is either a
+  transaction that never landed or one old enough to be pruned — indistinguishable from
+  here, and said that way.
+- **Burns are found by instruction, never by balance arithmetic.** A falling token balance
+  is also what a transfer looks like. Both spellings count, and inner instructions are
+  walked, because a burn routed through a program is still a burn. An unchecked `burn`
+  names neither its mint nor its decimals, so both are resolved from the transaction’s own
+  token balances rather than taken from the caller.
+- **The mint is checked by address.** The near miss this exists for is a burn of something
+  worthless quoted in place of the real thing, and an error saying only "no matching burn"
+  would read as "your transaction failed". So a mismatch names the mint that actually
+  burned. Several burns of one mint by one owner in one transaction are one event and add
+  up; the summed amount is rebuilt rather than patched, because an `Amount` carries a raw
+  value and a formatted one and editing one is how a result comes to disagree with itself.
+- **The ledger is honest about being a file.** One JSON object beside the config, keyed by
+  signature, written to one side and moved into place. An unreadable ledger raises instead
+  of reading as empty, because empty means every burn ever redeemed is redeemable again.
+  Two processes redeeming the same signature at the same instant can still both see an
+  empty slot: the record step re-reads immediately before writing to narrow that, and does
+  not close it. Anyone building a payout on "already redeemed" needs a real store, and the
+  file says so rather than implying otherwise.
+
+`redeem` is deliberately **not** in the tool catalogue. Every tool there is annotated
+read-only and this one writes, and spending a burn should be something an operator does
+rather than something a model reaches for mid-sentence. `verify_burn` is in the catalogue
+and reports whether a signature was already redeemed without spending it.
+
+**A tenth of Solana was unreadable, and this is where it turned up.** Looking for a real
+burn to test against meant scanning a mainnet block, which refused to decode: 137 of its
+1,384 transactions were version 1, and every read here asked for
+`maxSupportedTransactionVersion: 0`. That parameter is not a preference — a node refuses
+outright to return a transaction newer than the number given — so `singularity tx` had
+been answering an RPC error for a tenth of the chain, with the error message naming the
+fix. The ceiling is now above any version that exists, which is safe precisely because
+everything here reads the node’s *parsed* form and the node normalizes that across
+versions; a comment on the constant says what would make it unsafe again.
+
+---
+
 ---
 
 ## Phase 2 — Trust boundaries

@@ -277,6 +277,27 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
     run: (args) => ops.buildBurn(args),
   }),
+
+  defineTool({
+    name: 'verify_burn',
+    title: 'Confirm a burn from its signature',
+    description:
+      'Confirm that a Solana transaction really burned a token: which mint, which owner, how much, at finalized commitment. Pass `mint` (and optionally `owner` and a `minimum` amount) to check the burn against a claim rather than just describing it — a transaction that burned a different mint is refused by name. Reports whether the signature has already been redeemed, and never spends it. A signature is public the moment it lands, so this proves a burn happened and proves nothing about who quoted it; what binds a burn to a claimant is the memo the burner signed into it, which is returned when there is one.',
+    shape: {
+      signature: z.string().describe('The transaction signature of the burn.'),
+      mint: z
+        .string()
+        .optional()
+        .describe('The mint the burn must be of. Matched by address, never by symbol.'),
+      owner: z.string().optional().describe('The wallet that must have signed the burn.'),
+      minimum: z
+        .string()
+        .optional()
+        .describe('The least that must have been destroyed, as a human decimal amount, e.g. "1000".'),
+      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+    },
+    run: (args) => ops.verifyBurn(args),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

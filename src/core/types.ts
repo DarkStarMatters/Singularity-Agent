@@ -384,3 +384,38 @@ export interface MintAudit {
   note: string;
   explorerUrl?: string;
 }
+
+/** One burn instruction, as the chain recorded it. */
+export interface BurnEvent {
+  /** The mint whose supply went down. Identity is this, never a symbol. */
+  mint: string;
+  /** The wallet that owned the tokens and signed for their destruction. */
+  owner: string;
+  /** The token account they came out of. */
+  account: string;
+  amount: Amount;
+}
+
+/**
+ * What a burn signature proves.
+ *
+ * It proves a burn happened: this mint, this owner, this amount, finalized.
+ * It does not prove anything about whoever handed over the signature — a
+ * signature is public the moment it lands, so anybody can quote somebody
+ * else’s burn. That gap is why `memo` is carried: a burner who writes their
+ * own claim into the transaction signs it along with everything else, and
+ * nobody can forge that without making a burn of their own.
+ */
+export interface BurnReceipt {
+  chain: string;
+  signature: string;
+  slot: number;
+  timestamp?: string;
+  /** Every burn in the transaction, since one transaction may hold several. */
+  burns: BurnEvent[];
+  /** Whatever the burner wrote into the transaction. Their text, so marked. */
+  memo?: UntrustedText;
+  completeness: Completeness;
+  note: string;
+  explorerUrl?: string;
+}

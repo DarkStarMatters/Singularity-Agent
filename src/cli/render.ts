@@ -7,7 +7,12 @@ import type {
   ResolvedIdentity,
   UnsignedTx,
 } from '../core/types.js';
-import type { BalanceResult, ChainSummary, PortfolioResult } from '../tools/operations.js';
+import type {
+  BalanceResult,
+  BurnClaim,
+  ChainSummary,
+  PortfolioResult,
+} from '../tools/operations.js';
 
 /** Colors are opt-out via NO_COLOR and auto-off when stdout is not a TTY. */
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -403,6 +408,37 @@ export function renderMintAudit(audit: MintAudit): string {
 
   lines.push('', `  ${dim(audit.completeness.note)}`, `  ${dim(audit.note)}`);
   if (audit.explorerUrl) lines.push(`  ${cyan(audit.explorerUrl)}`);
+
+  return lines.join('\n');
+}
+
+export function renderBurnClaim(claim: BurnClaim & { redemption?: { redeemedAt: string } }): string {
+  const { receipt } = claim;
+  const lines = [heading(`Burn — ${receipt.signature.slice(0, 16)}…`)];
+
+  lines.push(
+    '',
+    table([
+      [dim('slot'), String(receipt.slot)],
+      ...(receipt.timestamp ? [[dim('time'), receipt.timestamp]] : []),
+      ...(receipt.memo ? [[dim('memo'), receipt.memo.text]] : []),
+    ]),
+  );
+
+  for (const burn of receipt.burns) {
+    const marker = claim.matched && claim.matched.account === burn.account ? green('✓') : ' ';
+    lines.push(`  ${marker} ${burn.amount.formatted} of ${burn.mint}`);
+    lines.push(`      ${dim(`burned by ${burn.owner}`)}`);
+  }
+
+  if (claim.redemption) {
+    lines.push('', `  ${green(bold('Redeemed'))}  ${claim.redemption.redeemedAt}`);
+  } else if (claim.redeemed) {
+    lines.push('', `  ${yellow(bold('Already redeemed'))}  ${claim.redeemed.redeemedAt}`);
+  }
+
+  lines.push('', `  ${dim(receipt.note)}`);
+  if (receipt.explorerUrl) lines.push(`  ${cyan(receipt.explorerUrl)}`);
 
   return lines.join('\n');
 }

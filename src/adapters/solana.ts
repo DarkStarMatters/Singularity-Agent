@@ -9,6 +9,8 @@ import {
 import type { ChainAdapter, ContractReadParams, TransferParams } from '../core/adapter.js';
 import type {
   BalanceEntry,
+  BurnEvent,
+  BurnReceipt,
   ChainSpec,
   FeeEstimate,
   MintAudit,
@@ -100,6 +102,26 @@ const UNSET_PUBKEY = PublicKey.default.toBase58();
 
 /** `getMultipleAccountsInfo` refuses more than this many keys in one call. */
 const ACCOUNT_BATCH = 100;
+
+/**
+ * How new a transaction this client will accept.
+ *
+ * Not a preference — a node refuses outright to return a transaction newer than
+ * the number given, so `0` meant every version-1 transaction came back as an
+ * RPC error instead of an answer. That was 137 of 1,384 transactions in a
+ * sampled mainnet block: a tenth of the chain, unreadable, with an error message
+ * that named the fix.
+ *
+ * Deliberately above any version that exists. This parameter governs how the
+ * node *encodes* its reply, and everything here reads the node's parsed form —
+ * `accountKeys`, `instructions`, `meta` — which the node normalizes across
+ * versions, resolving address lookup tables on the way. Refusing a whole class
+ * of transactions to avoid reading a shape that has not changed is the worse
+ * trade. If anything here ever decodes raw message bytes itself, this has to
+ * become the highest version actually understood, and this comment is the
+ * warning attached to that.
+ */
+const MAX_TX_VERSION = 255;
 
 /** Base signature fee, in lamports. Priority fees stack on top of this. */
 const BASE_SIGNATURE_FEE = 5_000n;
@@ -355,7 +377,7 @@ export const solanaAdapter: ChainAdapter = {
   async getTransaction(chain, hash) {
     return withConnection(chain, 'getParsedTransaction', async (connection) => {
       const tx = await connection.getParsedTransaction(hash, {
-        maxSupportedTransactionVersion: 0,
+        maxSupportedTransactionVersion: MAX_TX_VERSION,
       });
 
       if (!tx) {
@@ -1546,5 +1568,166 @@ export async function buildBurn(
         'Base64 wire-format transaction. Deserialize with Transaction.from(Buffer.from(tx, "base64")), sign, then sendRawTransaction. The blockhash expires in ~60 seconds — rebuild if it lapses.',
       warnings,
     } satisfies UnsignedTx;
+  });
+}
+
+/** The token programs a burn can come from, as jsonParsed labels them. */
+const BURN_PROGRAMS = new Set(['spl-token', 'spl-token-2022']);
+
+/** A parsed instruction, in the shape the RPC actually returns one. */
+interface ParsedIx {
+  program?: string;
+  parsed?: { type?: string; info?: Record<string, unknown> } | string;
+}
+
+/**
+ * Confirm a burn from its signature.
+ *
+ * The redemption half of `buildBurn`, and the reason a burn can be a sink at
+ * all: the agent signs nothing and holds nothing, so the only thing that can
+ * make a burn *mean* something afterwards is a read anybody else can repeat.
+ *
+ * Three things this is careful about.
+ *
+ * **Finality.** A transaction that is merely confirmed can still be dropped.
+ * Reading at any weaker commitment would mean crediting a burn that might not
+ * survive, so this asks for a finalized transaction and tells the two failure
+ * modes apart: a signature the cluster still knows but has not finalized is a
+ * "come back in a moment", and one it has never heard of is something else
+ * entirely.
+ *
+ * **Burns are found by instruction, not by balance arithmetic.** A falling
+ * token balance is also what a transfer looks like. Both spellings count —
+ * `burn` and `burnChecked` — and inner instructions are walked too, because a
+ * burn reached through a program is still a burn.
+ *
+ * **The mint comes from the chain, never from the caller.** `burn` does not
+ * name its mint, so it is resolved through the transaction’s own token
+ * balances. A caller who says which mint they expect is checked against that,
+ * rather than trusted to label it.
+ */
+export async function verifyBurn(chain: ChainSpec, signature: string): Promise<BurnReceipt> {
+  return withConnection(chain, `verifyBurn`, async (connection) => {
+    const tx = await connection.getParsedTransaction(signature, {
+      maxSupportedTransactionVersion: MAX_TX_VERSION,
+      commitment: 'finalized',
+    });
+
+    if (!tx) {
+      // Worth one extra call to separate "not yet" from "not there". Telling a
+      // holder their burn does not exist when it merely has not finalized is
+      // a wrong answer about the one thing they cannot redo.
+      const status = await connection
+        .getSignatureStatuses([signature])
+        .then((result) => result.value[0])
+        .catch(() => null);
+
+      if (status) {
+        throw new SingularityError(
+          'BURN_NOT_FINAL',
+          `Signature ${shortAddress(signature, 10, 8)} is ${status.confirmationStatus ?? "known"} but not finalized on ${chain.name}.`,
+          'A transaction below finalized commitment can still be dropped, so it is not evidence of anything yet. Try again in a few seconds.',
+        );
+      }
+
+      throw new SingularityError(
+        'TX_NOT_FOUND',
+        `Signature ${shortAddress(signature, 10, 8)} was not found on ${chain.name}.`,
+        'Solana public RPCs prune history aggressively, so this is either a signature that never landed or one old enough to need an archival endpoint. The two are indistinguishable from here.',
+      );
+    }
+
+    if (tx.meta?.err != null) {
+      throw new SingularityError(
+        'TX_FAILED',
+        `Transaction ${shortAddress(signature, 10, 8)} failed, so nothing was burned.`,
+        'A failed transaction changes no balances. Whatever it was meant to do, it did not happen.',
+      );
+    }
+
+    const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+
+    // Token accounts are described in the metadata rather than the instruction,
+    // and this is what lets an unchecked `burn` be resolved to a mint at all.
+    const described = new Map<string, { mint: string; owner?: string; decimals: number }>();
+    for (const entry of [...(tx.meta?.preTokenBalances ?? []), ...(tx.meta?.postTokenBalances ?? [])]) {
+      const address = keys[entry.accountIndex];
+      if (!address || described.has(address)) continue;
+      described.set(address, {
+        mint: entry.mint,
+        owner: entry.owner ?? undefined,
+        decimals: entry.uiTokenAmount.decimals,
+      });
+    }
+
+    const instructions: ParsedIx[] = [
+      ...(tx.transaction.message.instructions as ParsedIx[]),
+      ...(tx.meta?.innerInstructions ?? []).flatMap((inner) => inner.instructions as ParsedIx[]),
+    ];
+
+    const burns: BurnEvent[] = [];
+    let memo: UntrustedText | undefined;
+
+    for (const instruction of instructions) {
+      if (instruction.program === 'spl-memo' && typeof instruction.parsed === 'string') {
+        memo ??= untrustedText(instruction.parsed, `a memo written by whoever signed this transaction`);
+        continue;
+      }
+
+      if (!instruction.program || !BURN_PROGRAMS.has(instruction.program)) continue;
+      if (!instruction.parsed || typeof instruction.parsed === 'string') continue;
+
+      const { type, info } = instruction.parsed;
+      if (type !== 'burn' && type !== 'burnChecked') continue;
+      if (!info) continue;
+
+      const account = typeof info.account === 'string' ? info.account : undefined;
+      if (!account) continue;
+      const context = described.get(account);
+
+      // burnChecked names its mint and decimals; burn names neither, so both
+      // come from the transaction metadata for that account.
+      const checked = info.tokenAmount as { amount?: string; decimals?: number } | undefined;
+      const raw = checked?.amount ?? (typeof info.amount === 'string' ? info.amount : undefined);
+      const mint = (typeof info.mint === 'string' ? info.mint : undefined) ?? context?.mint;
+      const decimals = checked?.decimals ?? context?.decimals;
+
+      if (raw === undefined || mint === undefined || decimals === undefined) continue;
+
+      const owner =
+        (typeof info.authority === 'string' ? info.authority : undefined) ??
+        (typeof info.multisigAuthority === 'string' ? info.multisigAuthority : undefined) ??
+        context?.owner;
+
+      burns.push({
+        mint,
+        owner: owner ?? '',
+        account,
+        amount: amount(BigInt(raw), decimals, 'tokens'),
+      });
+    }
+
+    if (!burns.length) {
+      throw new SingularityError(
+        'NO_BURN_IN_TRANSACTION',
+        `Transaction ${shortAddress(signature, 10, 8)} contains no burn.`,
+        'A falling token balance is also what a transfer looks like. This checks for a burn instruction, and there is none here — including in the inner instructions.',
+      );
+    }
+
+    return {
+      chain: chain.id,
+      signature,
+      slot: tx.slot,
+      ...(tx.blockTime ? { timestamp: toIso(tx.blockTime) } : {}),
+      burns,
+      ...(memo ? { memo } : {}),
+      completeness: completeness.exhaustive(
+        'Every burn instruction in this transaction, top level and inner, read at finalized commitment.',
+      ),
+      note:
+        'This proves a burn happened: that mint, that owner, that amount, final. It proves nothing about whoever handed you the signature — signatures are public the moment they land, so anyone can quote somebody else\u2019s burn. Bind a burn to a claimant by what the burner wrote into it, which they signed, not by who repeats it.',
+      explorerUrl: explorerUrl(chain, `tx`, signature),
+    } satisfies BurnReceipt;
   });
 }

@@ -19,7 +19,12 @@ import type {
   ResolvedIdentity,
   UnsignedTx,
 } from '../core/types.js';
-import type { BalanceResult, ChainSummary, PortfolioResult } from '../tools/operations.js';
+import type {
+  BalanceResult,
+  BurnClaim,
+  ChainSummary,
+  PortfolioResult,
+} from '../tools/operations.js';
 import { SingularityError } from '../core/errors.js';
 
 /** Telegram HTML mode needs exactly these three escaped. */
@@ -361,6 +366,47 @@ export function formatMintAudit(audit: MintAudit): string {
 
   lines.push(`<i>${esc(audit.note)}</i>`);
   if (audit.explorerUrl) lines.push(link(audit.explorerUrl, 'explorer'));
+
+  return lines.join('\n');
+}
+
+/**
+ * A burn receipt in a chat bubble.
+ *
+ * The memo is the one field here somebody else wrote, so it is escaped like
+ * every other piece of chain data and labelled as theirs. It is also the field
+ * most likely to be read as an instruction, because writing one is the whole
+ * point of a memo.
+ */
+export function formatBurnClaim(
+  claim: BurnClaim & { redemption?: { redeemedAt: string; purpose?: string } },
+): string {
+  const { receipt } = claim;
+  const lines = [`${bold('Burn')} ${code(receipt.signature.slice(0, 16) + '…')}`];
+
+  for (const burn of receipt.burns) {
+    const matched = claim.matched && claim.matched.account === burn.account ? ' ✅' : '';
+    lines.push(`  • ${esc(burn.amount.formatted)} of ${code(burn.mint)}${matched}`);
+    lines.push(`    ${esc('burned by')} ${code(burn.owner)}`);
+  }
+
+  if (receipt.memo) {
+    lines.push('', `${bold('Memo')} — ${esc(receipt.memo.source)}`, code(receipt.memo.text));
+  }
+
+  if (claim.redemption) {
+    lines.push(
+      '',
+      `✅ ${esc('Redeemed')} ${esc(claim.redemption.redeemedAt)}${
+        claim.redemption.purpose ? ` — ${esc(claim.redemption.purpose)}` : ''
+      }`,
+    );
+  } else if (claim.redeemed) {
+    lines.push('', `⚠️ ${esc(`Already redeemed ${claim.redeemed.redeemedAt}`)}`);
+  }
+
+  lines.push('', `<i>${esc(receipt.note)}</i>`);
+  if (receipt.explorerUrl) lines.push(link(receipt.explorerUrl, 'explorer'));
 
   return lines.join('\n');
 }
