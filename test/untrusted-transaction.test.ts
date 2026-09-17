@@ -45,6 +45,14 @@ const COSMOS = getChain('cosmoshub');
 const SOLANA = getChain('solana');
 
 const HASH = 'A'.repeat(64);
+/**
+ * Solana signs, it does not hash: a signature is 64 *bytes* of base58, around
+ * 88 characters, and HASH above is a 64-character hex string — the right shape
+ * for Cosmos and the wrong one here. That went unnoticed until the adapter
+ * started checking, which is the small version of the argument for checking.
+ */
+const SOL_SIGNATURE =
+  '2gsFYF6gJv7PG4yariuP7jKxPbSKYwc7R1Ley3aZCK6EpqGhLB6zRKQcKeD1s4Ak86iChWHGP6jqgm22FGDVsQ5U';
 
 /** The whole point of the attack: text that reads as the tool's own narration. */
 const PAYLOAD =
@@ -233,8 +241,8 @@ describe('Cosmos message bodies', () => {
 
 describe('Solana program logs', () => {
   it('marks every line and keeps them out of raw', async () => {
-    parsedTransactions.set(HASH, solanaTx(['Program log: ' + PAYLOAD]));
-    const tx = await solanaAdapter.getTransaction(SOLANA, HASH);
+    parsedTransactions.set(SOL_SIGNATURE, solanaTx(['Program log: ' + PAYLOAD]));
+    const tx = await solanaAdapter.getTransaction(SOLANA, SOL_SIGNATURE);
 
     // `msg!()` costs a program nothing and takes any string, which makes these
     // the largest piece of attacker-authored text this tool returns.
@@ -246,8 +254,8 @@ describe('Solana program logs', () => {
   });
 
   it('still reports how many lines there were when it caps them', async () => {
-    parsedTransactions.set(HASH, solanaTx(Array.from({ length: 50 }, (_, i) => `Program log: ${i}`)));
-    const tx = await solanaAdapter.getTransaction(SOLANA, HASH);
+    parsedTransactions.set(SOL_SIGNATURE, solanaTx(Array.from({ length: 50 }, (_, i) => `Program log: ${i}`)));
+    const tx = await solanaAdapter.getTransaction(SOLANA, SOL_SIGNATURE);
 
     // Truncating without saying so is the bug class this repo is named after.
     expect(tx.logs).toHaveLength(20);
@@ -256,15 +264,15 @@ describe('Solana program logs', () => {
 
   it('leaves an ordinary log line alone', async () => {
     const line = 'Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [1]';
-    parsedTransactions.set(HASH, solanaTx([line]));
-    const tx = await solanaAdapter.getTransaction(SOLANA, HASH);
+    parsedTransactions.set(SOL_SIGNATURE, solanaTx([line]));
+    const tx = await solanaAdapter.getTransaction(SOLANA, SOL_SIGNATURE);
 
     expect(tx.logs?.[0]?.text).toBe(line);
   });
 
   it('omits the field entirely when a transaction logged nothing', async () => {
-    parsedTransactions.set(HASH, solanaTx([]));
-    const tx = await solanaAdapter.getTransaction(SOLANA, HASH);
+    parsedTransactions.set(SOL_SIGNATURE, solanaTx([]));
+    const tx = await solanaAdapter.getTransaction(SOLANA, SOL_SIGNATURE);
 
     expect(tx.logs).toBeUndefined();
   });

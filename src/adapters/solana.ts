@@ -6,6 +6,7 @@ import {
   TransactionInstruction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
+import bs58 from 'bs58';
 import type { ChainAdapter, ContractReadParams, TransferParams } from '../core/adapter.js';
 import type {
   BalanceEntry,
@@ -215,6 +216,38 @@ function hostOf(url: string): string {
   }
 }
 
+/**
+ * A transaction signature is 64 bytes of base58, and checking that here is the
+ * difference between one sentence and a wall of transport noise.
+ *
+ * Handed something that is not a signature — a mint address in the wrong
+ * argument slot, a truncated paste — every endpoint in turn answers
+ * "Invalid param: Invalid", and the caller gets all of them stacked up,
+ * including the ones that failed for unrelated reasons. None of that says the
+ * one useful thing: that string is not a signature. The shape is knowable
+ * without asking a node, so it is known before one is asked.
+ */
+function requireSignature(signature: string): string {
+  const value = signature.trim();
+  let bytes: Uint8Array | undefined;
+
+  try {
+    bytes = bs58.decode(value);
+  } catch {
+    bytes = undefined;
+  }
+
+  if (!bytes || bytes.length !== 64) {
+    throw new SingularityError(
+      'INVALID_SIGNATURE',
+      `"${shortAddress(value, 10, 6)}" is not a Solana transaction signature.`,
+      'A signature is 64 bytes of base58, usually 87 or 88 characters. An address is 32 bytes and will not work here — check the argument order.',
+    );
+  }
+
+  return value;
+}
+
 function requirePubkey(address: string, label = 'address'): PublicKey {
   try {
     return new PublicKey(address);
@@ -387,7 +420,9 @@ export const solanaAdapter: ChainAdapter = {
     });
   },
 
-  async getTransaction(chain, hash) {
+  async getTransaction(chain, rawHash) {
+    const hash = requireSignature(rawHash);
+
     return withConnection(chain, 'getParsedTransaction', async (connection) => {
       const tx = await connection.getParsedTransaction(hash, {
         maxSupportedTransactionVersion: MAX_TX_VERSION,
@@ -1666,7 +1701,9 @@ interface ParsedIx {
  * balances. A caller who says which mint they expect is checked against that,
  * rather than trusted to label it.
  */
-export async function verifyBurn(chain: ChainSpec, signature: string): Promise<BurnReceipt> {
+export async function verifyBurn(chain: ChainSpec, rawSignature: string): Promise<BurnReceipt> {
+  const signature = requireSignature(rawSignature);
+
   return withConnection(chain, `verifyBurn`, async (connection) => {
     const tx = await connection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: MAX_TX_VERSION,

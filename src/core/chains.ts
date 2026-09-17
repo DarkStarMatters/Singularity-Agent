@@ -210,7 +210,11 @@ export const BUILTIN_CHAINS: ChainSpec[] = [
     rpc: [
       'https://api.mainnet-beta.solana.com',
       'https://solana-rpc.publicnode.com',
-      'https://solana.drpc.org',
+      // Replaces solana.drpc.org, which answered every request with "chain is
+      // not available on free plan". An endpoint that cannot serve anything is
+      // not failover — it is a third line of noise on every error message, and
+      // it made a two-endpoint chain look like a three-endpoint one.
+      'https://solana.leorpc.com/?api_key=FREE',
     ],
     explorer: 'https://solscan.io',
     aliases: ['sol'],

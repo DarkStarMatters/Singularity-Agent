@@ -163,6 +163,24 @@ describe('reading a burn off the chain', () => {
     expect(receipt.note).toMatch(/proves nothing about whoever handed you the signature/i);
   });
 
+  it('refuses a string that is not a signature before asking any node', async () => {
+    // What this replaces: every endpoint in turn answering "Invalid param:
+    // Invalid", stacked into one error alongside the ones that failed for
+    // unrelated reasons, none of which says the useful thing. Passing a mint
+    // where a signature goes is the ordinary way to arrive here.
+    transaction = parsedTransaction({ instructions: [burnChecked()] });
+
+    await expect(verifyBurn(SOLANA, MINT)).rejects.toThrow(/is not a Solana transaction signature/);
+    await expect(verifyBurn(SOLANA, 'not base58 at all!!')).rejects.toThrow(/not a Solana/);
+  });
+
+  it('accepts a real signature, which is the point of checking the shape', async () => {
+    transaction = parsedTransaction({ instructions: [burnChecked()] });
+
+    // The passing side: 64 bytes of base58 goes straight through.
+    expect((await verifyBurn(SOLANA, SIGNATURE)).burns).toHaveLength(1);
+  });
+
   it('refuses a transaction that failed', async () => {
     transaction = parsedTransaction({ instructions: [burnChecked()], err: { InstructionError: [] } });
 
