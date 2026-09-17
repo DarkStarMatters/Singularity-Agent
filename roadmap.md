@@ -165,13 +165,17 @@ below records the two calls worth arguing with.
 
 ## Shipped — v0.0.3
 
-**Coverage.** 23 chains across four families: 13 EVM (Ethereum, Base, Arbitrum, OP,
-Polygon, BNB, Avalanche, Gnosis, Scroll, Linea, ZKsync + 2 testnets), 2 Solana, 3 UTXO
-(Bitcoin, Litecoin, testnet), 5 Cosmos (Hub, Osmosis, Celestia, Injective, dYdX).
+**Coverage.** 28 chains across four families: 18 EVM (Ethereum, Base, Arbitrum, OP,
+Polygon, BNB, Avalanche, Gnosis, Scroll, Linea, ZKsync, Blast, Mantle, Mode, Fraxtal,
+opBNB + 2 testnets), 2 Solana, 3 UTXO (Bitcoin, Litecoin, testnet), 5 Cosmos (Hub,
+Osmosis, Celestia, Injective, dYdX).
 
-**Surface.** Ten MCP tools — `chains`, `resolve`, `balance`, `portfolio`, `transaction`,
-`block`, `fees`, `read_contract`, `decode`, `build_transfer` — each annotated
+**Surface.** Fourteen MCP tools — `chains`, `resolve`, `balance`, `portfolio`, `transaction`,
+`block`, `fees`, `read_contract`, `decode`, `build_transfer`, and the four added since:
+`mint_audit`, `token_identity`, `build_burn`, `verify_burn` — each annotated
 `readOnlyHint: true`, and the same operations as a CLI with `--json` on every command.
+(`redeem` writes a local ledger, so it is a CLI and bot command and deliberately not a
+tool: see 1.7.)
 
 **Correctness.**
 - `bigint` end to end; every amount carries raw base units *and* a formatted string
@@ -193,7 +197,7 @@ token accounts per mint and cap unfiltered results at 50 with a note naming the 
 
 ## Phase 1 — Depth on what exists
 
-*Goal: make the current 23 chains answer more of the questions people actually ask.*
+*Goal: make the chains already here answer more of the questions people actually ask.*
 
 ### 1.1 Historical state — **shipped**
 `balance` and `read_contract` take `atBlock` (CLI: `--at-block`). EVM passes it to the
@@ -650,7 +654,44 @@ Each addition must pass the same bar: checksum-level address validation, `bigint
 arithmetic, normalized fees, honest enumeration limits. **A chain that cannot meet the
 bar does not ship at reduced quality** — it ships when it can, or not at all.
 
-- **EVM L2s:** Blast, Mantle, Mode, Fraxtal, opBNB, Polygon zkEVM — mostly registry work
+### Shipped: five EVM L2s
+
+**Blast, Mantle, Mode, Fraxtal and opBNB.** Each was checked against live endpoints
+before it was written down: the chain id it reports, a block within seconds of now, and
+at least two independent providers answering. Curated token entries were read off the
+chain, and every bridged one was checked against the L1 address it claims to mirror
+through `l1Token()` / `remoteToken()` rather than trusted for wearing the right symbol.
+
+Three things the checking caught, none of which a registry copy-paste would have:
+
+- **Fraxtal's gas token is FRAX, not frxETH.** The obvious guess is the one Fraxtal
+  launched with, and it changed. Every fee on the chain is quoted in the gas asset, so
+  that entry alone would have misreported all of them.
+- **opBNB's stablecoins carry 18 decimals**, because they mirror BNB Chain tokens rather
+  than Ethereum ones. Assuming six would misstate every balance by a factor of a trillion.
+- **Mantle's ERC-20 MNT is a mirror, not a holding.** `balanceOf` at
+  `0xdead…0000` returns exactly what `eth_getBalance` returns, for every address checked.
+  It was curated, and the first live balance read showed the same figure twice — once as
+  the gas asset and once as a token. A wallet holding 10 MNT would have read as holding
+  20. It is uncurated now, with the reason written where the entry used to be.
+
+**Polygon zkEVM does not ship.** Its endpoints answer, report the right chain id, and
+serve a head block that is 76 days old. A chain that has stopped producing blocks fails
+the bar in the way that matters most here: every read against it would be historical
+state wearing a current-state label, which is the exact bug class this file opens with.
+It ships when it produces blocks again, or not at all.
+
+**And failover became a test rather than a sentence.** "Failover is a core guarantee, and
+one endpoint is not failover" was written below, while Scroll, Linea, ZKsync and all five
+Cosmos chains shipped with exactly one endpoint each. They now have two or three apiece,
+every one of them verified, and a test holds every mainnet chain to it. Litecoin is the
+single documented exemption — this adapter speaks Esplora, and litecoinspace is the only
+Esplora-compatible Litecoin API — and it is named in a list rather than quietly skipped,
+so the day a second one exists, deleting that line is what fails.
+
+### Still to come
+
+- **EVM L2s:** Polygon zkEVM, when it produces blocks again
 - **Non-EVM:** Sui, Aptos (Move-family account model), TON, Tron
 - **UTXO:** Dogecoin, Bitcoin Cash — same adapter, different params
 - **Cosmos:** Sei, Neutron, Stride, Kava — registry-driven, with the HRP trap already solved

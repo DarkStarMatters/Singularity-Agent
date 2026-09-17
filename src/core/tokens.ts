@@ -59,6 +59,46 @@ export const WELL_KNOWN_TOKENS: Record<string, KnownToken[]> = {
     { symbol: 'USDC', name: 'USD Coin', address: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', decimals: 6 },
     { symbol: 'WXDAI', name: 'Wrapped XDAI', address: '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', decimals: 18 },
   ],
+  blast: [
+    // Blast's own stablecoin, bridged from DAI rather than USDC — the symbol
+    // is its own and the name is the symbol.
+    { symbol: 'USDB', name: 'USDB', address: '0x4300000000000000000000000000000000000003', decimals: 18 },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0x4300000000000000000000000000000000000004', decimals: 18 },
+  ],
+  mantle: [
+    // Deliberately absent: the ERC-20 MNT at 0xdead…0000 mirrors the native
+    // balance rather than holding one of its own — balanceOf and eth_getBalance
+    // return the same number for every address checked. Curating it would list
+    // that balance twice, once as the gas asset and once as a token, and a
+    // wallet holding 10 MNT would read as holding 20. The double count is worse
+    // than the alternative: queried by address it is an uncurated symbol that
+    // collides with the gas asset, so it gets an impersonation note that is
+    // technically true and unhelpful here.
+    { symbol: 'USDC', name: 'USD Coin', address: '0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9', decimals: 6 },
+    { symbol: 'USDT', name: 'Tether USD', address: '0x201EBa5CC46D216Ce6DC03F6a759e8E766e956aE', decimals: 6 },
+    { symbol: 'mETH', name: 'mETH', address: '0xcDA86A272531e8640cD7F1a92c01839911B90bb0', decimals: 18 },
+  ],
+  mode: [
+    { symbol: 'USDC', name: 'USD Coin', address: '0xd988097fb8612cc24eeC14542bC03424c656005f', decimals: 6 },
+    { symbol: 'USDT', name: 'Tether USD', address: '0xf0F161fDA2712DB8b566946122a5af183995e2eD', decimals: 6 },
+    { symbol: 'WETH', name: 'Wrapped Ether', address: '0x4200000000000000000000000000000000000006', decimals: 18 },
+  ],
+  fraxtal: [
+    { symbol: 'WFRAX', name: 'Wrapped Frax', address: '0xFc00000000000000000000000000000000000002', decimals: 18 },
+    { symbol: 'frxUSD', name: 'Frax USD', address: '0xFc00000000000000000000000000000000000001', decimals: 18 },
+    { symbol: 'sfrxUSD', name: 'Staked Frax USD', address: '0xFC00000000000000000000000000000000000008', decimals: 18 },
+    { symbol: 'frxETH', name: 'Frax Ether', address: '0xFC00000000000000000000000000000000000006', decimals: 18 },
+    { symbol: 'sfrxETH', name: 'Staked Frax Ether', address: '0xFC00000000000000000000000000000000000005', decimals: 18 },
+  ],
+  opbnb: [
+    { symbol: 'WBNB', name: 'Wrapped BNB', address: '0x4200000000000000000000000000000000000006', decimals: 18 },
+    // Eighteen decimals, because these mirror BNB Chain tokens rather than
+    // Ethereum ones. Assuming six here would misreport every balance by a
+    // factor of a trillion.
+    { symbol: 'USDT', name: 'Tether USD', address: '0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3', decimals: 18 },
+    { symbol: 'ETH', name: 'Ethereum Token', address: '0xE7798f023fC62146e8Aa1b36Da45fb70855a77Ea', decimals: 18 },
+    { symbol: 'FDUSD', name: 'First Digital USD', address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18 },
+  ],
   solana: [
     // Curated so the impersonation check has something to compare against. A
     // project token is the shape most worth copying — a clone carrying this

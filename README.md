@@ -205,7 +205,7 @@ posts nothing: an empty completion means "nothing to say", never the chat
 fallback. Real output, all five angles, from this repo:
 
 ```
-[coverage]   Reaches 23 chains: ethereum, base, arbitrum, solana, bitcoin, cosmoshub.
+[coverage]   Reaches 28 chains: ethereum, base, arbitrum, solana, bitcoin, cosmoshub.
 [capability] Get balances across many chains with one request.
 [safety]     Singularity reads public chain data only. It builds unsigned transfers
              for you to sign in your own wallet but holds no keys and cannot sign

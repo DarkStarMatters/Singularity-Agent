@@ -55,6 +55,74 @@ describe('families', () => {
   });
 });
 
+describe('the chains added in Phase 3', () => {
+  // Each of these was checked against live endpoints before it was written
+  // down: the chain id it reports, a block within the last few seconds, and
+  // two independent providers answering. A chain that cannot meet the bar does
+  // not ship at reduced quality.
+  const added = [
+    { id: 'blast', chainId: 81457, symbol: 'ETH' },
+    { id: 'mantle', chainId: 5000, symbol: 'MNT' },
+    { id: 'mode', chainId: 34443, symbol: 'ETH' },
+    { id: 'fraxtal', chainId: 252, symbol: 'FRAX' },
+    { id: 'opbnb', chainId: 204, symbol: 'BNB' },
+  ];
+
+  it('resolves each one by id and by numeric chain id', () => {
+    for (const { id, chainId } of added) {
+      expect(getChain(id).id).toBe(id);
+      expect(getChain(chainId).id).toBe(id);
+    }
+  });
+
+  it('names the right gas asset, including the one that is easy to get wrong', () => {
+    for (const { id, symbol } of added) {
+      expect(getChain(id).nativeCurrency.symbol).toBe(symbol);
+    }
+
+    // Fraxtal's gas token is FRAX, not frxETH. Every fee on the chain is quoted
+    // in it, so the obvious guess would have misreported all of them.
+    expect(getChain('fraxtal').nativeCurrency.name).toBe('Frax');
+  });
+
+  it('resolves the aliases people actually type', () => {
+    expect(getChain('frax').id).toBe('fraxtal');
+    expect(getChain('mnt').id).toBe('mantle');
+    expect(getChain('op-bnb').id).toBe('opbnb');
+  });
+});
+
+describe('failover is a guarantee or it is not', () => {
+  /**
+   * The roadmap says "failover is a core guarantee, and one endpoint is not
+   * failover" — and three mainnets shipped with exactly one anyway. A sentence
+   * in prose does not hold a list to anything, so this does.
+   */
+  const SINGLE_ENDPOINT_BY_NECESSITY = new Set([
+    // Esplora-compatible Litecoin APIs are litecoinspace and nothing else this
+    // adapter can speak to. Listed here rather than quietly excused, so that
+    // the day a second one exists, this line is what gets deleted.
+    'litecoin',
+  ]);
+
+  it('gives every mainnet chain somewhere to fail over to', () => {
+    const thin = allChains()
+      .filter((chain) => !chain.testnet && !SINGLE_ENDPOINT_BY_NECESSITY.has(chain.id))
+      .filter((chain) => chain.rpc.length < 2)
+      .map((chain) => chain.id);
+
+    expect(thin).toEqual([]);
+  });
+
+  it('keeps the exemption list honest about what is on it', () => {
+    // An exemption for a chain that has since grown a second endpoint is a
+    // comment nobody reads. If this fails, delete the entry rather than the test.
+    for (const id of SINGLE_ENDPOINT_BY_NECESSITY) {
+      expect(getChain(id).rpc.length).toBe(1);
+    }
+  });
+});
+
 describe('env RPC overrides', () => {
   it('replaces the built-in endpoint list', () => {
     process.env.SINGULARITY_RPC_BASE = 'https://example.test/rpc';

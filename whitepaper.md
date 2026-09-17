@@ -14,7 +14,7 @@ encodings, four transaction shapes, four ways to be wrong about decimals. An age
 handed four SDKs spends its context reconciling them instead of answering the question.
 
 Singularity Agent puts one normalized, read-only surface over EVM, Solana, Bitcoin/UTXO,
-and Cosmos — 23 chains today — exposed simultaneously as a terminal CLI and as ten MCP
+and Cosmos — 28 chains today — exposed simultaneously as a terminal CLI and as fourteen MCP
 tools. It holds no private keys. It can build an unsigned transaction for a human to sign
 in their own wallet; it cannot sign, and it cannot broadcast.
 
