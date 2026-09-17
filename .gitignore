@@ -6,3 +6,8 @@ dist/
 !.env.example
 coverage/
 .DS_Store
+
+# Your own tooling, and the one place a signing helper may live. Nothing in
+# the package imports it and npm publish never sees it, which is what keeps
+# "holds no keys, cannot sign" true of the thing people install.
+local/
