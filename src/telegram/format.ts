@@ -25,6 +25,7 @@ import type {
   ChainSummary,
   PortfolioResult,
 } from '../tools/operations.js';
+import type { TokenIdentity } from '../core/types.js';
 import { SingularityError } from '../core/errors.js';
 
 /** Telegram HTML mode needs exactly these three escaped. */
@@ -407,6 +408,43 @@ export function formatBurnClaim(
 
   lines.push('', `<i>${esc(receipt.note)}</i>`);
   if (receipt.explorerUrl) lines.push(link(receipt.explorerUrl, 'explorer'));
+
+  return lines.join('\n');
+}
+
+/**
+ * A mint’s identity in a chat bubble.
+ *
+ * This is the answer to "is this the real one", asked in the place it is
+ * always asked — a group chat, about a link somebody pasted. So the address
+ * leads, the declared accounts are shown as the mint’s own claim rather than
+ * as endorsement, and whether any of it can be rewritten is on its own line.
+ */
+export function formatTokenIdentity(identity: TokenIdentity): string {
+  const title = identity.name
+    ? `${esc(identity.name)} (${esc(identity.symbol ?? '')})`
+    : code(identity.mint);
+
+  const anchored = identity.immutable.metadata === 'immutable' && identity.immutable.document;
+
+  const lines = [`${bold('Identity')} — ${title}`, code(identity.mint), ''];
+
+  lines.push(`${anchored ? '🔒' : '⚠️'} ${esc(identity.immutable.note)}`);
+
+  if (identity.impersonation) {
+    lines.push('', `⚠️ ${esc(identity.impersonation.note)}`);
+  }
+
+  if (identity.accounts?.length) {
+    lines.push('', bold('Declared by this mint'));
+    for (const account of identity.accounts) {
+      lines.push(`  • ${esc(account.kind)} — ${code(account.value.text)}`);
+    }
+  }
+
+  if (identity.document) lines.push('', `<i>${esc(identity.document.note)}</i>`);
+  lines.push(`<i>${esc(identity.note)}</i>`);
+  if (identity.explorerUrl) lines.push(link(identity.explorerUrl, 'explorer'));
 
   return lines.join('\n');
 }

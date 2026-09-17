@@ -22,7 +22,7 @@ import {
   formatResolved,
   formatTransactionSearch,
   formatUnsignedTx,
-  esc,  formatMintAudit,  formatBurnClaim,
+  esc,  formatMintAudit,  formatBurnClaim,  formatTokenIdentity,
 } from './format.js';
 
 export interface CommandContext {
@@ -271,6 +271,22 @@ const redeem: Command = {
   },
 };
 
+const identity: Command = {
+  name: 'identity',
+  aliases: ['token_identity', 'real'],
+  usage: '/identity <mint> [fetch]',
+  summary: 'What a mint declares, and whether it can change',
+  async run(ctx) {
+    const mint = required(ctx, 0, 'a mint address', identity);
+
+    // Fetching the linked document is an outbound request to a URL whoever
+    // deployed the mint chose, so it stays something asked for by name.
+    const shouldFetch = ctx.args[1]?.toLowerCase() === 'fetch';
+
+    return formatTokenIdentity(await ops.tokenIdentity({ mint, fetch: shouldFetch }));
+  },
+};
+
 const health: Command = {
   name: 'health',
   usage: '/health [chain,chain,…]',
@@ -383,6 +399,7 @@ const COMMAND_LIST: Command[] = [
   read,
   decode,
   mint,
+  identity,
   burn,
   verifyburn,
   redeem,

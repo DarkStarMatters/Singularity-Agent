@@ -37,6 +37,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   build_transfer: 'transfer',
   build_burn: 'burn',
   verify_burn: 'verifyburn',
+  token_identity: 'identity',
 };
 
 describe('telegram command surface', () => {

@@ -492,6 +492,56 @@ versions; a comment on the constant says what would make it unsafe again.
 
 ---
 
+### 1.8 What a mint declares, and whether it can change — **shipped**
+
+`token_identity` (CLI `singularity identity`, Telegram `/identity`) answers the question
+people actually ask in a group chat about a pasted link: is this the real one. The answer
+is always the mint address, and the interesting part is what can be checked around it.
+
+A project’s canonical accounts normally live in a bio — editable, copyable, and
+impossible to verify. A mint can do better, and two independent facts decide whether it
+does. Is the **metadata update authority revoked**, so the name, ticker and link cannot be
+rewritten at the same address? And is the **link content-addressed**, so the document it
+names cannot be swapped for another? Where both hold, the declared accounts are the ones
+published when the mint was made, and nothing can change them afterwards. Where either
+fails, that is said instead — an immutable pointer at a mutable document is the more
+dangerous of the two, because it looks settled.
+
+Four decisions worth recording:
+
+- **Content-addressing is checked, not assumed.** Left unchecked, "content-addressed"
+  describes the *format* while the bytes still arrive from whatever gateway sits in the
+  URL — the same trust as any other link, wearing better words. A CIDv1 over the raw codec
+  is a sha-256 of exactly those bytes, so they are hashed on arrival and a mismatch raises
+  rather than degrading: the mint names one document and the gateway served another, which
+  is evidence about the gateway, not an approximate answer. A dag-pb CID hashes a UnixFS
+  node rather than the file, so those are reported `not-checkable` instead of being quietly
+  called verified.
+- **Verifying is what makes a gateway fallback safe.** A public gateway rate-limiting a
+  request says nothing about the document, so a failed read retries once elsewhere — which
+  is only sound *because* the bytes get hashed. Both halves shipped together for that
+  reason.
+- **The document is fetched only when asked.** The uri is a URL whoever deployed the mint
+  chose, so reading it is an outbound request made on a stranger’s say-so, from whatever
+  host this runs on — the same deliberate act `decode --lookup` makes of disclosing a
+  selector. Non-https is refused, as is any link naming localhost or a bare IP, before and
+  again after redirects. And when it is not fetched, `accounts` is **absent** rather than
+  empty: an empty list reads as "this project declares nothing", which is a finding the
+  call has not earned.
+- **SNGLRTY is curated, which is what arms the clone check.** The impersonation detector
+  from 2.2 only fires for symbols the curated map knows, so a project not in its own map
+  cannot detect clones of itself. A mint carrying this ticker, or this name, at any other
+  address now reports `impersonation` in every balance, portfolio and audit — and the X
+  publish gate acts on it. The agent is its own first customer of the defense, which is
+  the only honest way to ship one.
+
+The limit worth stating: this says what a mint declares and whether that can change. It
+cannot say whether the accounts declared are *honest* — a deployer can immutably publish a
+link to somebody else’s Telegram. What it removes is the class where the answer changes
+after you check it.
+
+---
+
 ---
 
 ## Phase 2 — Trust boundaries

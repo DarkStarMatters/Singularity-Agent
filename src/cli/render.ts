@@ -2,6 +2,7 @@ import type {
   DecodedCall,
   FeeEstimate,
   MintAudit,
+  TokenIdentity,
   NormalizedBlock,
   NormalizedTx,
   ResolvedIdentity,
@@ -439,6 +440,43 @@ export function renderBurnClaim(claim: BurnClaim & { redemption?: { redeemedAt: 
 
   lines.push('', `  ${dim(receipt.note)}`);
   if (receipt.explorerUrl) lines.push(`  ${cyan(receipt.explorerUrl)}`);
+
+  return lines.join('\n');
+}
+
+export function renderTokenIdentity(identity: TokenIdentity): string {
+  const title = identity.name ? `${identity.name} (${identity.symbol})` : identity.mint;
+  const lines = [heading(`Identity — ${title}`)];
+
+  const anchored =
+    identity.immutable.metadata === 'immutable' && identity.immutable.document;
+
+  lines.push(
+    '',
+    table([
+      [dim('mint'), identity.mint],
+      [dim('metadata'), identity.immutable.metadata],
+      [dim('document'), identity.immutable.document ? 'content-addressed' : 'a location'],
+      ...(identity.uri ? [[dim('link'), identity.uri.text]] : []),
+    ]),
+    '',
+    `  ${anchored ? green(identity.immutable.note) : yellow(identity.immutable.note)}`,
+  );
+
+  if (identity.impersonation) {
+    lines.push('', `  ${red(bold('Impersonation'))}`, `    ${identity.impersonation.note}`);
+  }
+
+  if (identity.accounts?.length) {
+    lines.push('', `  ${bold('Declared accounts')}`);
+    for (const account of identity.accounts) {
+      lines.push(`    ${dim(account.kind.padEnd(8))} ${account.value.text}`);
+    }
+  }
+
+  if (identity.document) lines.push(`\n  ${dim(identity.document.note)}`);
+  lines.push(`  ${dim(identity.completeness.note)}`, `  ${dim(identity.note)}`);
+  if (identity.explorerUrl) lines.push(`  ${cyan(identity.explorerUrl)}`);
 
   return lines.join('\n');
 }

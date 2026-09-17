@@ -1341,10 +1341,22 @@ export async function auditMint(chain: ChainSpec, mintAddress: string): Promise<
     const raw = found.get(mint.toBase58());
     const curated = knownMintSymbol(chain.id, mint.toBase58());
 
+    // Only a Token-2022 record settles mutability, and it settles it both ways:
+    // an all-zero update authority means the text can never be rewritten. A
+    // Metaplex name is left `unknown` rather than assumed either way.
+    const mutability = !raw
+      ? 'unknown'
+      : !extensions.has(EXT_TOKEN_METADATA)
+        ? 'unknown'
+        : raw.updateAuthority
+          ? 'mutable'
+          : 'immutable';
+
     const metadata = raw
       ? {
           name: sanitizeOnchainText(raw.name, ''),
           symbol: sanitizeOnchainText(raw.symbol, ''),
+          mutability: mutability as 'immutable' | 'mutable' | 'unknown',
           uri: untrustedText(raw.uri, 'the metadata link on the mint, chosen by whoever deployed it'),
           untrusted: true as const,
         }

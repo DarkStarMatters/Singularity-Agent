@@ -60,6 +60,18 @@ export const WELL_KNOWN_TOKENS: Record<string, KnownToken[]> = {
     { symbol: 'WXDAI', name: 'Wrapped XDAI', address: '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', decimals: 18 },
   ],
   solana: [
+    // Curated so the impersonation check has something to compare against. A
+    // project token is the shape most worth copying — a clone carrying this
+    // exact ticker at another address is how people lose money on an agent's
+    // own community — and the check only fires for symbols this map knows.
+    // Being in here also means this tool names it from its own text rather
+    // than from the chain, which is the treatment USDC already gets.
+    {
+      symbol: 'SNGLRTY',
+      name: 'Singularity-Agent',
+      address: '5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump',
+      decimals: 6,
+    },
     { symbol: 'USDC', name: 'USD Coin', address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
     { symbol: 'USDT', name: 'Tether USD', address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
     { symbol: 'JUP', name: 'Jupiter', address: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', decimals: 6 },

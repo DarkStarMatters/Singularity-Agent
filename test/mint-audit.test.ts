@@ -372,6 +372,26 @@ describe('what the audit says about itself', () => {
     expect(audit.impersonation?.authentic).toBe(REAL_USDC);
   });
 
+  it('flags a clone of this project’s own token', async () => {
+    accounts.set(
+      MINT,
+      extendedMint(baseMint({}), [
+        { type: 19, data: tokenMetadata({ mint: MINT, name: 'Singularity Agent', symbol: 'SNGLRTY' }) },
+      ]),
+    );
+
+    const audit = await auditMint(SOLANA, MINT);
+
+    // The canary aimed at its own community. A clone carrying this ticker at
+    // another address is the standard way people lose money on an agent token,
+    // and the check only fires for symbols the curated map knows — so the
+    // project being in that map is the feature, and this test is what keeps it
+    // there.
+    expect(audit.impersonation?.kind).toBe('curated-token');
+    expect(audit.impersonation?.symbol).toBe('SNGLRTY');
+    expect(audit.impersonation?.authentic).toBe('5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump');
+  });
+
   it('says when the metadata could not be read instead of reporting no name', async () => {
     accounts.set(MINT, extendedMint(baseMint({ mintAuthority: AUTHORITY }), []));
     metadataFails = 'connection reset';

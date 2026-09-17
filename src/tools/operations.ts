@@ -4,6 +4,7 @@ import {
   buildBurn as buildSolanaBurn,
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
+import { fetchIdentityDocument, isContentAddressed } from '../core/identity.js';
 import {
   alreadyRedeemed,
   findRedemption,
@@ -28,6 +29,7 @@ import type {
   BurnReceipt,
   ChainSpec,
   MintAudit,
+  TokenIdentity,
   DecodedCall,
   FeeEstimate,
   NormalizedBlock,
@@ -836,4 +838,105 @@ export async function redeemBurn(options: {
   });
 
   return { receipt, matched, redemption };
+}
+
+/**
+ * What a mint says it is, and whether that can be changed afterwards.
+ *
+ * The on-chain half always runs. The document is fetched only when asked,
+ * because the uri is a URL whoever deployed the mint chose, and reading it is
+ * an outbound request made on a stranger’s say-so — the same deliberate act
+ * `decode --lookup` makes of disclosing a selector to a third party.
+ *
+ * When it is not fetched, `accounts` is **absent** rather than empty. An empty
+ * list reads as "this project declares nothing", and that is a finding this
+ * call has not earned.
+ */
+export async function tokenIdentity(options: {
+  mint: string;
+  chain?: string;
+  fetch?: boolean;
+}): Promise<TokenIdentity> {
+  const chain = solanaChain(options.chain, 'Token identity');
+  const mint = await toAddress(options.mint, chain);
+  const audit = await auditSolanaMint(chain, mint);
+
+  const mutability = audit.metadata?.mutability ?? 'unknown';
+  const uri = audit.metadata?.uri;
+  const contentAddressed = uri ? isContentAddressed(uri.text) : false;
+
+  // Both halves have to hold. An immutable pointer at a mutable document is a
+  // record that can be rewritten without the chain showing anything at all,
+  // which is the more dangerous of the two failures because it looks settled.
+  const anchored = mutability === 'immutable' && contentAddressed;
+
+  const immutableNote = !uri
+    ? 'This mint points at no document, so there is nothing declared to anchor.'
+    : anchored
+      ? 'The update authority is revoked and the link addresses its content, so what this mint declares is what it declared when it was made, and nobody can change it now.'
+      : mutability === 'mutable'
+        ? `The metadata update authority is live, so the name, ticker and link can all be rewritten at this same address.`
+        : mutability === 'unknown'
+          ? 'Whether this text can be rewritten was not determined — a Metaplex record keeps that in a flag this tool does not decode.'
+          : 'The on-chain text is immutable, but the link names a server rather than its own content, so what that link serves can still change.';
+
+  let accounts: TokenIdentity['accounts'];
+  let document: TokenIdentity['document'];
+
+  if (options.fetch && uri) {
+    try {
+      const fetched = await fetchIdentityDocument(uri.text);
+      accounts = fetched.accounts;
+      document = {
+        fetched: true,
+        source: fetched.source,
+        note:
+          fetched.integrity === 'verified'
+            ? 'These bytes were hashed and match the CID the mint names, so they are the document it points at and not merely what a gateway served.'
+            : fetched.integrity === 'not-checkable'
+              ? 'Read from wherever the link points. The CID form here hashes a UnixFS node rather than the file, so the bytes were not checked against it — this is what the gateway served.'
+              : 'Read from wherever the link points today. A server can serve something else tomorrow, or serve you and nobody else.',
+      };
+    } catch (err) {
+      // Left absent rather than empty. "Declares nothing" and "could not be
+      // read" are the same empty list, and only one of them is a finding.
+      document = {
+        fetched: false,
+        source: uri.text,
+        note: `The document could not be read: ${(err as Error).message}`,
+      };
+    }
+  } else if (uri) {
+    document = {
+      fetched: false,
+      source: uri.text,
+      note: 'Not fetched. The link is a URL chosen by whoever deployed this mint, so following it is a request made on their say-so — ask for it deliberately.',
+    };
+  }
+
+  return {
+    chain: chain.id,
+    mint,
+    ...(audit.metadata ? { symbol: audit.metadata.symbol, name: audit.metadata.name } : {}),
+    ...(uri ? { uri } : {}),
+    immutable: { metadata: mutability, document: contentAddressed, note: immutableNote },
+    ...(accounts ? { accounts } : {}),
+    ...(document ? { document } : {}),
+    ...(audit.impersonation ? { impersonation: audit.impersonation } : {}),
+    completeness:
+      document?.fetched === true
+        ? completeness.exhaustive(
+            'Every account this tool recognizes in the document the mint points at, plus what the chain says about whether that can change.',
+          )
+        : document?.fetched === false && options.fetch
+          ? completeness.failed(
+              'The document could not be read, so what this mint declares is unknown rather than absent.',
+            )
+          : completeness.curated(
+              'The on-chain half only. The document was not fetched, so no account this mint may declare has been seen.',
+            ),
+    note:
+      'Identity here is the mint address. A name, a ticker and a linked account are all things anyone can copy onto a mint of their own — what cannot be copied is this address. Where the metadata is immutable and content-addressed, the accounts below are the ones published at mint time; treat anything claiming to be this project from a different address as a different project.',
+    explorerUrl: audit.explorerUrl,
+  } satisfies TokenIdentity;
 }

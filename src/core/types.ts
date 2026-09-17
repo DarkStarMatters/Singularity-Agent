@@ -366,6 +366,16 @@ export interface MintAudit {
     name: string;
     symbol: string;
     /**
+     * Whether this text can be rewritten later, at the same address.
+     *
+     * `unknown` is a real answer and not a placeholder: a Token-2022 record
+     * settles it either way, while Metaplex spells mutability out in a flag
+     * past variable-length creator data that is not decoded here. Reporting
+     * `immutable` where it has not been checked would be the confident wrong
+     * answer; reporting nothing would read as the same thing.
+     */
+    mutability: 'immutable' | 'mutable' | 'unknown';
+    /**
      * Reported, never fetched — see the note on the audit. Free text rather
      * than a label, so it travels the way a memo does: defanged, capped at the
      * free-text limit, and carrying the clause that says who wrote it.
@@ -415,6 +425,52 @@ export interface BurnReceipt {
   burns: BurnEvent[];
   /** Whatever the burner wrote into the transaction. Their text, so marked. */
   memo?: UntrustedText;
+  completeness: Completeness;
+  note: string;
+  explorerUrl?: string;
+}
+
+/** An account a mint declares as its own, in the document its metadata points at. */
+export interface DeclaredAccount {
+  kind: 'x' | 'telegram' | 'website' | 'github' | 'discord' | 'other';
+  /** Whoever deployed the mint wrote this, so it is theirs and marked as theirs. */
+  value: UntrustedText;
+}
+
+/**
+ * What a mint says it is, and whether that can change.
+ *
+ * The useful question about a project token is not what it is called — anyone
+ * can deploy a mint called anything. It is whether the thing it *claims* can
+ * be rewritten after you read it. Two facts decide that, and both are
+ * checkable: whether the metadata update authority is revoked, and whether the
+ * document it points at is addressed by its own content. Where both hold, the
+ * accounts below are what the deployer published when the mint was made and
+ * cannot be swapped for others later. Where either does not, that is said.
+ */
+export interface TokenIdentity {
+  chain: string;
+  mint: string;
+  symbol?: string;
+  name?: string;
+  uri?: UntrustedText;
+  /** Whether the on-chain text can be rewritten, and whether the document can. */
+  immutable: {
+    metadata: 'immutable' | 'mutable' | 'unknown';
+    /** True when the uri addresses its content — an IPFS CID rather than a path. */
+    document: boolean;
+    note: string;
+  };
+  /** Present only when the document was actually fetched. */
+  accounts?: DeclaredAccount[];
+  document?: {
+    fetched: boolean;
+    /** Where it was read from, after any scheme rewriting. */
+    source: string;
+    note: string;
+  };
+  /** Set when this mint wears a name that belongs to a different address. */
+  impersonation?: Impersonation;
   completeness: Completeness;
   note: string;
   explorerUrl?: string;

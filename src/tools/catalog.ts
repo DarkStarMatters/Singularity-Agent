@@ -298,6 +298,22 @@ export const TOOLS: ToolDefinition[] = [
     },
     run: (args) => ops.verifyBurn(args),
   }),
+
+  defineTool({
+    name: 'token_identity',
+    title: 'What a mint declares, and whether it can change',
+    description:
+      'Read what a Solana mint says it is — its name, ticker, metadata link — and, crucially, whether any of that can be rewritten later at the same address. Where the update authority is revoked and the link is content-addressed (an IPFS CID), what the mint declares is fixed at mint time and cannot be swapped. Set `fetch` to also read the document and return the accounts it declares (X, Telegram, website, GitHub); it is off by default because the link is a URL chosen by whoever deployed the mint. Use it to answer whether a token, or an account claiming to represent one, is the real one — the answer is always the mint address, never the ticker. A mint wearing a curated token\u2019s symbol or name at a different address is reported as impersonation.',
+    shape: {
+      mint: z.string().describe('Mint address, or an address-book alias for one.'),
+      fetch: z
+        .boolean()
+        .optional()
+        .describe('Also fetch the metadata document and read the accounts it declares. Off by default: it is an outbound request to a URL the deployer chose.'),
+      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+    },
+    run: (args) => ops.tokenIdentity(args),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

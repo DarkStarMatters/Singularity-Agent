@@ -268,6 +268,22 @@ program
   );
 
 program
+  .command('identity')
+  .description('What a mint declares, and whether it can be changed afterwards.')
+  .argument('<mint>', 'Mint address, or an address-book alias.')
+  .option(
+    '--fetch',
+    'Also fetch the metadata document and read the accounts it declares. Off by default: the link is a URL chosen by whoever deployed the mint.',
+  )
+  .option('-c, --chain <chain>', 'Solana chain id or alias.', 'solana')
+  .action(async (mint: string, options: { fetch?: boolean; chain: string }) => {
+    emit(
+      await ops.tokenIdentity({ mint, fetch: options.fetch, chain: options.chain }),
+      render.renderTokenIdentity,
+    );
+  });
+
+program
   .command('mcp')
   .description('Run the MCP server on stdio, for Claude Code and other MCP clients.')
   .action(async () => {
