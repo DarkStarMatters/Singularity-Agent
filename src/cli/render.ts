@@ -78,6 +78,9 @@ export function renderResolve(result: ResolvedIdentity): string {
     `  ${bold('Input')}    ${result.input}`,
     `  ${bold('Kind')}     ${result.kind}`,
   ];
+  // Shown as its own line rather than left to the note: the expansion is the
+  // one step between what was typed and what was answered about.
+  if (result.alias) lines.push(`  ${bold('Alias')}    ${yellow(result.alias)} ${dim('(address book)')}`);
   if (result.address) lines.push(`  ${bold('Address')}  ${cyan(result.address)}`);
   if (result.name) lines.push(`  ${bold('Name')}     ${green(result.name)}`);
   if (result.family) lines.push(`  ${bold('Family')}   ${result.family}`);

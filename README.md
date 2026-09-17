@@ -439,7 +439,8 @@ The variable name is `SINGULARITY_RPC_` + the chain id, uppercased, with `-` →
     }
   ],
   "addressBook": {
-    "treasury": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+    "treasury": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    "payroll": { "target": "payroll.eth", "pin": "0x00000000219ab540356cBB839Cbe05303d7705Fa" }
   },
   "portfolioChains": ["ethereum", "base", "solana"]
 }
@@ -451,6 +452,20 @@ names work anywhere an address is accepted:
 ```bash
 singularity balance treasury --chain base
 ```
+
+**Pinning an alias.** The object form adds a `pin`: the address the alias must come out
+as. A pinned alias never yields anything else — a resolution landing elsewhere raises
+`ALIAS_PIN_MISMATCH` rather than answering, and a target that resolves to nothing raises
+`ALIAS_PIN_UNVERIFIED` rather than falling back to the pin. There is no branch that
+reports the new address with a warning attached, because a result carrying the new address
+*is* the failure.
+
+Worth pinning when the target is a name: ENS and SNS registrations expire, get
+re-registered by whoever watched the drop, and carry address records the current owner can
+rewrite. A pin also covers the config file itself, which is why `{ "target": "0x…",
+"pin": "0x…" }` with both the same is a reasonable thing to write. Unpinned aliases are
+unchanged and still follow their name wherever it points — `resolve` now says which kind
+it expanded, either way.
 
 ---
 
@@ -515,6 +530,12 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   that an address holds nothing, on a scan that was not `exhaustive`, gets the caveat
   appended, or is withheld when the correction does not fit in a post. The same applies to
   calling a token by a name that belongs to a different contract.
+- **An address-book alias is unchecked unless it is pinned.** An alias is the one input
+  that skips address validation by construction — "treasury" is an instruction to go and
+  find an address, and whatever comes back is used without the user seeing it. Add a `pin`
+  to hold it to the address it meant when it was saved; see the config section above.
+  Without one, the alias follows its name wherever it currently points, which is the honest
+  default and is now stated in the `resolve` result rather than left invisible.
 - **No fiat pricing.** Balances only.
 - **IBC denoms show as hashes.** Resolving `ibc/ABC…` to its origin asset needs a
   denom-trace lookup per token; the hash is shown rather than a wrong guess, and decimals

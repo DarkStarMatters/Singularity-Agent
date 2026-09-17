@@ -21,6 +21,66 @@ non-goals."
 
 ---
 
+## Shipped — v0.0.6, the alias that cannot drift
+
+*Phase 2.3, which closes Phase 2. Everything in this section landed after v0.0.5.*
+
+**A pinned alias never answers with anything else** (Phase 2.3). An address-book alias is
+the one input this tool does not check: everything else arriving as a string is validated
+against the chain it claims — forty hex characters, a base58check checksum, a bech32 prefix
+that names its own network — while `treasury` is an instruction to go and find an address,
+and whatever comes back is used without the user ever seeing it.
+
+Two ways a saved alias stops meaning what it meant, and a pin closes both. It points at a
+**name**, and ENS and SNS registrations expire, get re-registered by whoever watched the
+drop, and carry address records the current owner can rewrite — `treasury.eth` resolving
+somewhere new is not an error condition anywhere in this codebase, it is a successful
+resolution byte-identical to the honest one. Or the **file changed**: anything that can
+write to the user's home directory can repoint an alias, and the next `balance treasury`
+answers about a stranger's wallet with no seam marking that the question changed. That
+second half is why pinning a literal address to itself is a sensible thing to write.
+
+Three decisions worth recording:
+
+- **There is no "the pin looks stale, using the new address" branch.** A pin that can be
+  outvoted by the thing it is checking is not a pin. It is also not a warning attached to a
+  successful answer: a result carrying the new address still carries the new address, every
+  consumer reads the field, and a model composing a reply reads the field too. So
+  `ALIAS_PIN_MISMATCH` is an error and the call stops.
+- **An unresolvable pinned name raises rather than falling back to the pin.** An expired
+  registration resolves to nothing right up until somebody else registers it, so "cannot be
+  checked" is a finding, not a gap to paper over — and using the pin as the answer would
+  invert its job from check to source. That is `ALIAS_PIN_UNVERIFIED`, and it is the same
+  call `HISTORICAL_STATE_UNAVAILABLE` made about a pruned endpoint.
+- **Case folding is decided by the encoding, not by taste.** EVM hex folds, because EIP-55
+  mixed case is a checksum over the same twenty bytes. bech32 folds, but only once both
+  sides decode with a valid checksum, because the encoding forbids mixed case precisely so
+  that either casing means one address — and the prefix stays significant, since `cosmos1…`
+  and `osmo1…` are one key rendered for two chains and a pin naming one has not verified the
+  other. Everything else compares exactly: base58 case is data, and this is the one place
+  where folding it would call an impersonator the real thing.
+
+The enforcement is structural rather than remembered. Expanding an alias yields a target
+that is not yet an address; the only thing that returns an address is `settle`, and every
+path that acts on one — `balance`, `portfolio`, `read_contract`, `build_transfer` — pours
+through it. A call site that skips it is left holding the *unresolved* string and hands a
+name to something wanting an address, which fails one line later. Weaker than a type, and
+visible, which is the standing complaint about guarantees that live in prose.
+
+**And an expanded alias is now visible in the answer**, pinned or not. The expansion was
+the one step the user never saw: ask about `treasury`, get an address, with nothing saying
+a file on disk was consulted. `resolve` carries the `alias` it matched and says which kind
+it was — matched its pin; unpinned, where a name is followed wherever it points today and a
+raw address is only as stable as the file holding it; or pinned and unchecked because the
+name resolved to nothing. Those two unpinned cases are worded apart on purpose: saying
+"followed wherever it points" about a literal address would name the wrong risk.
+`resolve` is also the one place that
+describes rather than raises on that last case: it identifies strings and never hands an
+address to anything, so the description is a better answer than an exception, and it is
+still not a silent update.
+
+---
+
 ## Shipped — v0.0.5, reading what is actually there
 
 *Everything in this section landed after v0.0.4 and is what the version number now stands
@@ -244,7 +304,9 @@ honest answer for them rather than a wrong one.
 *Goal: on-chain data is adversarial input. Treat it that way structurally.*
 
 This phase is ranked above new chains deliberately. It is the one category where the tool
-being wrong causes harm rather than inconvenience.
+being wrong causes harm rather than inconvenience. **All three items are shipped**, which
+is what clears Phase 3 to start — coverage was never blocked on effort, it was blocked on
+this.
 
 ### 2.1 Provenance marking — **shipped**
 Token symbols read from a contract, and Cosmos denoms, are marked and defanged; see "the
@@ -322,10 +384,16 @@ out "USD Coin" and never says USDC is not repaired. Names are phrases, and match
 against composed prose is a different and much fuzzier problem than matching a ticker —
 one worth solving with a positive corpus in hand, not before.
 
-### 2.3 Address-book verification
-Aliases resolve today but carry no integrity guarantee. Add optional pinning so a saved
-alias that resolves to a different address than when it was saved raises rather than
-silently updates.
+### 2.3 Address-book verification — **shipped**
+Optional pinning, enforced at the single funnel every address passes through; see "the
+alias that cannot drift" above. With it, Phase 2 is closed.
+
+The limit worth stating: a pin verifies **where the alias points**, not who is at the other
+end. An address that has been correct since the day it was saved is still an address whose
+owner may have changed — the key could be compromised, the multisig re-keyed, the contract
+upgraded behind its proxy. Nothing readable from a chain distinguishes that from an
+ordinary quiet address, so it is not a check this tool can offer, and a pin should not be
+read as one.
 
 ---
 
@@ -408,5 +476,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (623 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (658 tests); `npm run typecheck`
 must pass clean.

@@ -84,6 +84,44 @@ export class HistoricalStateUnavailableError extends SingularityError {
   }
 }
 
+/**
+ * A pinned address-book alias resolved to an address other than its pin.
+ *
+ * Deliberately an error and not a warning attached to a successful answer. The
+ * whole failure being guarded against is the one nobody notices, and a result
+ * that carries the new address plus a note about the old one still carries the
+ * new address — every downstream consumer reads the field, and a model
+ * composing a reply reads the field too.
+ */
+export class AliasPinMismatchError extends SingularityError {
+  constructor(alias: string, pin: string, actual: string) {
+    super(
+      'ALIAS_PIN_MISMATCH',
+      `Address-book alias "${alias}" is pinned to ${pin}, but resolves to ${actual} today.`,
+      `Nothing here can tell those two apart on merit — the new answer is a valid resolution. If you moved the alias, update its "pin" to ${actual}. If you did not, the name changed hands or the config file was edited, and ${actual} is not who you meant. Pass an address directly to bypass the book.`,
+    );
+  }
+}
+
+/**
+ * A pinned alias could not be checked, because its target resolved to nothing.
+ *
+ * Distinct from {@link AliasPinMismatchError}: no other address appeared, so
+ * nothing was hijacked *yet*. It still stops, because an expired registration
+ * resolves to nothing right up until somebody else registers it, and falling
+ * back to the pinned address would turn the pin from a check into a source —
+ * quietly keeping the alias working while the signal that it lapsed goes by.
+ */
+export class AliasPinUnverifiedError extends SingularityError {
+  constructor(alias: string, target: string, pin: string) {
+    super(
+      'ALIAS_PIN_UNVERIFIED',
+      `Address-book alias "${alias}" is pinned to ${pin}, and the pin could not be checked: "${target}" did not resolve to an address.`,
+      `The registration may have expired, which is the state that precedes somebody else taking it. This call stops rather than using ${pin} on its own authority — pass ${pin} directly if that is what you meant, or repoint the alias.`,
+    );
+  }
+}
+
 export class UnsupportedOperationError extends SingularityError {
   constructor(operation: string, family: string, hint?: string) {
     super(

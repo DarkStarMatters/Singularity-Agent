@@ -297,6 +297,14 @@ export interface ResolvedIdentity {
   address?: string;
   /** Human-readable name, e.g. an ENS or SNS name. */
   name?: string;
+  /**
+   * The address-book alias the input matched, when it matched one.
+   *
+   * Present so a caller can tell "0x…" from "treasury" *after* the fact: the
+   * expansion is otherwise invisible, and whether the answer came from a file
+   * on disk or from the string the user typed is a difference worth keeping.
+   */
+  alias?: string;
   /** Chains this identity is valid on. */
   chains: string[];
   family?: ChainFamily;

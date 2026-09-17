@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { BUILTIN_CHAINS, DEFAULT_PORTFOLIO_CHAINS } from './chains.js';
 import { UnknownChainError, SingularityError } from './errors.js';
+import type { AddressBookValue } from './address-book.js';
 import type { ChainSpec, ChainFamily } from './types.js';
 
 export interface UserConfig {
@@ -10,8 +11,12 @@ export interface UserConfig {
   chains?: Partial<ChainSpec>[];
   /** Addresses to use when a command is run with no address. */
   defaultAddresses?: Record<string, string>;
-  /** Named address book: "vault" -> "0x…". */
-  addressBook?: Record<string, string>;
+  /**
+   * Named address book: `"vault": "0x…"`, or the pinned form
+   * `"vault": { "target": "vault.eth", "pin": "0x…" }`. See `address-book.ts`
+   * for what a pin promises.
+   */
+  addressBook?: Record<string, AddressBookValue>;
   /** Chains used by `portfolio` when none are named. */
   portfolioChains?: string[];
 }
@@ -111,12 +116,6 @@ export function getChain(ref: string | number): ChainSpec {
 
 export function chainsByFamily(family: ChainFamily): ChainSpec[] {
   return allChains().filter((c) => c.family === family);
-}
-
-/** Look up a friendly name from the user's address book, else return as-is. */
-export function resolveAlias(input: string): string {
-  const book = loadUserConfig().addressBook ?? {};
-  return book[input] ?? book[input.toLowerCase()] ?? input;
 }
 
 export function portfolioChains(): string[] {

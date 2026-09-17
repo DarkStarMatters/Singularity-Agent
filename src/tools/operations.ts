@@ -1,5 +1,6 @@
 import { adapterFor } from '../adapters/index.js';
-import { allChains, getChain, portfolioChains, resolveAlias } from '../core/registry.js';
+import { allChains, getChain, portfolioChains } from '../core/registry.js';
+import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
 import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
@@ -60,10 +61,40 @@ export function listChains(query?: string, family?: string): ChainSummary[] {
 }
 
 /**
+ * Say that the answer came out of the address book, and what checked it.
+ *
+ * An alias is the one input whose expansion the user never sees: they ask about
+ * "treasury" and get an address back, with nothing in the result saying a file
+ * was consulted. That gap is worth closing even when nothing is pinned — an
+ * unpinned alias follows a name wherever it currently points, which is a fact
+ * about the answer rather than a caveat about the tool.
+ */
+function withAlias(lookup: AliasTarget, verified: boolean, reason = ''): string {
+  if (!lookup.alias) return reason;
+
+  // A name and a literal address are unpinned in different ways: one follows a
+  // registration that can change hands, the other is only as stable as the file
+  // it sits in. Saying "followed wherever it points" about a raw address would
+  // name the wrong risk.
+  const unpinned = lookup.target.includes('.')
+    ? `Address-book alias "${lookup.alias}" expanded to the name "${lookup.target}", unpinned — it is followed wherever that name points today.`
+    : `Address-book alias "${lookup.alias}" expanded to ${lookup.target}, unpinned — nothing here checks that against the address you saved.`;
+
+  const prefix = !lookup.pin
+    ? unpinned
+    : verified
+      ? `Address-book alias "${lookup.alias}" expanded to "${lookup.target}" and matched its pin (${lookup.pin}).`
+      : `Address-book alias "${lookup.alias}" is pinned to ${lookup.pin}, and that pin is unchecked here because "${lookup.target}" resolved to nothing.`;
+
+  return `${prefix} ${reason}`.trim();
+}
+
+/**
  * Work out what an arbitrary string is, resolving names to addresses where we can.
  */
 export async function resolve(input: string, chainHint?: string): Promise<ResolvedIdentity> {
-  const raw = resolveAlias(input.trim());
+  const lookup = lookupAlias(input);
+  const raw = lookup.target;
   const detection = detect(raw);
 
   const base: ResolvedIdentity = {
@@ -74,8 +105,13 @@ export async function resolve(input: string, chainHint?: string): Promise<Resolv
     note: detection.reason,
   };
 
+  if (lookup.alias) base.alias = lookup.alias;
+
   if (detection.kind === 'address') {
-    base.address = raw;
+    // Settled even though nothing was resolved: the address came out of the
+    // config file, which is the second thing a pin guards against.
+    base.address = lookup.settle(raw);
+    base.note = withAlias(lookup, true, base.note);
 
     // One Cosmos key is one account across every Cosmos chain, just re-encoded.
     // Listing the equivalents turns a confusing "wrong prefix" error into a
@@ -98,7 +134,7 @@ export async function resolve(input: string, chainHint?: string): Promise<Resolv
       const name = await adapterFor(chain).lookupName?.(chain, raw).catch(() => null);
       if (name) {
         base.name = name;
-        base.note = `${detection.reason} Primary ENS name: ${name}.`;
+        base.note = `${base.note} Primary ENS name: ${name}.`;
       }
     }
     return base;
@@ -109,20 +145,38 @@ export async function resolve(input: string, chainHint?: string): Promise<Resolv
     const adapter = adapterFor(chain);
 
     if (!adapter.resolveName) {
-      return { ...base, note: `${detection.reason} No name resolver is wired up for ${chain.name}.` };
+      return {
+        ...base,
+        note: withAlias(lookup, false, `${detection.reason} No name resolver is wired up for ${chain.name}.`),
+      };
     }
 
     // No catch here: an RPC failure must surface as an RPC failure, not be
     // reported back to the user as "that name does not exist".
     const address = await adapter.resolveName(chain, raw);
+
+    // `resolve` reports what a string is; it never hands an address to anything.
+    // So an unresolvable pinned alias is described here rather than thrown —
+    // "pinned to 0x…, resolves to nothing today" is a better answer than an
+    // exception, and it is still not a silent update. The paths that *act* on
+    // an address settle the null case and raise.
     if (!address) {
       return {
         ...base,
         name: raw,
-        note: `${detection.reason} The name did not resolve — it may be unregistered or have no address record set.`,
+        note: withAlias(
+          lookup,
+          false,
+          `${detection.reason} The name did not resolve — it may be unregistered or have no address record set.`,
+        ),
       };
     }
-    return { ...base, address, name: raw };
+    return {
+      ...base,
+      address: lookup.settle(address),
+      name: raw,
+      note: withAlias(lookup, true, base.note),
+    };
   }
 
   return base;
@@ -269,17 +323,20 @@ export async function getPortfolio(options: {
   chains?: string[];
   includeTokens?: boolean;
 }): Promise<PortfolioResult> {
-  const raw = resolveAlias(options.address.trim());
+  const lookup = lookupAlias(options.address);
+  const raw = lookup.target;
   const requested = options.chains?.length ? options.chains : portfolioChains();
 
   // A name has to become an address before any chain can be asked about it —
   // otherwise every chain rejects the name and the whole call looks unsupported.
   const detection = detect(raw);
-  let address = raw;
+  let address: string;
 
   if (detection.kind === 'name') {
     const nameChain = getChain(detection.chains[0] ?? 'ethereum');
-    const resolved = await adapterFor(nameChain).resolveName?.(nameChain, raw);
+    const resolved = lookup.settle(
+      (await adapterFor(nameChain).resolveName?.(nameChain, raw)) ?? null,
+    );
     if (!resolved) {
       throw new SingularityError(
         'NAME_NOT_RESOLVED',
@@ -288,6 +345,8 @@ export async function getPortfolio(options: {
       );
     }
     address = resolved;
+  } else {
+    address = lookup.settle(raw);
   }
 
   const candidates = requested
@@ -511,15 +570,24 @@ export async function decode(
   };
 }
 
-/** Accept a name, an address-book alias, or a raw address; always return an address. */
+/**
+ * Accept a name, an address-book alias, or a raw address; always return an
+ * address — and never one a pinned alias disowns.
+ *
+ * Every return here goes through `settle`, which is the whole point: this is
+ * the funnel that `balance`, `read_contract` and `build_transfer` all pour
+ * through, and an address escaping it unchecked would be an address the pin was
+ * never applied to.
+ */
 async function toAddress(input: string, chain: ChainSpec): Promise<string> {
-  const raw = resolveAlias(input.trim());
+  const lookup = lookupAlias(input);
+  const raw = lookup.target;
   const adapter = adapterFor(chain);
 
-  if (adapter.isValidAddress(chain, raw)) return raw;
+  if (adapter.isValidAddress(chain, raw)) return lookup.settle(raw);
 
   if (raw.includes('.') && adapter.resolveName) {
-    const resolved = await adapter.resolveName(chain, raw);
+    const resolved = lookup.settle(await adapter.resolveName(chain, raw));
     if (resolved) return resolved;
     throw new SingularityError(
       'NAME_NOT_RESOLVED',

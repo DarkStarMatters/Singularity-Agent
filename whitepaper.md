@@ -2,7 +2,7 @@
 
 **A normalization layer for agentic blockchain access**
 
-Version 0.0.5 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.0.6 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
 ---
 
@@ -247,7 +247,9 @@ Stated plainly, because §3.2 applies to this document too.
 - **EVM token lists are curated, not exhaustive.** Structural, absent an indexer.
 - **No fiat pricing.** Deliberate — it would require a trusted oracle and turn a
   deterministic tool into one with a market-data dependency and a staleness question.
-- **No historical queries.** Balances are current-state only; no "as of block N."
+- **Historical queries are EVM and Cosmos only.** `atBlock` reads past state on those two
+  families; Solana and UTXO reject it outright rather than serve current state under a
+  past label, and the endpoint has to be archival or the call raises.
 - **Public RPCs are rate-limited.** Fine for interactive use, insufficient for sustained
   automation without configured endpoints.
 - **Solana history is pruned.** Public RPCs drop older signatures; archival access needs
@@ -263,6 +265,14 @@ Stated plainly, because §3.2 applies to this document too.
   address carries an `impersonation` naming the real one. What survives by necessity is
   plain English: the wallet really does hold a token by that name, so the mark is the
   defense and the stripping only stops it being bypassed. See roadmap Phase 2.
+- **An address-book alias is unchecked unless pinned.** An alias is the one input that
+  skips address validation by construction — it is an instruction to go and find an
+  address, and whatever comes back is used unseen. A `pin` holds it to the address it meant
+  when it was saved, and a resolution landing anywhere else raises rather than answering.
+  Without one, the alias follows its name wherever it points, which is the honest default
+  and is stated in the result. A pin verifies *where the alias points*, never who is at the
+  other end: a key can be compromised or a proxy upgraded behind an address that has been
+  correct since the day it was written down.
 
 ---
 
