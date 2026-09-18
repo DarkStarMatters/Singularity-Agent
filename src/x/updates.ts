@@ -92,26 +92,32 @@ export const UPDATE_ANGLES = [
 
 export type UpdateAngle = (typeof UPDATE_ANGLES)[number];
 
+/**
+ * Where a post starts, not what it has to look like.
+ *
+ * These used to be instructions — "Show the exact command and say in one line
+ * what it gives back", "State it plainly, as a fact about the tool" — and an
+ * instruction that specific is a template. The model filled it in, every post
+ * came out the same shape, and the account read like a form letter. A subject
+ * chosen from fifty is no use when all fifty are written to one pattern.
+ *
+ * So these name a *thing worth saying* and stop there. The sentences are the
+ * writer's problem.
+ */
 const ANGLE_BRIEFS: Record<UpdateAngle, string> = {
-  howto:
-    'A recipe. Show the exact command from the facts and say in one line what it gives back. Someone should be able to paste it. Do not alter the command.',
-  gotcha:
-    'A trap this handles for you. Name the specific mistake and what happens instead of a wrong answer. Useful to someone who has hit it, not a boast.',
-  chainnote:
-    'One concrete thing about this ONE chain — what it is called, what its addresses look like, what it can and cannot enumerate. Do not list other chains, and do not give a total count.',
-  limitation:
-    'One thing this deliberately will not do, and why that is the right call. State it plainly, as a fact about the tool, not an apology. Do not pair it with a promise to fix it.',
-  capability:
-    'One tool: what question it answers and what it refuses to do. Concrete, not a feature dump.',
+  howto: 'Something someone can go and do, with the command that does it.',
+  gotcha: 'A specific way people get this wrong, and what happens here instead.',
+  chainnote: 'One chain, and the thing about it that is not true of the others.',
+  limitation: 'Something this refuses to do, and why refusing is the right call.',
+  capability: 'One tool: the question it answers, and the question it will not.',
   changelog:
-    'What changed recently, using only the listed commit subjects. If the list is empty, do not write about changes at all — return an empty line.',
-  teardown:
-    'Explain the mechanism behind one shipped guarantee — how it actually works, in one breath. Assume the reader is technical.',
+    'What actually changed, from the commit subjects below. If there are none, say nothing at all and return an empty line.',
+  teardown: 'How one of these guarantees actually works underneath.',
   roadmap:
-    'One thing the project has shipped, drawn from the Shipped list. You may mention a planned area, but say plainly that it is planned and not built. Never describe a planned item as if it exists.',
-  philosophy:
-    'Why a chain-agnostic, read-only tool is the right shape. No numbers unless they appear in the facts.',
+    'Something already shipped. A planned thing may be mentioned only if you say plainly that it is planned and does not exist yet.',
+  philosophy: 'Why a read-only, chain-agnostic tool is the right shape for this.',
 };
+
 
 /**
  * Facts read from the repository, not from the model.
@@ -496,40 +502,74 @@ export function nextUpdate(
   return [...fresh].sort((a, b) => byAngle(a) - byAngle(b))[0] ?? null;
 }
 
+/**
+ * What the writer is given.
+ *
+ * This was a wall of prohibitions — nine "do not" lines, down to where commas
+ * belong — wrapped around one stripped fact like `Commit subject: X`. Given a
+ * fragment and a rulebook, the only safe move is to restate the fragment, and
+ * that is what came out: flat, uniform, obviously generated.
+ *
+ * Two changes. The writer now gets context it can actually think with, so it
+ * knows what the thing it is describing is *part of*; and the style rules are
+ * gone, replaced by an instruction to sound like the person who built it. What
+ * stays is the short list that is not about style at all: the facts are the
+ * facts, nothing may be invented, and X counts characters. Those are the
+ * product. Dropping them to get livelier prose would be buying voice with
+ * accuracy, and the whole argument of this project is that the accuracy is the
+ * point.
+ */
 export function updatePrompt(
   facts: ProjectFacts,
   brief: UpdateBrief,
   recentPosts: string[] = [],
 ): string {
+  const families = Object.entries(facts.byFamily)
+    .map(([family, ids]) => `${family} (${ids.length})`)
+    .join(', ');
+
   return [
-    'Write one post for X about the project below. You are posting as the project itself.',
+    'You write for Singularity Agent, and you post as the project itself.',
     '',
-    `Angle for this post: ${ANGLE_BRIEFS[brief.angle]}`,
+    'What it is, so you know what you are talking about — background only, not the subject of this post:',
+    `  A read-only tool that reads ${facts.chainCount} blockchains through one interface: ${families}.`,
+    `  ${facts.toolCount} tools, usable from a terminal or by a model over MCP. It holds no private keys,`,
+    '  cannot sign and cannot broadcast; it builds unsigned payloads for someone else to sign.',
+    '  Its whole argument is that the hard part is not reaching a chain, it is being honest about',
+    '  what came back — saying what a result does not cover instead of implying it covers everything.',
     '',
-    'Facts you may use. This is everything you know — anything not here does not exist:',
+    `Write about this, and only this: ${ANGLE_BRIEFS[brief.angle]}`,
+    '',
+    'Everything you know about it. Nothing outside this list exists:',
     ...brief.facts.map((fact) => `  - ${fact}`),
     ...(recentPosts.length
       ? [
           '',
-          'You have already posted these. Do not repeat them, reword them, or make the same point again:',
+          'You have already posted these. Say something else, and do not reach for the same shape:',
           ...recentPosts.map((post) => `  - ${post}`),
         ]
       : []),
     '',
-    'Rules:',
-    `- Hard maximum ${REPLY_LIMIT} characters. Count them.`,
-    '- Plain text. No hashtags, no emoji, no surrounding quotes, no preamble.',
-    '- Do not invent version numbers, dates, user counts, prices, or partnerships.',
-    '- Do not say "excited", "thrilled", or "game-changing".',
-    '- Do not open with the project name, and do not describe it in general terms.',
-    '  Write about the one specific thing above and nothing else.',
-    '- State one concrete thing. A real detail from the facts beats an adjective.',
-    '- Write ordinary English sentences with ordinary punctuation. Commas where a',
-    '  comma belongs. Do not compress a list into a run of words.',
-    '- Do not restate a fact back verbatim. Say what it MEANS for someone using',
-    '  this: what they can now do, or what mistake it saves them from.',
+    'How to write it:',
     '',
-    'Return the post text and nothing else.',
+    'Sound like the person who built this and finds it genuinely interesting, talking to another',
+    'engineer. Not a changelog, not marketing, not an announcement. One idea, followed all the way',
+    'down rather than summarised.',
+    '',
+    'Find the angle that makes it worth reading. Often that is the detail that surprised somebody:',
+    'the assumption that turned out wrong, the number that was off by a factor of a trillion, the',
+    'thing that looked fine and was not. Concrete beats general every time.',
+    '',
+    'Pick your own shape. An observation, a small story, a flat statement of fact, a question, one',
+    'sentence or four. Do not settle into a house format, and do not start every post the same way.',
+    '',
+    'Hard rules, and these are not stylistic:',
+    `- Hard maximum ${REPLY_LIMIT} characters, counted.`,
+    '- Do not invent version numbers, dates, user counts, prices, partnerships, or anything else',
+    '  not in the facts above. If you want a detail you do not have, write about something else.',
+    '- Plain text. No hashtags, no emoji, no surrounding quotes, no preamble, no sign-off.',
+    '',
+    'Return the post and nothing else.',
   ].join('\n');
 }
 
@@ -576,7 +616,11 @@ export async function postUpdate(
   // a writing task over facts already gathered, and `allowEmpty` because an
   // empty completion means "nothing to say". Without the latter the agent's
   // chat fallback ("I could not put an answer together…") would be published.
-  const writer = agent.variant({ tools: false, allowEmpty: true });
+  // Hotter than conversation, because this is the one call that is purely
+  // writing. A reply is mostly a lookup with prose around it and wants to be
+  // predictable; a post has to be worth reading, and the safest next token is
+  // how every post came out sounding the same.
+  const writer = agent.variant({ tools: false, allowEmpty: true, temperature: 0.95 });
   const reply = await writer.respond(
     `x-update:${angle}:${stamp}`,
     updatePrompt(facts, brief, options.recentPosts ?? []),

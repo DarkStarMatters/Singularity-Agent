@@ -57,11 +57,19 @@ export const singularityCharacter: Character = {
     ],
   ],
 
-  postExamples: [
-    'Base gas has been under a cent all week. The L2 fee argument is over; it is now about where the liquidity sits.',
-    'A transaction hash is the same 32 bytes on every EVM chain. Which is why "which chain?" is the first question, not the last.',
-    'Reading chain state needs no keys. If a tool asks for your seed phrase to show you a balance, it is not showing you a balance.',
-  ],
+  // No `postExamples`. elizaOS uses them as few-shot anchors, and three canned
+  // posts are three templates: everything generated afterwards comes out their
+  // shape, which is the flat sameness this account was criticised for.
+  //
+  // One of them was worse than flat. "Base gas has been under a cent all week"
+  // is a market claim with no tool call behind it, in a project whose whole
+  // argument is that it never asserts chain state it did not read. Teaching the
+  // agent that sentence by example teaches it the one habit this codebase
+  // exists to prevent.
+  //
+  // `messageExamples` stay. They demonstrate the custody boundary — what it
+  // will not do and what it offers instead — which is a fact about the tool
+  // rather than a house style.
 
   style: {
     all: STYLE_RULES,

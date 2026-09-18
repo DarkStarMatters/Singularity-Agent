@@ -281,7 +281,12 @@ describe('project update grounding', () => {
   it('tells the model that anything outside the facts does not exist', () => {
     const prompt = updatePrompt(FACTS, briefFor('chainnote'));
 
-    expect(prompt).toContain('anything not here does not exist');
+    // The wording of this moved when the style rules were stripped out to stop
+    // every post reading the same. The guarantee did not: the facts are the
+    // facts, nothing may be invented, and X counts characters. Those three are
+    // the product rather than the prose, and they survive a rewrite of the
+    // voice around them.
+    expect(prompt).toContain('Nothing outside this list exists');
     expect(prompt).toContain('Do not invent');
     expect(prompt).toContain(String(REPLY_LIMIT));
   });
