@@ -479,6 +479,97 @@
   .term .bad { color: var(--term-crit); }
   .term .acc { color: var(--term-accent); }
 
+  /* =====================================================================
+     The playable terminal. Same chrome as the static .term figures, plus a
+     live input line. Output is replayed from real runs — see the data block
+     at the foot of the document.
+     ===================================================================== */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .sim { margin: 0; }
+  .sim-screen {
+    background: var(--term-bg);
+    border: 1px solid var(--term-line);
+    border-top: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: .85rem 1rem 1rem;
+    font-family: var(--mono);
+    font-size: .8125rem;
+    line-height: 1.6;
+    color: var(--term-ink);
+    min-height: 19rem;
+    max-height: 30rem;
+    overflow-y: auto;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .sim .term-bar { border-radius: var(--radius) var(--radius) 0 0; }
+  .sim-screen .dim { color: var(--term-dim); }
+  .sim-screen .ok  { color: var(--term-ok); }
+  .sim-screen .bad { color: var(--term-crit); }
+  .sim-screen .acc { color: var(--term-accent); }
+  .sim-row { white-space: pre; }
+  .sim-row.wrap { white-space: pre-wrap; }
+  .sim-echo { color: var(--term-ink); }
+  .sim-echo .sigil { color: var(--term-accent); }
+  .sim-gap { height: .6rem; }
+
+  .sim-form {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-top: .1rem;
+  }
+  .sim-form .sigil { color: var(--term-accent); flex: none; }
+  .sim-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    padding: 0;
+    color: var(--term-ink);
+    font-family: var(--mono);
+    font-size: .8125rem;
+    line-height: 1.6;
+    caret-color: var(--term-accent);
+  }
+  .sim-input::placeholder { color: var(--term-dim); }
+
+  .sim-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin-top: .7rem;
+  }
+  .chip {
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-2);
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    padding: .28rem .7rem;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--ink-3); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 640px) {
+    .sim-screen { font-size: .75rem; min-height: 16rem; }
+    .sim-input { font-size: .75rem; }
+  }
+
   figcaption.sample {
     font-size: .8125rem;
     color: var(--ink-3);
@@ -685,6 +776,7 @@
       <li><a href="#safety">Your keys</a></li>
       <li><a href="#install">Install</a></li>
       <li><a href="#first">First command</a></li>
+      <li><a href="#try">Try it</a></li>
       <li><a href="#claude">Use with Claude</a></li>
       <li><a href="#do">What you can ask</a></li>
       <li><a href="#chains">Chains</a></li>
@@ -891,7 +983,7 @@
   cosmoshub   Cosmos Hub    cosmos  cosmoshub-4  ATOM   cosmos, atom, gaia
 <span class="dim">  …</span>
 
-<span class="dim">  23 chain(s).</span></code></pre>
+<span class="dim">  32 chain(s).</span></code></pre>
             </figure>
           </div>
         </li>
@@ -957,6 +1049,60 @@
     </section>
 
     <hr class="rule">
+
+    <section id="try">
+      <p class="eyebrow">Try it here</p>
+      <h2>Run it without installing it</h2>
+      <p>
+        A working terminal, with the real answers. Every response below was captured from an
+        actual run against live networks — nothing here is mocked up to look good, including
+        the two that refuse to answer.
+      </p>
+
+      <figure class="sim">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity</code>
+          <button class="copy" type="button" id="sim-reset">Reset</button>
+        </div>
+        <div class="sim-screen" id="sim-screen" role="log" aria-live="polite" aria-label="Simulated terminal output"></div>
+      </figure>
+
+      <form class="sim-form" id="sim-form" autocomplete="off">
+        <span class="sigil" aria-hidden="true">$</span>
+        <label class="sr-only" for="sim-input">Type a command</label>
+        <input
+          class="sim-input"
+          id="sim-input"
+          name="command"
+          type="text"
+          placeholder="type a command, or tap one below — try: help"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off">
+      </form>
+
+      <div class="sim-chips" id="sim-chips"></div>
+
+      <figcaption class="sample">
+        Arrow keys walk back through what you have typed. <code>help</code> lists everything the
+        demo knows; <code>clear</code> wipes the screen.
+      </figcaption>
+
+      <div class="callout">
+        <strong>The two that say no are the point</strong>
+        <span>
+          Ask for Ethereum history without an indexer key and it tells you it has no answer,
+          rather than handing back an empty list that reads as "this wallet has done nothing".
+          Ask Stride for a token whose decimals the chain never declares and it gives you base
+          units instead of a number scaled by a guess. Both are real, and both are the reason
+          the rest of the output is worth trusting.
+        </span>
+      </div>
+    </section>
+
+    <hr class="rule">
+
 
     <!-- ======================================================= claude -->
     <section id="claude">
@@ -1026,7 +1172,7 @@
         <li>“Prepare a transfer of 25 USDC on Base to this address.”</li>
       </ul>
 
-      <h3>The ten tools Claude gets</h3>
+      <h3>The fifteen tools Claude gets</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
@@ -1040,13 +1186,20 @@
             <tr><td><code>fees</code></td><td>What a transfer costs right now.</td></tr>
             <tr><td><code>read_contract</code></td><td>Read data out of a smart contract.</td></tr>
             <tr><td><code>decode</code></td><td>Turn raw transaction data into a readable function call.</td></tr>
+            <tr><td><code>history</code></td><td>What an address has been doing, newest first.</td></tr>
+            <tr><td><code>mint_audit</code></td><td>What a Solana mint can still do to you — who can mint more, who can freeze.</td></tr>
+            <tr><td><code>token_identity</code></td><td>Whether a token is the one it claims to be.</td></tr>
+            <tr><td><code>verify_burn</code></td><td>Confirm a burn from its signature, at finalized commitment.</td></tr>
             <tr><td><code>build_transfer</code></td><td>Prepare an <strong>unsigned</strong> payment.</td></tr>
+            <tr><td><code>build_burn</code></td><td>Prepare an <strong>unsigned</strong> burn.</td></tr>
           </tbody>
         </table>
       </div>
       <p style="font-size:.9375rem;color:var(--ink-2)">
         Every one of them is marked read-only, and <code>build_transfer</code> returns a payload
         plus a list of warnings that Claude is instructed to show you before you sign anything.
+        <code>history</code> on an Ethereum-style chain needs an indexer key; without one it says
+        so rather than returning an empty list that reads as "nothing ever happened here".
       </p>
     </section>
 
@@ -1276,7 +1429,7 @@ base
     <!-- ======================================================== chains -->
     <section id="chains">
       <p class="eyebrow">Coverage</p>
-      <h2>23 chains, four families</h2>
+      <h2>32 chains, four families</h2>
       <p>
         A <em>family</em> is a group of chains that work the same way underneath. Learn one member
         and you have effectively learned the rest. You can add any chain that isn't listed here
@@ -1554,6 +1707,364 @@ base
 </div>
 
 <script>
+
+/* =======================================================================
+   The playable terminal.
+
+   Every `out` block below is copied from a real run against live networks.
+   That is a constraint rather than a flourish: a demo terminal that prints
+   invented output is a brochure, and the two commands here that refuse to
+   answer are the ones most worth showing. If a real run stops looking like
+   this, the fix is to re-run it and paste the new answer, not to tidy this.
+   ======================================================================= */
+(function () {
+  var screen = document.getElementById('sim-screen');
+  var form = document.getElementById('sim-form');
+  var input = document.getElementById('sim-input');
+  var chips = document.getElementById('sim-chips');
+  var reset = document.getElementById('sim-reset');
+  if (!screen || !form || !input || !chips) return;
+
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
+  var SATOSHI = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+  var COSMOS = 'cosmos1vvln3gz58r3nexrm76msfp9rhr3dzclctuck9h';
+  var STRIDE = 'stride1qycjurmk50w38fettjqfyar4pmuc9wfrx58emc';
+  var MINT = '5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump';
+
+  var COMMANDS = [
+    {
+      id: 'help',
+      cmd: 'help',
+      match: ['help'],
+      chip: 'help',
+      out: [
+        'Commands in this demo:',
+        '',
+        '  <span class="acc">chains</span>                      every network it speaks to',
+        '  <span class="acc">balance</span>  &lt;address&gt; -c &lt;chain&gt;  what an address holds right now',
+        '  <span class="acc">history</span>  &lt;address&gt; -c &lt;chain&gt;  what an address has been doing',
+        '  <span class="acc">fees</span>     -c &lt;chain&gt;            what a transaction costs',
+        '  <span class="acc">identity</span> &lt;mint&gt;               whether a token is the real one',
+        '',
+        '  <span class="acc">clear</span>                       wipe the screen',
+        '',
+        '<span class="dim">Tap a suggestion below to fill one in. The real tool has 15 commands</span>',
+        '<span class="dim">and takes any address on any of its 32 chains.</span>'
+      ]
+    },
+    {
+      id: 'chains',
+      cmd: 'singularity chains',
+      match: ['chains'],
+      chip: 'chains',
+      out: [
+        '  <span class="dim">ID               NAME               FAMILY  CHAIN ID        ASSET</span>',
+        '  ethereum         Ethereum           evm     1               ETH',
+        '  base             Base               evm     8453            ETH',
+        '  arbitrum         Arbitrum One       evm     42161           ETH',
+        '  optimism         OP Mainnet         evm     10              ETH',
+        '  polygon          Polygon PoS        evm     137             POL',
+        '  bsc              BNB Smart Chain    evm     56              BNB',
+        '  avalanche        Avalanche C-Chain  evm     43114           AVAX',
+        '  gnosis           Gnosis Chain       evm     100             XDAI',
+        '  scroll           Scroll             evm     534352          ETH',
+        '  linea            Linea              evm     59144           ETH',
+        '  zksync           ZKsync Era         evm     324             ETH',
+        '  <span class="dim">…blast, mantle, mode, fraxtal, opbnb…</span>',
+        '  solana           Solana             svm                     SOL',
+        '  bitcoin          Bitcoin            utxo                    BTC',
+        '  litecoin         Litecoin           utxo                    LTC',
+        '  cosmoshub        Cosmos Hub         cosmos  cosmoshub-4     ATOM',
+        '  osmosis          Osmosis            cosmos  osmosis-1       OSMO',
+        '  celestia         Celestia           cosmos  celestia        TIA',
+        '  injective        Injective          cosmos  injective-1     INJ',
+        '  sei              Sei                cosmos  pacific-1       SEI',
+        '  neutron          Neutron            cosmos  neutron-1       NTRN',
+        '  stride           Stride             cosmos  stride-1        STRD',
+        '  kava             Kava               cosmos  kava_2222-10    KAVA',
+        '',
+        '  <span class="dim">32 chain(s).</span>'
+      ]
+    },
+    {
+      id: 'balance-eth',
+      cmd: 'singularity balance vitalik.eth -c ethereum',
+      match: ['balance', 'vitalik'],
+      chip: 'balance vitalik.eth -c ethereum',
+      out: [
+        'ethereum',
+        '<span class="dim">────────</span>',
+        '  6.71259795 ETH  <span class="dim">(native)</span>',
+        '',
+        '  37.192124   USDC  <span class="dim">0xA0b86991…06eB48</span>',
+        '  290.368219  USDT  <span class="dim">0xdAC17F95…831ec7</span>',
+        '  4.57207827  DAI   <span class="dim">0x6B175474…271d0F</span>',
+        '  1.46189817  WETH  <span class="dim">0xC02aaA39…756Cc2</span>',
+        '',
+        '<span class="dim">  EVM chains cannot be enumerated without an indexer, so this covers a</span>',
+        '<span class="dim">  curated list of major tokens only.</span>'
+      ]
+    },
+    {
+      id: 'balance-stride',
+      cmd: 'singularity balance ' + STRIDE + ' -c stride',
+      match: ['balance', 'stride1'],
+      chip: 'balance stride1qyc…58emc -c stride',
+      out: [
+        'stride',
+        '<span class="dim">──────</span>',
+        '  0.000006 STRD  <span class="dim">(native)</span>',
+        '',
+        '  159974492619775658 <span class="dim">base units</span>  STAEVMOS  <span class="dim">staevmos</span>',
+        '  1288365375353257 <span class="dim">base units</span>    STINJ     <span class="dim">stinj</span>',
+        '  27284 <span class="dim">base units</span>               STUATOM   <span class="dim">stuatom</span>',
+        '  55675 <span class="dim">base units</span>               STUOSMO   <span class="dim">stuosmo</span>',
+        '',
+        '<span class="dim">  Decimals come from the chain&#39;s own denom metadata; where it publishes</span>',
+        '<span class="dim">  none, the amount is shown in base units and marked, rather than scaled</span>',
+        '<span class="dim">  by a guess.</span>',
+        '',
+        '<span class="ok">  ^ stinj tracks INJ at 18 decimals, not 6. Guessing would have reported</span>',
+        '<span class="ok">    0.0013 of it as 1,288,365,375.</span>'
+      ]
+    },
+    {
+      id: 'history-eth',
+      cmd: 'singularity history ' + VITALIK + ' -c ethereum',
+      match: ['history', '0xd8da'],
+      chip: 'history 0xd8dA…96045 -c ethereum',
+      out: [
+        'ethereum  <span class="dim">0xd8dA6BF2…A96045</span>',
+        '<span class="dim">───────────────────────────</span>',
+        '',
+        '<span class="bad">  History for an EVM address needs an indexer, and none is configured, so</span>',
+        '<span class="bad">  nothing is known about this address. This is not "no activity" — it is</span>',
+        '<span class="bad">  no answer. Set SINGULARITY_ETHERSCAN_KEY to a key from etherscan.io;</span>',
+        '<span class="bad">  one key serves every supported EVM chain through their V2 API.</span>',
+        '',
+        '<span class="dim">  An empty list would have been a claim. That claim is the one thing an</span>',
+        '<span class="dim">  unconfigured lookup cannot make.</span>'
+      ]
+    },
+    {
+      id: 'history-btc',
+      cmd: 'singularity history ' + SATOSHI + ' -c bitcoin -n 3',
+      match: ['history', '1a1z'],
+      chip: 'history 1A1zP1eP…DivfNa -c bitcoin',
+      out: [
+        'bitcoin  <span class="dim">1A1zP1eP5Q…DivfNa</span>',
+        '<span class="dim">──────────────────────────</span>',
+        '',
+        '  &lt;-  <span class="dim">unconfirmed</span>  0.00000546  Received 0.00000546 BTC.  <span class="dim">4fe8b2b6fe…b041db</span>',
+        '  &lt;-  <span class="dim">unconfirmed</span>  0.00003672  Received 0.00003672 BTC.  <span class="dim">c99e446ab2…3b39a4</span>',
+        '  &lt;-  <span class="dim">unconfirmed</span>  0.00000546  Received 0.00000546 BTC.  <span class="dim">5b38b8e6c1…d9e847</span>',
+        '',
+        '<span class="dim">  The 3 most recent transactions for this address. More exist; pass the</span>',
+        '<span class="dim">  cursor to continue. Amounts are this address&#39;s net movement in each</span>',
+        '<span class="dim">  transaction, not the transaction&#39;s total.</span>'
+      ]
+    },
+    {
+      id: 'history-cosmos',
+      cmd: 'singularity history ' + COSMOS + ' -c cosmoshub -n 4',
+      match: ['history', 'cosmos1'],
+      chip: 'history cosmos1vvl…uck9h -c cosmoshub',
+      out: [
+        'cosmoshub  <span class="dim">cosmos1vvl…tuck9h</span>',
+        '<span class="dim">────────────────────────────</span>',
+        '',
+        '  -&gt;  2026-09-18 04:38:46  Transfer sent.  <span class="dim">A927C417B0…37374D</span>',
+        '  &lt;&gt;  2026-09-18 04:38:05  Reward withdrawal to itself and 1 more message(s).  <span class="dim">6ED11D1C04…E8A374</span>',
+        '  &lt;&gt;  2026-09-17 11:05:21  Reward withdrawal to itself and 1 more message(s).  <span class="dim">31AB3F3850…271DCF</span>',
+        '  -&gt;  2026-09-16 06:33:33  Transfer sent.  <span class="dim">AC24AD7E26…0121C3</span>',
+        '',
+        '<span class="dim">  Found by two event searches — transactions this address sent, and</span>',
+        '<span class="dim">  transfers it received — so a transaction that merely mentions the</span>',
+        '<span class="dim">  address may not appear.</span>'
+      ]
+    },
+    {
+      id: 'fees',
+      cmd: 'singularity fees -c base',
+      match: ['fees'],
+      chip: 'fees -c base',
+      out: [
+        'Fees on base',
+        '<span class="dim">────────────</span>',
+        '  Simple transfer  ~0.00000014 ETH',
+        '',
+        '  maxFeePerGas          <span class="dim">7.00e-3 gwei</span>',
+        '  maxPriorityFeePerGas  <span class="dim">1.00e-3 gwei</span>',
+        '  gasForSimpleTransfer  <span class="dim">21000</span>',
+        '  l2ExecutionFee        <span class="dim">0.00000014</span>',
+        '  l1DataFee             <span class="dim">0.000000000573018389</span>',
+        '',
+        '<span class="dim">  EIP-1559 estimate from the node, plus what posting the transaction to</span>',
+        '<span class="dim">  Ethereum costs — on a rollup that second part is charged too, and it</span>',
+        '<span class="dim">  moves with Ethereum rather than with this chain.</span>'
+      ]
+    },
+    {
+      id: 'identity',
+      cmd: 'singularity identity ' + MINT,
+      match: ['identity'],
+      chip: 'identity 5pTy48…8pump',
+      out: [
+        'Identity — Singularity-Agent (SNGLRTY)',
+        '<span class="dim">──────────────────────────────────────</span>',
+        '',
+        '  mint      <span class="dim">5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump</span>',
+        '  metadata  <span class="ok">immutable</span>',
+        '  document  <span class="ok">content-addressed</span>',
+        '',
+        '<span class="dim">  The update authority is revoked and the link addresses its content, so</span>',
+        '<span class="dim">  what this mint declares is what it declared when it was made, and</span>',
+        '<span class="dim">  nobody can change it now.</span>',
+        '',
+        '<span class="dim">  Not fetched. The link is a URL chosen by whoever deployed this mint, so</span>',
+        '<span class="dim">  following it is a request made on their say-so — ask for it deliberately.</span>'
+      ]
+    }
+  ];
+
+  var BANNER = [
+    '<span class="dim">Singularity Agent — 32 chains, 15 tools, no keys.</span>',
+    '<span class="dim">This terminal replays real output. Type </span><span class="acc">help</span><span class="dim"> to begin.</span>',
+    ''
+  ];
+
+  var history = [];
+  var cursor = -1;
+  var busy = false;
+
+  function row(html, wrap) {
+    var line = document.createElement('div');
+    line.className = wrap ? 'sim-row wrap' : 'sim-row';
+    line.innerHTML = html === '' ? '&nbsp;' : html;
+    return line;
+  }
+
+  function put(html, wrap) {
+    screen.appendChild(row(html, wrap));
+    screen.scrollTop = screen.scrollHeight;
+  }
+
+  function banner() {
+    screen.textContent = '';
+    BANNER.forEach(function (line) { put(line, true); });
+  }
+
+  function find(text) {
+    var needle = text.toLowerCase();
+    for (var i = 0; i < COMMANDS.length; i += 1) {
+      var entry = COMMANDS[i];
+      var every = true;
+      for (var j = 0; j < entry.match.length; j += 1) {
+        if (needle.indexOf(entry.match[j]) === -1) { every = false; break; }
+      }
+      if (every) return entry;
+    }
+    return null;
+  }
+
+  function unknown(text) {
+    var safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return [
+      '<span class="bad">' + safe + ': not one of the commands this demo carries.</span>',
+      '',
+      '<span class="dim">This is a replay of real runs, so it only knows the handful listed by</span>',
+      '<span class="dim">​</span><span class="acc">help</span><span class="dim">. The installed tool takes any address on any of its 32 chains.</span>'
+    ];
+  }
+
+  function emit(lines, done) {
+    if (still) {
+      lines.forEach(function (line) { put(line, true); });
+      put('', false);
+      done();
+      return;
+    }
+    var i = 0;
+    (function step() {
+      if (i >= lines.length) { put('', false); done(); return; }
+      put(lines[i], true);
+      i += 1;
+      window.setTimeout(step, 26);
+    })();
+  }
+
+  function run(text) {
+    var trimmed = text.trim();
+    if (!trimmed || busy) return;
+
+    history.push(trimmed);
+    cursor = history.length;
+
+    var safe = trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    put('<span class="sim-echo"><span class="sigil">$</span> ' + safe + '</span>', true);
+
+    if (/^clear$/i.test(trimmed)) { banner(); return; }
+
+    var entry = find(trimmed);
+    busy = true;
+    input.setAttribute('disabled', 'disabled');
+
+    emit(entry ? entry.out : unknown(trimmed), function () {
+      busy = false;
+      input.removeAttribute('disabled');
+      input.focus();
+    });
+  }
+
+  COMMANDS.forEach(function (entry) {
+    if (!entry.chip) return;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip';
+    button.textContent = entry.chip;
+    button.addEventListener('click', function () {
+      input.value = entry.cmd;
+      input.focus();
+      run(entry.cmd);
+      input.value = '';
+    });
+    chips.appendChild(button);
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    run(input.value);
+    input.value = '';
+  });
+
+  input.addEventListener('keydown', function (event) {
+    if (event.key === 'ArrowUp') {
+      if (!history.length) return;
+      event.preventDefault();
+      cursor = Math.max(0, cursor - 1);
+      input.value = history[cursor];
+    } else if (event.key === 'ArrowDown') {
+      if (!history.length) return;
+      event.preventDefault();
+      cursor = Math.min(history.length, cursor + 1);
+      input.value = cursor === history.length ? '' : history[cursor];
+    }
+  });
+
+  if (reset) {
+    reset.addEventListener('click', function () {
+      banner();
+      history = [];
+      cursor = -1;
+      input.value = '';
+      input.focus();
+    });
+  }
+
+  banner();
+})();
   (function () {
     "use strict";
 
