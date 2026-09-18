@@ -29,6 +29,13 @@ import ts from 'typescript';
 
 const ROOT = resolve(__dirname, '..');
 
+/**
+ * Building a ts.Program over the whole source tree takes seconds on its own and
+ * longer when the rest of the suite is running beside it. The default 5s passes
+ * in isolation and fails under load, which is the worst of both.
+ */
+const SLOW = 60_000;
+
 /** Compare emit paths without caring which separator the platform uses. */
 const slashes = (path: string): string => path.split(sep).join('/');
 
@@ -75,7 +82,7 @@ describe('the root tsconfig, which is the one Vercel compiles functions with', (
       );
 
     expect(errors).toEqual([]);
-  });
+  }, SLOW);
 
   it('does not pin a rootDir that the api/ directory falls outside of', () => {
     const { options } = rootConfig();
@@ -105,7 +112,7 @@ describe('the build, which inference must not have moved', () => {
     expect(parsed.options.outDir && slashes(parsed.options.outDir)).toBe(
       slashes(join(ROOT, 'dist')),
     );
-  });
+  }, SLOW);
 
   it('emits the binaries package.json promises', () => {
     const parsed = rootConfig();
@@ -134,5 +141,5 @@ describe('the build, which inference must not have moved', () => {
         slashes(resolve(ROOT, relative)),
       );
     }
-  });
+  }, SLOW);
 });

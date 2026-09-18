@@ -875,10 +875,33 @@ is a core guarantee, and one endpoint is not failover.
 
 *Goal: reduce the round trips between question and answer.*
 
-### 4.1 Multicall batching
-EVM token scans issue N `balanceOf` calls. Route through Multicall3 (identically deployed
-across every supported EVM chain) for one round trip — lower latency, and far less
-rate-limit pressure on public endpoints.
+### 4.1 Multicall batching — **shipped, and it already was**
+EVM token scans issue N `balanceOf` calls. Routed through Multicall3 that is one round
+trip — lower latency, and far less rate-limit pressure on public endpoints.
+
+This was written as future work and was already true. The client is built with
+`batch: { multicall: true }` and the reads go out concurrently under
+`Promise.allSettled`, so viem has been aggregating them all along. Four concurrent reads
+produce one `eth_call` to Multicall3, which is now asserted rather than believed.
+
+What was actually missing is the part that made it fragile. Batching needs a third thing
+neither of those two supplies: viem only aggregates when the chain definition carries a
+multicall3 address, and this repo defines its own chains and borrows contracts from
+viem's registry **by chain id**. Add an EVM chain viem has never heard of and the
+batching disappears — silently, along with ENS, with no change to any answer. The scan
+still returns exactly the right holdings; it just costs N requests instead of one, on
+endpoints that ration requests. That is the same shape as every other entry in this
+file: correct output, invisible degradation.
+
+So all 18 EVM chains are now held to resolving a multicall3 address, and to using the
+canonical deployment or a named exception. Writing that test turned up the one exception:
+**ZKsync does not use the canonical address.** Its Multicall3 is at
+`0xf9cda624fbc7e059355ce98a31693d299facd963`, because ZKsync Era derives CREATE2
+addresses by a different formula and the deterministic deployment that lands at the same
+address on every other chain does not land there. The parenthetical above — "identically
+deployed across every supported EVM chain" — was wrong when it was written, and had been
+inherited rather than read. It is a named exemption now, so the day it changes, deleting
+the line is what fails.
 
 ### 4.2 Response shaping
 Let the caller state its budget. A model with limited context and one with a large one
