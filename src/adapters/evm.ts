@@ -17,12 +17,14 @@ import type {
   ChainAdapter,
   ContractReadParams,
   StateOptions,
+  TransactionHistory,
   TransferParams,
 } from '../core/adapter.js';
 import type {
   BalanceEntry,
   ChainSpec,
   FeeEstimate,
+  HistoryEntry,
   NormalizedBlock,
   NormalizedTx,
   UnsignedTx,
@@ -104,6 +106,23 @@ function clientFor(chain: ChainSpec): PublicClient {
 
   clients.set(chain.id, client);
   return client;
+}
+
+interface EtherscanRow {
+  hash: string;
+  from?: string;
+  to?: string;
+  value?: string;
+  timeStamp?: string;
+  blockNumber?: string;
+  isError?: string;
+  txreceipt_status?: string;
+}
+
+interface EtherscanList {
+  status?: string;
+  message?: string;
+  result?: EtherscanRow[] | string;
 }
 
 function requireAddress(chain: ChainSpec, address: string): `0x${string}` {
@@ -419,6 +438,128 @@ export const evmAdapter: ChainAdapter = {
                   ? ` ${unreachable} contract(s) did not answer and are unaccounted for.`
                   : ''),
             ),
+    };
+  },
+
+  /**
+   * An address's transactions, via an Etherscan-class indexer.
+   *
+   * This is the one family that cannot answer from its own node. `eth_getLogs`
+   * finds events, not an account's transactions, and no JSON-RPC method
+   * enumerates "what did this address do" — it takes an index nobody serves for
+   * free. So this needs a key, and the important behaviour is what happens
+   * without one.
+   *
+   * It does not return an empty list. An empty list is a claim, and the claim
+   * it makes — this address has no history — is the one thing this function
+   * cannot possibly know while unconfigured. It returns `failed` with the
+   * variable to set. Every caller that respects `completeness` then reports
+   * "unavailable" instead of "no activity", which was the entire point of
+   * putting this behind a key rather than guessing.
+   */
+  async getHistory(chain, address, options) {
+    const owner = requireAddress(chain, address);
+    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+    const key = process.env.SINGULARITY_ETHERSCAN_KEY?.trim();
+
+    const unavailable = (why: string): TransactionHistory => ({
+      chain: chain.id,
+      address: owner,
+      entries: [],
+      completeness: completeness.failed(why),
+    });
+
+    if (!key) {
+      return unavailable(
+        `History for an EVM address needs an indexer, and none is configured, so nothing is known about this address. This is not "no activity" — it is no answer. Set SINGULARITY_ETHERSCAN_KEY to a key from etherscan.io; one key serves every supported EVM chain through their V2 API.`,
+      );
+    }
+
+    if (chain.chainId === undefined) {
+      return unavailable(`${chain.name} has no numeric chain id, so the indexer cannot be addressed.`);
+    }
+
+    const page = Number(options?.cursor ?? 1) || 1;
+    const url = new URL('https://api.etherscan.io/v2/api');
+    url.searchParams.set('chainid', String(chain.chainId));
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'txlist');
+    url.searchParams.set('address', owner);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('offset', String(limit));
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('apikey', key);
+
+    let payload: EtherscanList;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      payload = (await response.json()) as EtherscanList;
+    } catch (err) {
+      return unavailable(
+        `The indexer did not answer for ${chain.name}: ${err instanceof Error ? err.message : String(err)}. Nothing is known about this address's history.`,
+      );
+    }
+
+    // "No transactions found" is a real empty history and the only case where
+    // an empty list means what it looks like. Everything else is a failure
+    // wearing the same shape, so the two are told apart here rather than by
+    // whoever reads the result.
+    const empty = /no transactions found/i.test(String(payload.message ?? ''));
+
+    if (payload.status !== '1' && !empty) {
+      return unavailable(
+        `The indexer refused for ${chain.name}: ${String(payload.result ?? payload.message ?? 'no reason given')}. Nothing is known about this address's history — the key may not cover this chain.`,
+      );
+    }
+
+    const rows = Array.isArray(payload.result) ? payload.result : [];
+
+    const entries: HistoryEntry[] = rows.map((row) => {
+      const from = row.from?.toLowerCase();
+      const to = row.to?.toLowerCase();
+      const self = owner.toLowerCase();
+      const direction =
+        from === self && to === self ? 'self' : from === self ? 'out' : to === self ? 'in' : 'unknown';
+      const moved = nativeAmount(BigInt(row.value ?? '0'), chain);
+      const failed = row.isError === '1' || row.txreceipt_status === '0';
+
+      return {
+        hash: row.hash,
+        status: failed ? ('failed' as const) : ('success' as const),
+        direction,
+        value: moved,
+        summary: failed
+          ? `Failed transaction, ${moved.formatted} ${chain.nativeCurrency.symbol} not moved.`
+          : direction === 'in'
+            ? `Received ${moved.formatted} ${chain.nativeCurrency.symbol}.`
+            : direction === 'out'
+              ? `Sent ${moved.formatted} ${chain.nativeCurrency.symbol}.`
+              : `${moved.formatted} ${chain.nativeCurrency.symbol} moved.`,
+        ...(row.timeStamp
+          ? { timestamp: new Date(Number(row.timeStamp) * 1000).toISOString() }
+          : {}),
+        ...(row.blockNumber ? { blockNumber: Number(row.blockNumber) } : {}),
+        ...(to ? { counterparty: direction === 'in' ? row.from : row.to } : {}),
+        ...(explorerUrl(chain, 'tx', row.hash)
+          ? { explorerUrl: explorerUrl(chain, 'tx', row.hash) as string }
+          : {}),
+      };
+    });
+
+    const scope =
+      " Outer transactions only: an internal transfer or a token movement made by a contract this address called is not a transaction of its own and will not appear here.";
+
+    return {
+      chain: chain.id,
+      address: owner,
+      entries,
+      completeness:
+        entries.length === limit
+          ? completeness.paged(entries.length, `Page ${page} of ${entries.length}.${scope}`)
+          : completeness.exhaustive(
+              `Every transaction the indexer holds for this address${entries.length ? '' : ', which is none'}.${scope}`,
+            ),
+      ...(entries.length === limit ? { cursor: String(page + 1) } : {}),
     };
   },
 

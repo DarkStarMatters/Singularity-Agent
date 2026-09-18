@@ -1,6 +1,7 @@
 import type {
   DecodedCall,
   FeeEstimate,
+  HistoryEntry,
   MintAudit,
   TokenIdentity,
   NormalizedBlock,
@@ -8,6 +9,7 @@ import type {
   ResolvedIdentity,
   UnsignedTx,
 } from '../core/types.js';
+import type { TransactionHistory } from '../core/adapter.js';
 import type {
   BalanceResult,
   BurnClaim,
@@ -204,6 +206,52 @@ export function renderPortfolio(result: PortfolioResult): string {
 
   sections.push(`\n  ${dim(result.note)}`);
   return sections.join('\n');
+}
+
+/**
+ * An address's history.
+ *
+ * The completeness goes at the top rather than the bottom when it is `failed`,
+ * because that is the case where the entries below are empty and a reader
+ * skimming an empty list concludes "no activity" before ever reaching a
+ * footnote. It is the one line that changes what the result means.
+ */
+export function renderHistory(history: TransactionHistory): string {
+  const lines = [heading(`${history.chain}  ${shorten(history.address)}`)];
+
+  if (history.completeness.kind === 'failed') {
+    lines.push('', `  ${yellow(history.completeness.note)}`);
+    return lines.join('\n');
+  }
+
+  if (!history.entries.length) {
+    lines.push('', `  ${dim('No transactions.')}`, '', `  ${dim(history.completeness.note)}`);
+    return lines.join('\n');
+  }
+
+  const arrow = (direction: HistoryEntry['direction']): string =>
+    direction === 'in' ? '<-' : direction === 'out' ? '->' : direction === 'self' ? '<>' : '  ';
+
+  lines.push('');
+  lines.push(
+    table(
+      history.entries.map((entry) => [
+        entry.status === 'failed' ? red(arrow(entry.direction)) : arrow(entry.direction),
+        entry.timestamp ? entry.timestamp.slice(0, 19).replace('T', ' ') : dim('unconfirmed'),
+        entry.value ? bold(entry.value.formatted) : '',
+        entry.summary,
+        dim(shorten(entry.hash)),
+      ]),
+    ),
+  );
+
+  lines.push('', `  ${dim(history.completeness.note)}`);
+
+  if (history.cursor) {
+    lines.push(`  ${dim(`Next page: --cursor ${history.cursor}`)}`);
+  }
+
+  return lines.join('\n');
 }
 
 export function renderTx(tx: NormalizedTx): string {

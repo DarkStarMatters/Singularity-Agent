@@ -2,6 +2,7 @@ import type { ChainAdapter } from '../core/adapter.js';
 import type {
   ChainSpec,
   FeeEstimate,
+  HistoryEntry,
   NormalizedBlock,
   NormalizedTx,
   UnsignedTx,
@@ -145,6 +146,86 @@ export const bitcoinAdapter: ChainAdapter = {
       completeness: completeness.curated(
         `${chain.name} is a UTXO chain with no token contracts, so nothing was scanned. Ordinals and Runes need a dedicated indexer, which this tool does not bundle — their absence here says nothing about whether the address holds any.`,
       ),
+    };
+  },
+
+  /**
+   * An address's transactions, newest first.
+   *
+   * Esplora serves this without a key, and it serves whole transactions rather
+   * than bare ids — so unlike Solana, direction and net value are things this
+   * family can actually state. They are computed from the transaction itself:
+   * outputs paying the address, minus inputs spending from it. A transaction
+   * that does both is a `self` transfer, which on a UTXO chain is ordinary
+   * rather than strange, because change comes back to you.
+   *
+   * `value` is the net movement for this address, not the transaction's total.
+   * The total is the more impressive number and the wrong one: a consolidation
+   * moving 40 BTC between an owner's own outputs has a net of roughly zero, and
+   * reporting 40 would describe a payment that did not happen.
+   */
+  async getHistory(chain, address, options) {
+    const owner = requireAddress(chain, address);
+    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 50);
+
+    // Esplora pages by the last txid seen rather than by offset.
+    const path = options?.cursor
+      ? `/address/${owner}/txs/chain/${options.cursor}`
+      : `/address/${owner}/txs`;
+
+    const txs = (await fetchWithFailover<EsploraTx[]>(chain, path)) ?? [];
+    const page = txs.slice(0, limit);
+
+    const entries: HistoryEntry[] = page.map((tx) => {
+      const received = tx.vout
+        .filter((out) => out.scriptpubkey_address === owner)
+        .reduce((sum, out) => sum + BigInt(out.value), 0n);
+      const sent = tx.vin
+        .filter((input) => input.prevout?.scriptpubkey_address === owner)
+        .reduce((sum, input) => sum + BigInt(input.prevout?.value ?? 0), 0n);
+
+      const net = received - sent;
+      const direction = sent > 0n && received > 0n ? 'self' : net > 0n ? 'in' : 'out';
+      const magnitude = net < 0n ? -net : net;
+      const moved = nativeAmount(magnitude, chain);
+
+      return {
+        hash: tx.txid,
+        status: tx.status.confirmed ? ('success' as const) : ('pending' as const),
+        direction,
+        value: moved,
+        summary:
+          direction === 'self'
+            ? `Moved ${moved.formatted} ${chain.nativeCurrency.symbol} between this address's own outputs.`
+            : direction === 'in'
+              ? `Received ${moved.formatted} ${chain.nativeCurrency.symbol}.`
+              : `Sent ${moved.formatted} ${chain.nativeCurrency.symbol}.`,
+        ...(tx.status.block_time
+          ? { timestamp: new Date(tx.status.block_time * 1000).toISOString() }
+          : {}),
+        ...(tx.status.block_height ? { blockNumber: tx.status.block_height } : {}),
+        ...(explorerUrl(chain, 'tx', tx.txid)
+          ? { explorerUrl: explorerUrl(chain, 'tx', tx.txid) as string }
+          : {}),
+      };
+    });
+
+    const full = page.length === limit;
+    const last = entries.at(-1)?.hash;
+
+    return {
+      chain: chain.id,
+      address: owner,
+      entries,
+      completeness: full
+        ? completeness.paged(
+            entries.length,
+            `The ${entries.length} most recent transactions for this address. More exist; pass the cursor to continue. Amounts are this address's net movement in each transaction, not the transaction's total.`,
+          )
+        : completeness.exhaustive(
+            `Every transaction this address has, as Esplora holds them${entries.length ? '' : ', which is none'}. Amounts are this address's net movement in each transaction, not the transaction's total.`,
+          ),
+      ...(full && last ? { cursor: last } : {}),
     };
   },
 

@@ -17,6 +17,7 @@ import {
   formatChains,
   formatDecoded,
   formatFees,
+  formatHistory,
   formatHealth,
   formatPortfolio,
   formatReadResult,
@@ -144,6 +145,25 @@ const tx: Command = {
   async run(ctx) {
     const hash = required(ctx, 0, 'a transaction hash', tx);
     return formatTransactionSearch(await ops.getTransaction({ hash, chain: ctx.args[1] }));
+  },
+};
+
+const history: Command = {
+  name: 'history',
+  usage: '/history <address> <chain> [limit]',
+  summary: 'What an address has been doing',
+  async run(ctx) {
+    const address = required(ctx, 0, 'an address', history);
+    const chain = required(ctx, 1, 'a chain', history);
+    const limit = Number(ctx.args[2] ?? 10);
+
+    return formatHistory(
+      await ops.getHistory({
+        address,
+        chain,
+        limit: Number.isFinite(limit) ? limit : 10,
+      }),
+    );
   },
 };
 
@@ -469,6 +489,7 @@ const COMMAND_LIST: Command[] = [
   balance,
   portfolio,
   tx,
+  history,
   resolve,
   fees,
   block,

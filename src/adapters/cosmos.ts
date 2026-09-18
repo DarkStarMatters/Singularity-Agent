@@ -3,6 +3,7 @@ import type {
   BalanceEntry,
   ChainSpec,
   FeeEstimate,
+  HistoryEntry,
   NormalizedBlock,
   NormalizedTx,
   UnsignedTx,
@@ -80,6 +81,53 @@ interface TxResponse {
     body: { messages: Array<Record<string, unknown>>; memo: string };
     auth_info: { fee: { amount: Coin[]; gas_limit: string } };
   };
+}
+
+interface TxSearchEntry {
+  txhash: string;
+  height: string;
+  code: number;
+  timestamp?: string;
+  tx?: { body?: { messages?: Array<Record<string, unknown>> } };
+}
+
+interface TxSearchResponse {
+  tx_responses?: TxSearchEntry[];
+  total?: string;
+}
+
+/** Message type URLs that are worth naming in a one-line summary. */
+const MESSAGE_NAMES: Record<string, string> = {
+  MsgSend: 'Transfer',
+  MsgMultiSend: 'Multi-send',
+  MsgDelegate: 'Delegation',
+  MsgUndelegate: 'Undelegation',
+  MsgBeginRedelegate: 'Redelegation',
+  MsgWithdrawDelegatorReward: 'Reward withdrawal',
+  MsgVote: 'Governance vote',
+  MsgTransfer: 'IBC transfer',
+  MsgExecuteContract: 'Contract call',
+};
+
+/**
+ * A one-line summary in this tool's own voice.
+ *
+ * The message *type* is structural — a protobuf type URL the chain defines —
+ * so naming it is safe. The memo is not, and is deliberately absent: it is the
+ * one field a sender writes freely, and splicing it into a summary would put a
+ * stranger's sentence in this tool's voice. `transaction` returns it properly,
+ * marked as untrusted.
+ */
+function describeMessages(tx: TxSearchEntry, direction: 'in' | 'out' | 'self' | 'unknown'): string {
+  const messages = tx.tx?.body?.messages ?? [];
+  const first = String(messages[0]?.['@type'] ?? '').split('.').pop() ?? '';
+  const name = MESSAGE_NAMES[first] ?? (first ? 'Transaction' : 'Transaction');
+  const more = messages.length > 1 ? ` and ${messages.length - 1} more message(s)` : '';
+  const way =
+    direction === 'out' ? ' sent' : direction === 'in' ? ' received' : direction === 'self' ? ' to itself' : '';
+  const failed = tx.code === 0 ? '' : ' (failed)';
+
+  return `${name}${way}${more}${failed}.`;
 }
 
 function requireAddress(chain: ChainSpec, address: string): string {
@@ -331,6 +379,113 @@ export const cosmosAdapter: ChainAdapter = {
           ? `Every balance the account holds${at} in the denom(s) you named. Cosmos bank balances enumerate fully, so a denom absent here is genuinely not held.`
           : `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash. Decimals come from the chain's own denom metadata; where it publishes none, the amount is shown in base units and marked, rather than scaled by a guess.`,
       ),
+    };
+  },
+
+  /**
+   * What an address has been doing, from the chain's own tx index.
+   *
+   * No indexer and no key: the LCD indexes transactions by event, so this is
+   * two searches — one for transactions the address sent, one for transfers it
+   * received — merged and sorted. Both are needed because they are different
+   * events, and a history of only what you sent is not a history.
+   *
+   * The honest limit is which events those two queries catch. An address
+   * touched by a contract call, a governance message or an IBC relay it did not
+   * itself sign may not appear, so this is not "everything mentioning the
+   * address" and the note does not claim to be. A transaction found by both
+   * queries is a transfer to yourself and is reported as one.
+   */
+  async getHistory(chain, address, options) {
+    const owner = requireAddress(chain, address);
+    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 50);
+    const offset = Number(options?.cursor ?? 0) || 0;
+
+    const search = async (query: string): Promise<TxSearchResponse | null> => {
+      const params = new URLSearchParams({
+        query,
+        order_by: 'ORDER_BY_DESC',
+        'pagination.limit': String(limit),
+        'pagination.offset': String(offset),
+      });
+      try {
+        return await fetchWithFailover<TxSearchResponse>(
+          chain,
+          `/cosmos/tx/v1beta1/txs?${params.toString()}`,
+          { nullOn404: true },
+        );
+      } catch {
+        // One of the two searches failing should not erase the other; the
+        // completeness note carries the shortfall instead.
+        return null;
+      }
+    };
+
+    const [sent, received] = await Promise.all([
+      search(`message.sender='${owner}'`),
+      search(`transfer.recipient='${owner}'`),
+    ]);
+
+    if (!sent && !received) {
+      return {
+        chain: chain.id,
+        address: owner,
+        entries: [],
+        completeness: completeness.failed(
+          `${chain.name} did not answer a transaction search, so nothing is known about this address's history. This is an endpoint failure, not an empty history — do not read it as "no activity".`,
+        ),
+      };
+    }
+
+    const direction = new Map<string, 'in' | 'out' | 'self'>();
+    const byHash = new Map<string, TxSearchEntry>();
+
+    for (const [response, way] of [
+      [sent, 'out'],
+      [received, 'in'],
+    ] as const) {
+      for (const tx of response?.tx_responses ?? []) {
+        byHash.set(tx.txhash, tx);
+        // Present in both searches means the address paid itself.
+        direction.set(tx.txhash, direction.has(tx.txhash) ? 'self' : way);
+      }
+    }
+
+    const ordered = [...byHash.values()]
+      .sort((a, b) => Number(b.height) - Number(a.height))
+      .slice(0, limit);
+
+    const entries: HistoryEntry[] = ordered.map((tx) => ({
+      hash: tx.txhash,
+      status: tx.code === 0 ? ('success' as const) : ('failed' as const),
+      direction: direction.get(tx.txhash) ?? 'unknown',
+      blockNumber: Number(tx.height),
+      ...(tx.timestamp ? { timestamp: tx.timestamp } : {}),
+      summary: describeMessages(tx, direction.get(tx.txhash) ?? 'unknown'),
+      ...(explorerUrl(chain, 'tx', tx.txhash)
+        ? { explorerUrl: explorerUrl(chain, 'tx', tx.txhash) as string }
+        : {}),
+    }));
+
+    const matched = Number(sent?.total ?? 0) + Number(received?.total ?? 0);
+    const partial = !sent || !received;
+    const caveat = partial
+      ? ` One of the two searches failed, so this covers only what the address ${sent ? 'sent' : 'received'}.`
+      : '';
+    const scope =
+      ' Found by two event searches — transactions this address sent, and transfers it received — so a transaction that merely mentions the address may not appear.';
+
+    return {
+      chain: chain.id,
+      address: owner,
+      entries,
+      completeness:
+        entries.length === limit
+          ? completeness.paged(entries.length, `Page of ${entries.length}.${scope}${caveat}`)
+          : completeness.exhaustive(
+              `Every transaction the chain's index returns for this address${entries.length ? '' : ', which is none'}, out of ${matched} matched.${scope}${caveat}`,
+            ),
+      ...(entries.length === limit ? { cursor: String(offset + limit) } : {}),
     };
   },
 

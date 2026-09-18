@@ -119,6 +119,41 @@ export interface BalanceEntry {
   atBlock?: number;
 }
 
+/**
+ * One transaction in an address's history.
+ *
+ * Deliberately thinner than {@link NormalizedTx}. A history call returns many
+ * of these and the per-transaction detail costs a round trip each on most
+ * families, so this carries what a list view needs and `transaction` remains
+ * the way to ask about one of them properly.
+ */
+export interface HistoryEntry {
+  hash: string;
+  /** ISO 8601. Absent when the source does not report one. */
+  timestamp?: string;
+  status: 'success' | 'failed' | 'pending' | 'unknown';
+  blockNumber?: number;
+  /**
+   * Which way the value moved, from the queried address's point of view.
+   *
+   * `unknown` is a real answer and not a placeholder: on Solana a signature
+   * list says an account was referenced, not that anything moved, and calling
+   * that `in` or `out` would be inventing a direction the source never stated.
+   */
+  direction: 'in' | 'out' | 'self' | 'unknown';
+  /**
+   * Written by this tool, never interpolated from chain data. The same rule as
+   * `NormalizedTx.summary`, and for the same reason: a memo spliced into a
+   * summary is an attacker speaking in the tool's voice.
+   */
+  summary: string;
+  /** Net value moved for this address, where the family can state one. */
+  value?: Amount;
+  /** The other side, where there is exactly one and the family names it. */
+  counterparty?: string;
+  explorerUrl?: string;
+}
+
 export interface NormalizedTx {
   chain: string;
   hash: string;

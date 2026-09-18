@@ -1,4 +1,5 @@
 import { adapterFor } from '../adapters/index.js';
+import type { TransactionHistory } from '../core/adapter.js';
 import {
   auditMint as auditSolanaMint,
   buildBurn as buildSolanaBurn,
@@ -419,6 +420,44 @@ export async function getPortfolio(options: {
     completeness: combined,
     note: 'Balances only — no fiat pricing. Chains where the address format does not apply were skipped, not queried and failed.',
   };
+}
+
+/**
+ * What an address has been doing, on one named chain.
+ *
+ * Deliberately single-chain, unlike `portfolio`. Fanning a history query across
+ * chains would multiply a paginated, per-family-limited answer by the number of
+ * chains and hand back something whose completeness nobody could state — and
+ * the completeness is the part that matters here more than the entries.
+ *
+ * A family with no `getHistory` is a third answer, distinct from both "no
+ * activity" and "not configured", and it is reported as its own thing rather
+ * than folded into an empty list.
+ */
+export async function getHistory(options: {
+  address: string;
+  chain: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<TransactionHistory> {
+  const chain = getChain(options.chain);
+  const adapter = adapterFor(chain);
+
+  if (!adapter.getHistory) {
+    return {
+      chain: chain.id,
+      address: options.address,
+      entries: [],
+      completeness: completeness.failed(
+        `Transaction history is not implemented for ${chain.name}. Nothing was queried, so this says nothing about whether the address has been used.`,
+      ),
+    };
+  }
+
+  return adapter.getHistory(chain, options.address.trim(), {
+    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+    ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+  });
 }
 
 /**

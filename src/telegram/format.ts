@@ -26,6 +26,7 @@ import type {
   PortfolioResult,
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
+import type { TransactionHistory } from '../core/adapter.js';
 import { SingularityError } from '../core/errors.js';
 
 /** Telegram HTML mode needs exactly these three escaped. */
@@ -167,6 +168,44 @@ export function formatTransactionSearch(result: {
     parts.unshift(bold(`Found on ${result.found.length} chains`) + '\n');
   }
   return parts.join('\n\n');
+}
+
+/**
+ * An address's history, for a chat.
+ *
+ * A `failed` completeness is the whole message rather than a footnote under an
+ * empty list. In a chat the caveat under nothing at all is the line most likely
+ * to go unread, and it is the line that says whether "nothing" means anything.
+ */
+export function formatHistory(history: TransactionHistory): string {
+  const header = `${bold('History')} — ${code(shortAddress(history.address))} on ${esc(history.chain)}`;
+
+  if (history.completeness.kind === 'failed') {
+    return [header, '', esc(history.completeness.note)].join('\n');
+  }
+
+  if (!history.entries.length) {
+    return [header, '', 'No transactions.', '', `<i>${esc(history.completeness.note)}</i>`].join('\n');
+  }
+
+  const rows = history.entries.map((entry: TransactionHistory['entries'][number]) => {
+    const way =
+      entry.direction === 'in'
+        ? '←'
+        : entry.direction === 'out'
+          ? '→'
+          : entry.direction === 'self'
+            ? '↺'
+            : '•';
+    const when = entry.timestamp ? entry.timestamp.slice(0, 10) : 'unconfirmed';
+    const failed = entry.status === 'failed' ? ' (failed)' : '';
+
+    // `summary` is written by this tool. Nothing read off the chain is
+    // interpolated here, which is why a memo cannot reach a chat message.
+    return `${way} ${esc(when)}  ${esc(entry.summary)}${failed}\n   ${code(shortAddress(entry.hash))}`;
+  });
+
+  return [header, '', rows.join('\n'), '', `<i>${esc(history.completeness.note)}</i>`].join('\n');
 }
 
 export function formatFees(fees: FeeEstimate): string {

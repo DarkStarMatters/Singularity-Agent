@@ -33,6 +33,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   fees: 'fees',
   read_contract: 'read',
   decode: 'decode',
+  history: 'history',
   mint_audit: 'mint',
   build_transfer: 'transfer',
   build_burn: 'burn',

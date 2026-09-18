@@ -275,12 +275,39 @@ current-state token list.
 Remaining: Solana slot-addressed reads, which need the indexer in 1.2 rather than a public
 RPC.
 
-### 1.2 Transaction history
-`transaction` fetches one tx by hash. There is no "what has this address been doing."
-This needs an indexer and therefore a real decision: optional provider integration
-(Etherscan-class APIs, Helius for Solana) configured by key, with the *unconfigured* path
-saying clearly that history is unavailable rather than returning an empty list that reads
-as "no activity."
+### 1.2 Transaction history — **shipped**
+`history` answers "what has this address been doing" on one named chain, newest first.
+
+The premise above was wrong in a useful direction. It assumed every family needed an
+indexer and a key; three of the four answer for themselves. Solana has
+`getSignaturesForAddress` as a standard RPC method. Esplora serves
+`/address/{addr}/txs` and serves whole transactions, not bare ids. The Cosmos LCD indexes
+by event, so two searches — what the address sent, what it received — cover it. None of
+those need a key, and the feature is useful the moment it is installed.
+
+**EVM is the exception, and it is the whole design.** No JSON-RPC method enumerates an
+account's transactions; `eth_getLogs` finds events, not history. So EVM takes
+`SINGULARITY_ETHERSCAN_KEY` (one key, every chain, via their V2 API) — and unconfigured,
+it returns `completeness.failed` naming the variable, never an empty list. An empty list
+is a *claim*, and the claim it makes is the one thing an unconfigured lookup cannot know.
+
+Four answers wear the same empty array and only one is about the address: nothing
+happened; no indexer is configured; the endpoint refused; the family cannot answer. They
+are now four distinct results, and `supportsAbsenceClaim` is false for three of them.
+Etherscan reports "no transactions found" with the same `status: 0` it uses for errors,
+so those two are told apart explicitly rather than by whoever reads the result.
+
+What each family will not claim is stated rather than smoothed over. A Solana signature
+means the account was *referenced* — not that value moved, and not which way — so
+`direction` is `unknown` there and is not guessed from a position in an account list.
+UTXO amounts are this address's **net** movement, not the transaction total, because a
+consolidation moving 40 BTC between an owner's own outputs nets roughly zero and
+reporting 40 would describe a payment that never happened. EVM covers outer transactions
+only. Cosmos covers what those two event searches catch.
+
+And `paged()` joins the envelope: a cursor-paged source cannot know how many entries it
+left out, and `truncated(shown, 0, ...)` would claim none. It reports the count it has
+and omits the one it does not.
 
 ### 1.3 Richer decoding — **shipped**
 A decode that stops at the wrapper has not decoded anything. `multicall(bytes[])` tells a

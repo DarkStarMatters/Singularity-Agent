@@ -140,6 +140,23 @@ export const TOOLS: ToolDefinition[] = [
   }),
 
   defineTool({
+    name: 'history',
+    title: "What an address has been doing",
+    description:
+      'Recent transactions for an address on one chain, newest first. Read `completeness` before the entries: an empty list can mean no activity, an unconfigured indexer, or a family that cannot answer, and those are different answers. Solana, Bitcoin and Cosmos answer from their own endpoints; EVM history needs SINGULARITY_ETHERSCAN_KEY and says so when it is missing rather than returning nothing.',
+    shape: {
+      address: z.string().describe('Address to look up.'),
+      chain: z.string().describe('Chain id or alias. History is single-chain.'),
+      limit: z.number().optional().describe('Entries to return (default 25; adapters cap it).'),
+      cursor: z
+        .string()
+        .optional()
+        .describe('Continuation token from a previous call. Opaque — pass it back unchanged.'),
+    },
+    run: (args) => ops.getHistory(args),
+  }),
+
+  defineTool({
     name: 'block',
     title: 'Get a block',
     description:

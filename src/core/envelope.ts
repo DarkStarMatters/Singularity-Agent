@@ -58,6 +58,20 @@ export const completeness = {
   truncated(shown: number, omitted: number, note: string): Completeness {
     return { kind: 'truncated', note, shown, omitted };
   },
+  /**
+   * A page of an unknown total, for cursor-paged sources.
+   *
+   * `truncated` demands how many were left out, which is right when the source
+   * counted them and impossible when it did not: an address's history comes
+   * back a page at a time and the only way to learn whether another page exists
+   * is to ask for it. Passing 0 there would say "nothing omitted" on a result
+   * whose entire point is that something probably was, so this omits the count
+   * rather than inventing one. Same kind, so nothing downstream can read a
+   * page as a complete list.
+   */
+  paged(shown: number, note: string): Completeness {
+    return { kind: 'truncated', note, shown };
+  },
   failed(note: string): Completeness {
     return { kind: 'failed', note };
   },

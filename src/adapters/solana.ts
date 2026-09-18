@@ -14,6 +14,7 @@ import type {
   BurnReceipt,
   ChainSpec,
   FeeEstimate,
+  HistoryEntry,
   MintAudit,
   MintPower,
   NormalizedBlock,
@@ -427,6 +428,70 @@ export const solanaAdapter: ChainAdapter = {
             'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.' +
             named.caveat,
         ),
+      };
+    });
+  },
+
+  /**
+   * Signatures that reference this account, newest first.
+   *
+   * `getSignaturesForAddress` is a standard RPC method, so this needs no
+   * indexer and no key — which is worth saying because the plan for this
+   * feature assumed otherwise for every family.
+   *
+   * What it returns is the honest limit of the thing: a list of transactions
+   * that *mention* the account. It does not say a transfer happened, or which
+   * way anything moved, and working that out means fetching each transaction
+   * and walking its balance deltas — one round trip per entry. So `direction`
+   * is `unknown` here and stays that way rather than being guessed from a
+   * position in an account list. `transaction` answers properly for any one of
+   * them.
+   *
+   * Public endpoints also prune. An empty list is "nothing this endpoint still
+   * holds", not "this account has never been used", and the note says so.
+   */
+  async getHistory(chain, rawAddress, options) {
+    const owner = requirePubkey(rawAddress, 'address');
+    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+
+    return withConnection(chain, 'getSignaturesForAddress', async (connection) => {
+      const signatures = await connection.getSignaturesForAddress(owner, {
+        limit,
+        ...(options?.cursor ? { before: options.cursor } : {}),
+      });
+
+      const entries: HistoryEntry[] = signatures.map((entry) => ({
+        hash: entry.signature,
+        status: entry.err ? ('failed' as const) : ('success' as const),
+        direction: 'unknown' as const,
+        summary: entry.err
+          ? 'Failed transaction referencing this account.'
+          : 'Transaction referencing this account.',
+        ...(entry.blockTime ? { timestamp: new Date(entry.blockTime * 1000).toISOString() } : {}),
+        ...(entry.slot ? { blockNumber: entry.slot } : {}),
+        ...(explorerUrl(chain, 'tx', entry.signature)
+          ? { explorerUrl: explorerUrl(chain, 'tx', entry.signature) as string }
+          : {}),
+      }));
+
+      const last = entries.at(-1)?.hash;
+
+      return {
+        chain: chain.id,
+        address: owner.toBase58(),
+        entries,
+        // Truncated whenever a full page came back, because the next page is
+        // the only way to learn whether there was one.
+        completeness:
+          entries.length === limit
+            ? completeness.paged(
+                entries.length,
+                `The ${entries.length} most recent signatures referencing this account. More exist; pass the cursor to continue. A signature means the account was referenced, not that value moved — direction and amount need \`transaction\` per entry. Public endpoints prune history, so this is what this endpoint still holds rather than everything that ever happened.`,
+              )
+            : completeness.exhaustive(
+                `Every signature this endpoint still holds for the account${entries.length ? '' : ', which is none'}. A signature means the account was referenced, not that value moved. Solana public endpoints prune aggressively, so an empty or short list is not evidence the account was never used.`,
+              ),
+        ...(entries.length === limit && last ? { cursor: last } : {}),
       };
     });
   },

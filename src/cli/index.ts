@@ -86,6 +86,29 @@ program
   });
 
 program
+  .command('history')
+  .description("Recent transactions for an address on one chain, newest first.")
+  .argument('<address>', 'Address, ENS/SNS name, or configured alias.')
+  .requiredOption('-c, --chain <chain>', 'Chain id or alias.')
+  .option('-n, --limit <count>', 'How many entries to return.', '25')
+  .option('--cursor <cursor>', 'Continuation token from a previous call.')
+  .action(async (address: string, options: { chain: string; limit: string; cursor?: string }) => {
+    const result = await ops.getHistory({
+      address,
+      chain: options.chain,
+      limit: Number(options.limit),
+      ...(options.cursor ? { cursor: options.cursor } : {}),
+    });
+
+    if (program.opts().json) {
+      console.log(toJson(result));
+      return;
+    }
+
+    console.log(render.renderHistory(result));
+  });
+
+program
   .command('tx')
   .description('Look up a transaction, searching across chains when none is given.')
   .argument('<hash>', 'Transaction hash, txid, or Solana signature.')
