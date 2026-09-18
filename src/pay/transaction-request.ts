@@ -106,13 +106,21 @@ export function burnLink(endpoint: string, params: BurnRequestParams): string {
   return `solana:${encodeURIComponent(url.toString())}`;
 }
 
-/** What the wallet shows before it asks anyone to approve anything. */
+/**
+ * What the wallet shows before it asks anyone to approve anything.
+ *
+ * The icon is served from the same origin as the endpoint on purpose. A wallet
+ * displays the endpoint's domain as the thing you are trusting, and an icon
+ * fetched from somewhere else is the one part of that screen that did not come
+ * from where it claims to. The deployment's other name redirects here, and a
+ * 307 to a different host is exactly the shape a wallet is right to distrust.
+ */
 export function describeBurnRequest(params: BurnRequestParams): { label: string; icon: string } {
   return {
     label: `Burn ${params.amount}`,
     icon:
       process.env.SINGULARITY_PAY_ICON ||
-      'https://singularity-agent-nine.vercel.app/assets/icon-64.png',
+      'https://singularity-agent.cicada71.net/assets/icon-64.png',
   };
 }
 
