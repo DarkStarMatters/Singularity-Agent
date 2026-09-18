@@ -21,6 +21,57 @@ non-goals."
 
 ---
 
+## Shipped — v0.0.8, what nothing was checking
+
+Every item in this release was already believed to be true. That is the whole theme.
+
+**`/api/burn` had never served a single request.** The release that introduced it described
+a link people could tap; it answered 500 to every method it ever received, including
+`OPTIONS`, which parses nothing. Two faults, found in that order. The root `tsconfig.json`
+pinned `rootDir` to `src`, and Vercel compiles functions with *that* config — a file
+outside rootDir is TS6059 and no output — while the config that checks `api/` has
+`rootDir: "."`, so `npm run typecheck` stayed green. Underneath it,
+`@solana/web3.js` loads `rpc-websockets`, which is CommonJS and calls `require('uuid')`
+against a nested `uuid@14` that dropped its CommonJS entry: `ERR_REQUIRE_ESM`. Node 22 and
+24 both implement `require(esm)` so it worked on every machine here; Vercel's own loader
+does not. Six hypotheses died before three deployed probes named the layer in one round
+trip. `npm run smoke:burn` now asks the deployed URL what a wallet would ask it.
+
+**A Cosmos denom was priced by the letter it starts with.** Every non-native denom
+rendered at 6 decimals because `u` means micro. It does, for most of them, and not for the
+ones tracking an 18-decimal asset: a real account holding 0.16 stEVMOS was reported as
+holding 159,974,492,619 of it. Decimals now come from the chain's own denom metadata, and
+where the chain publishes none the amount is shown in base units and marked as such.
+`build_transfer` refuses a denom whose scale is unstated rather than sending a trillionth
+of what was meant.
+
+**`history` shipped, closing Phase 1.** The plan assumed every family needed an indexer
+key; three answer for themselves. EVM genuinely cannot, and unconfigured it returns
+`failed` naming the variable rather than an empty list — an empty list is a claim, and it
+is the one claim an unconfigured lookup cannot make.
+
+**Four Cosmos chains**, Sei, Neutron, Stride and Kava, each read off the chain before being
+written down. 28 becomes 32. Dogecoin and Bitcoin Cash did not ship: no public
+Esplora-compatible API exists for either, so the roadmap's "same adapter, different params"
+was wrong.
+
+**Multicall batching was already working and nothing held it there.** viem aggregates only
+when the chain definition carries a multicall3 address, borrowed by chain id — so a chain
+viem has never heard of loses batching silently, with every answer still correct. Now
+asserted. Writing that test found ZKsync using a non-canonical Multicall3 deployment,
+which this file had called identical across every supported chain.
+
+**The agent stopped answering everyone with the same sentences.** Conversation memory is
+per-thread, so two strangers a week apart each got a cold start and the model's favourite
+opening. A shared voice memory now spans both surfaces, and a draft that repeats is
+rewritten once. Required caveats are exempt and stay verbatim: variety that erodes a
+disclosure would be a worse bug than the one it fixes.
+
+**And the website runs the tool** rather than describing it, replaying real captured output
+— including the two commands that refuse to answer.
+
+---
+
 ## Shipped — v0.0.7, the half of Solana that could not be read
 
 *Everything in this section landed after v0.0.6. Four roadmap items and a chain batch,
