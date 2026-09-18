@@ -1067,9 +1067,39 @@ alongside two known-good Esplora instances as a control, and none answered. Ship
 means writing a Blockbook adapter, which is a real piece of work and a separate decision,
 not "the same adapter, different params" as this file previously claimed.
 
+### Endpoints that answer, rather than endpoints that are listed
+
+*Open, and the highest-value thing in this phase — it is about the 32 chains already
+claimed rather than the next one.*
+
+"Failover is a guarantee or it is not" is held by a test asserting `chain.rpc.length >= 2`.
+That counts entries in a config file. It cannot see whether any of them answer, and on the
+day `doctor` learned to ask, **nine of 32 chains had fewer than two endpoints that did** —
+Ethereum among them at one of three. Seven configured endpoints are dead: llamarpc answers
+525, Ankr now requires an API key and reports that as a JSON-RPC error inside an HTTP 200,
+and `polygon-rpc.com`, `api.avax.network`, `rpc.sepolia.org` and `mempool.space` have
+stopped answering here.
+
+Two separate pieces of work, and the second is the one that matters:
+
+1. **Replace the dead endpoints.** Mechanical, and every replacement gets checked against
+   the chain the way the L2 and Cosmos batches were.
+2. **Make the guarantee checkable.** A test that counts array entries passes forever while
+   the thing it names rots, which is this file's oldest theme wearing yet another costume.
+   The counting test cannot simply be pointed at the network — a live sweep in CI is flaky
+   by construction and would train everyone to ignore it. The likely shape is a committed
+   liveness snapshot that `doctor` regenerates, so a dead endpoint becomes a reviewable
+   diff rather than a silent fact, and the test compares against the snapshot rather than
+   against the wire.
+
+Until the second exists, "every mainnet has failover" remains a sentence rather than a
+guarantee, and this file has been specific about what those are worth.
+
 ### Still to come
 
-- **EVM L2s:** Polygon zkEVM, when it produces blocks again
+- **EVM L2s:** Polygon zkEVM, when it produces blocks again. That was a standing memory
+  and is now a command: `singularity doctor -c polygon-zkevm` answers it, and `stale` is
+  exactly the state that keeps it out. Readmission is a re-run rather than a recollection.
 - **Non-EVM:** Sui, Aptos (Move-family account model), TON, Tron
 - **UTXO:** Dogecoin and Bitcoin Cash, behind a Blockbook adapter that does not exist yet
 - **Cosmos:** more of the same, now that the shape is proven
@@ -1166,6 +1196,19 @@ obvious substrate for scheduled agent work.
 `portfolio` today takes one address and finds the chains it is valid on. Accept a *set*
 of addresses — an EVM address, a Solana pubkey, a Bitcoin address — and return one
 consolidated view across all four families.
+
+### 4.5 Liveness — **shipped**
+Not planned here, which is worth recording: it arrived because `doctor` was found to be
+asking a question with no teeth, and the full account is in the v0.0.9 section above. It
+belongs in this phase because it is the same shape as response shaping — a caller cannot
+make a good decision from a result that will not state its own limits, and "this endpoint
+responded" is a limit-free claim. `chain_liveness` is the sixteenth MCP tool.
+
+The open edge: liveness is a *point* measurement, and every interesting question about it
+is a question about change over time. "Is this chain live" is answerable now; "when did it
+stop", "how often does this endpoint lag", and "has the endpoint list decayed since the
+last release" are not. Those want history, which is what 4.3 is, and what the snapshot in
+Phase 3 would be a crude first version of.
 
 ---
 
