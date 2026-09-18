@@ -23,8 +23,6 @@ export interface AgentOptions {
   maxToolRounds?: number;
   maxTokens?: number;
   temperature?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
   /** Set false for a surface where tool answers are not wanted. */
   tools?: boolean;
   /**
@@ -154,12 +152,6 @@ export class GrokAgent {
           ? { temperature: this.options.temperature }
           : {}),
         ...(this.options.maxTokens !== undefined ? { maxTokens: this.options.maxTokens } : {}),
-        ...(this.options.frequencyPenalty !== undefined
-          ? { frequencyPenalty: this.options.frequencyPenalty }
-          : {}),
-        ...(this.options.presencePenalty !== undefined
-          ? { presencePenalty: this.options.presencePenalty }
-          : {}),
         // Withholding the tools on the last round is what guarantees prose.
         ...(useTools && !lastRound ? { tools: toolSchemas() } : {}),
       });
@@ -252,21 +244,19 @@ export function createAgent(
   platform: 'telegram' | 'x' | 'plain',
   overrides: Partial<AgentOptions> = {},
 ): GrokAgent {
-  // Conversation gets the repetition penalties and a little more heat than the
-  // 0.7 default. `plain` does not: it is the scripted surface, where a stable
+  // Conversation gets the shared voice and a little more heat than the 0.7
+  // default. `plain` does not: it is the scripted surface, where a stable
   // answer is worth more than a fresh one.
+  //
+  // No sampling penalties. They were here for one commit and broke the bot:
+  // grok-4 rejects frequency_penalty and presence_penalty with a 400, so every
+  // post failed. Variety is handled in `variety.ts` instead, which works on any
+  // model because it never leaves this process.
   const conversational = platform !== 'plain';
 
   return new GrokAgent(client, {
     system: systemPromptFor(platform),
-    ...(conversational
-      ? {
-          voice: sharedVoice(),
-          temperature: 0.85,
-          frequencyPenalty: 0.4,
-          presencePenalty: 0.3,
-        }
-      : {}),
+    ...(conversational ? { voice: sharedVoice(), temperature: 0.85 } : {}),
     ...overrides,
   });
 }

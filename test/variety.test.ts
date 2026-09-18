@@ -9,6 +9,7 @@ import {
 } from '../src/grok/variety.js';
 import { GrokAgent, resetSharedVoice, sharedVoice } from '../src/grok/agent.js';
 import type { AssistantMessage, ChatMessage, GrokClient } from '../src/grok/client.js';
+import { describeError } from '../src/grok/client.js';
 
 /**
  * The complaint this file exists for: every stranger got the same sentences.
@@ -220,5 +221,32 @@ describe('one account, two surfaces', () => {
     // The X side asks the same shared memory, so what Telegram just said is
     // already on the list the next prompt is told to avoid.
     expect(sharedVoice().recent()[0]).toContain('finalized commitment');
+  });
+});
+
+describe('what the API said, rather than what status it used', () => {
+  it('reads xAI\u2019s string error, which is how this broke silently', () => {
+    // The real 400 that stopped the bot posting. `error` is a bare string here;
+    // reading `.message` off it yields undefined, and the caller logs "HTTP
+    // 400" \u2014 a bot that had stopped working and a log that would not say why.
+    expect(
+      describeError(
+        {
+          code: 'invalid-argument',
+          error: 'Model grok-4 does not support parameter presencePenalty.',
+        },
+        400,
+      ),
+    ).toBe('Model grok-4 does not support parameter presencePenalty. (invalid-argument)');
+  });
+
+  it('still reads the object shape other providers send', () => {
+    expect(describeError({ error: { message: 'context length exceeded' } }, 400)).toBe(
+      'context length exceeded',
+    );
+  });
+
+  it('falls back to the status only when there is genuinely nothing else', () => {
+    expect(describeError({}, 503)).toBe('HTTP 503');
   });
 });

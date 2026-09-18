@@ -52,17 +52,6 @@ export interface AssistantMessage {
 
 export interface ChatOptions {
   temperature?: number;
-  /**
-   * OpenAI-compatible repetition penalties, which xAI accepts.
-   *
-   * Sampling alone will not stop an agent reaching for the same opening: the
-   * phrasing it likes is the phrasing it finds most probable, and that does not
-   * change between conversations. These lean against reusing tokens inside one
-   * completion; `RecentVoice` is what leans against reusing them across
-   * completions. Both are needed and neither replaces the other.
-   */
-  frequencyPenalty?: number;
-  presencePenalty?: number;
   maxTokens?: number;
   timeoutMs?: number;
   tools?: ToolSchema[];
@@ -90,6 +79,30 @@ export class GrokError extends SingularityError {
             : undefined,
     );
   }
+}
+
+interface ChatResponseBody {
+  choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
+  /** xAI sends a bare string here; OpenAI sends an object. Both are seen. */
+  error?: string | { message?: string };
+  code?: string;
+}
+
+/**
+ * The API's own words, rather than its status code.
+ *
+ * This read `body.error?.message` and nothing else, which is correct for
+ * OpenAI's shape and wrong for xAI's: it answers `{"code": "invalid-argument",
+ * "error": "Model grok-4 does not support parameter presencePenalty."}`, where
+ * `error` is a string with no `message` on it. So the sentence naming the exact
+ * broken parameter was dropped and every caller logged "HTTP 400" instead —
+ * a bot that had stopped posting, and a log that would not say why.
+ */
+export function describeError(body: ChatResponseBody, status: number): string {
+  const detail = typeof body.error === 'string' ? body.error : body.error?.message;
+  if (!detail) return `HTTP ${status}`;
+
+  return body.code ? `${detail} (${body.code})` : detail;
 }
 
 export class GrokClient {
@@ -126,12 +139,11 @@ export class GrokClient {
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 512,
-          ...(options.frequencyPenalty !== undefined
-            ? { frequency_penalty: options.frequencyPenalty }
-            : {}),
-          ...(options.presencePenalty !== undefined
-            ? { presence_penalty: options.presencePenalty }
-            : {}),
+          // No frequency_penalty or presence_penalty here, and this is not an
+          // oversight. xAI rejects both outright on grok-4 — "Model grok-4 does
+          // not support parameter presencePenalty", HTTP 400 — so sending them
+          // does not make the agent repeat itself less, it stops it answering
+          // at all. Repetition is handled in `variety.ts`, above the API.
           ...(options.tools?.length ? { tools: options.tools, tool_choice: 'auto' } : {}),
         }),
         signal: controller.signal,
@@ -143,13 +155,10 @@ export class GrokClient {
       clearTimeout(timer);
     }
 
-    const body = (await response.json().catch(() => ({}))) as {
-      choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
-      error?: { message?: string };
-    };
+    const body = (await response.json().catch(() => ({}))) as ChatResponseBody;
 
     if (!response.ok) {
-      throw new GrokError(response.status, body.error?.message ?? `HTTP ${response.status}`);
+      throw new GrokError(response.status, describeError(body, response.status));
     }
 
     const message = body.choices?.[0]?.message;
