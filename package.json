@@ -33,7 +33,8 @@
     "prepublishOnly": "npm run build",
     "bot": "tsx src/telegram/bot.ts",
     "x-bot": "tsx src/x/bot.ts",
-    "agent": "tsx src/agent.ts"
+    "agent": "tsx src/agent.ts",
+    "smoke:burn": "node scripts/smoke-burn.mjs"
   },
   "keywords": [
     "mcp",

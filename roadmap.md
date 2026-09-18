@@ -688,6 +688,32 @@ The signing helper that came out of the same afternoon lives in `local/`, which 
 gitignored. A user signing with their own key on their own machine is the seam working
 as designed; the same code inside the package would make the central claim false.
 
+**And then it answered 500 to every request it ever received.** The section above was
+written, the release went out describing a link people could tap, and `/api/burn` had
+never served a single response — including `OPTIONS`, which parses nothing and is the
+handler's first line. A function whose module fails to load fails identically on every
+method, which is the signature of a build that produced nothing.
+
+The cause was the third tsconfig, added two paragraphs above as a point of discipline.
+`api/` is deployed rather than published, so it was given `tsconfig.api.json` instead of
+a widened `include` — and Vercel's Node builder reads the *root* `tsconfig.json`, which
+declared `"rootDir": "src"`. A file outside rootDir is not a warning; it is TS6059 and no
+output. Every local check disagreed with the only compiler that mattered: `npm run
+typecheck` asked the config whose rootDir is `.`, the local server in `local/` runs under
+tsx, which ignores rootDir, and so does every bundler. The guarantee was enforced in the
+one place nobody ran.
+
+Two things came back from it. `rootDir` is now inferred rather than pinned, and
+`test/build-config.test.ts` compiles every `api/` entrypoint under the root config and
+holds `dist/` to the layout `package.json` promises, because inference is only correct
+while `include` stays src-only. And `npm run smoke:burn` asks the deployed URL what a
+wallet would ask it — including a POST from an account holding none of the mint, which
+must come back `NO_TOKEN_ACCOUNT`, an answer only a function that loaded, reached the
+cluster, read the mint and derived the token account can produce.
+
+This is the fourth entry in this file to describe a confidently wrong answer with no
+visible symptom, and the first where the wrong answer was the repo's own claim to work.
+
 ---
 
 ---

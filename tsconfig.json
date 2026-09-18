@@ -4,7 +4,15 @@
     "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "rootDir": "src",
+    // No explicit `rootDir`. It would be "src" — which is what `include` below
+    // already infers — but Vercel's Node builder reads *this* file to compile
+    // `api/burn.ts`, and an explicit rootDir of "src" makes that a hard TS6059:
+    // the function is not under it, so it never compiles, and the deployment
+    // serves a route whose module does not exist. That failed on every method
+    // for a full release while `npm run typecheck` stayed green, because the
+    // config that checks `api/` (tsconfig.api.json) is not the config Vercel
+    // reads. Inference keeps `dist/` laid out exactly as before; see
+    // test/build-config.test.ts, which holds both halves of that.
     "outDir": "dist",
     "strict": true,
     "noUncheckedIndexedAccess": true,
