@@ -387,43 +387,21 @@ program
 
 program
   .command('doctor')
-  .description('Check which configured RPC endpoints are actually reachable.')
+  .description('Check whether each chain is serving current state, not just answering.')
   .option('-c, --chain <chain...>', 'Chains to check. Defaults to all of them.')
-  .action(async (options: { chain?: string[] }) => {
-    const targets = options.chain?.length
-      ? options.chain.map((id) => allChains().find((c) => c.id === id) ?? null).filter(Boolean)
-      : allChains();
+  .option('--endpoints', 'Show every endpoint rather than only the degraded ones.')
+  .action(async (options: { chain?: string[]; endpoints?: boolean }) => {
+    const report = await ops.checkLiveness(options.chain);
 
-    console.log(render.heading('Endpoint health'));
+    if (program.opts().json) console.log(toJson(report));
+    else {
+      console.log(render.heading('Chain liveness'));
+      console.log(render.renderLiveness(report, { endpoints: options.endpoints ?? false }));
+    }
 
-    const results = await Promise.all(
-      (targets as NonNullable<(typeof targets)[number]>[]).map(async (chain) => {
-        const adapter = adapterFor(chain);
-        const started = Date.now();
-        try {
-          if (adapter.healthCheck) await adapter.healthCheck(chain);
-          else await adapter.getBlock(chain, 'latest');
-          return [render.green('ok'), chain.id, `${Date.now() - started}ms`, ''];
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return [
-            render.red('fail'),
-            chain.id,
-            `${Date.now() - started}ms`,
-            render.dim(truncate(message, 110)),
-          ];
-        }
-      }),
-    );
-
-    console.log(render.table(results));
-
-    const failures = results.filter((r) => r[0]?.includes('fail')).length;
-    console.log(
-      failures
-        ? `\n  ${render.yellow(`${failures} chain(s) unreachable.`)} ${render.dim('Public endpoints rate-limit aggressively — set SINGULARITY_RPC_<CHAIN> to your own.')}`
-        : `\n  ${render.green('All endpoints reachable.')}`,
-    );
+    // A stale chain is worse than a down one and must not exit 0: down is loud
+    // at the call site, stale is an answer that looks fine.
+    process.exitCode = report.some((c) => c.status === 'stale' || c.status === 'down') ? 1 : 0;
   });
 
 /** Trim on a word boundary so a cut-off host or reason stays readable. */

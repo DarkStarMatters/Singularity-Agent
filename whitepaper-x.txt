@@ -8,7 +8,7 @@ Abstract
 
 Language models can reason about blockchains but cannot reliably touch them. The obstacle is not intelligence, it is surface area: four chain families, four address encodings, four transaction shapes, four ways to be wrong about decimals. An agent handed four SDKs spends its context reconciling them instead of answering the question.
 
-Singularity Agent puts one normalized, read-only surface over EVM, Solana, Bitcoin/UTXO and Cosmos — 32 chains — exposed as a terminal CLI and as fifteen MCP tools. It holds no private keys. It can build an unsigned transaction for a human to sign in their own wallet; it cannot sign, and it cannot broadcast.
+Singularity Agent puts one normalized, read-only surface over EVM, Solana, Bitcoin/UTXO and Cosmos — 32 chains — exposed as a terminal CLI and as sixteen MCP tools. It holds no private keys. It can build an unsigned transaction for a human to sign in their own wallet; it cannot sign, and it cannot broadcast.
 
 The original design claim was that the hard part of agentic blockchain tooling is not reaching the chain but shaping what comes back. Six releases of shipped bugs have sharpened it into something more specific and less comfortable:
 

@@ -1,5 +1,6 @@
 import type { ResponseBudget } from './budget.js';
 import type { Completeness } from './envelope.js';
+import type { ChainTip } from './liveness.js';
 import type {
   BalanceEntry,
   ChainFamily,
@@ -170,6 +171,20 @@ export interface ChainAdapter {
    * as down.
    */
   healthCheck?(chain: ChainSpec): Promise<void>;
+
+  /**
+   * The head of the chain: how high it is, and when it was produced.
+   *
+   * Distinct from `healthCheck`, which only has to not throw. Liveness needs a
+   * *dated* head, because a chain that stopped producing blocks keeps serving
+   * its last one and every probe that asks "did this answer" keeps passing.
+   *
+   * Defaults to `getBlock(chain, 'latest')`, which every family implements. An
+   * adapter overrides it where the cheap call and the datable call differ —
+   * Solana's public endpoints disable `getBlock`, so it answers from the slot
+   * and asks for that slot's time separately.
+   */
+  chainTip?(chain: ChainSpec): Promise<ChainTip>;
 
   /** Name service lookup (ENS, SNS, …). Returns null when unresolvable. */
   resolveName?(chain: ChainSpec, name: string): Promise<string | null>;

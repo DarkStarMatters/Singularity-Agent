@@ -159,7 +159,7 @@ that mapping so the three cannot drift:
 | `/balance` | one address, one chain | `/read` | call a view function |
 | `/portfolio` | one address, many chains | `/decode` | decode EVM calldata |
 | `/tx` | look up a transaction | `/transfer` | build an **unsigned** transfer |
-| `/resolve` | identify an address or hash | `/health` | which RPCs are reachable |
+| `/resolve` | identify an address or hash | `/health` | which chains are serving current state |
 | `/fees` | current gas conditions | `/chains` | what is supported |
 | `/block` | fetch a block | `/forget` | drop this chat's history |
 | `/mint` | what a mint can do to you | `/identity` | is this the real token |
@@ -386,8 +386,9 @@ singularity burn --mint <mint> --amount 1000 --owner <your wallet>
 # Confirm a burn happened, and that it was the mint you expected.
 singularity verify-burn <signature> --mint <mint>
 
-# Which of your configured endpoints are actually up?
+# Which chains are actually producing blocks, not just answering?
 singularity doctor
+singularity doctor --endpoints          # every endpoint, not only the broken ones
 ```
 
 Add `--json` to any command for machine-readable output.
@@ -442,8 +443,13 @@ returned as both raw base units and a formatted string. Dust never renders as `0
 `parseUnits` refuses to silently drop precision rather than quietly sending the wrong
 amount.
 
-**Public RPCs are assumed to be flaky.** Every endpoint list fails over in order, and
-`doctor` tells you which are actually reachable.
+**Public RPCs are assumed to be flaky, and so is the chain behind them.** Every endpoint
+list fails over in order, and `doctor` asks the question reachability does not: is this
+chain still producing blocks? A halted chain answers every request, with the correct chain
+id, serving the last block it ever made — so it reads as healthy while every balance taken
+from it is historical state with nothing marking it as historical. `doctor` probes each
+endpoint separately, which also surfaces the endpoint that answers but lags, and the chain
+whose second endpoint quietly stopped working.
 
 **Errors carry hints.** An unknown chain suggests near misses; a rate-limited endpoint
 names the env var to override.

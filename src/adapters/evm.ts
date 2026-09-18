@@ -88,8 +88,28 @@ function knownContracts(chainId: number): { contracts: ChainContracts } | undefi
   return contractIndex.get(chainId);
 }
 
+/**
+ * A client is only reusable for the endpoints it was built with.
+ *
+ * Keying this cache on `chain.id` alone made the endpoint list unreachable
+ * after the first call: the transport is a `fallback` over whatever `chain.rpc`
+ * held at construction, so a later caller passing the same chain id with a
+ * different endpoint list silently got the original transport. `doctor` probes
+ * one endpoint at a time by handing over a chain narrowed to that endpoint, and
+ * every probe came back describing the first endpoint in the full list —
+ * reporting three healthy endpoints where it had contacted one, which is the
+ * failover guarantee appearing to hold precisely where it does not.
+ *
+ * The same shape reaches a user: `SINGULARITY_RPC_<CHAIN>` and a reloaded
+ * config both rewrite `rpc`, and both were ignored once anything had warmed
+ * this map.
+ */
+function cacheKey(chain: ChainSpec): string {
+  return `${chain.id}|${chain.rpc.join(',')}`;
+}
+
 function clientFor(chain: ChainSpec): PublicClient {
-  const cached = clients.get(chain.id);
+  const cached = clients.get(cacheKey(chain));
   if (cached) return cached;
 
   const viemChain = defineChain({
@@ -115,7 +135,7 @@ function clientFor(chain: ChainSpec): PublicClient {
     batch: { multicall: true },
   }) as PublicClient;
 
-  clients.set(chain.id, client);
+  clients.set(cacheKey(chain), client);
   return client;
 }
 

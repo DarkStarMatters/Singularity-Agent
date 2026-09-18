@@ -15,6 +15,14 @@ import {
   type Redemption,
 } from '../core/burn-ledger.js';
 import { allChains, getChain, portfolioChains } from '../core/registry.js';
+import {
+  classify,
+  hostOf,
+  probeEndpoint,
+  runSerializedByHost,
+  type ChainLiveness,
+  type ChainTip,
+} from '../core/liveness.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
@@ -726,6 +734,61 @@ export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthR
       }
     }),
   );
+}
+
+/**
+ * Whether each chain is serving current state.
+ *
+ * The stronger question behind {@link checkEndpoints}, which only ever asked
+ * whether a request threw. A chain that has stopped producing blocks answers
+ * every request it is given, with the right chain id, forever — Polygon zkEVM
+ * was serving a head 76 days old while passing that check, and is excluded from
+ * this tool for exactly that reason. Reachability cannot see it; a dated head
+ * can.
+ *
+ * Each endpoint is probed separately rather than through failover, since
+ * failover's whole job is to paper over the difference between them.
+ */
+export async function checkLiveness(chains?: string[]): Promise<ChainLiveness[]> {
+  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : allChains();
+
+  const jobs = targets.flatMap((chain) => chain.rpc.map((endpoint) => ({ chain, endpoint })));
+
+  const probes = await runSerializedByHost(
+    jobs,
+    (job) => hostOf(job.endpoint),
+    (job) => probeEndpoint(job.chain, job.endpoint, tipReader(job.chain)),
+  );
+
+  return targets.map((chain) =>
+    classify(
+      chain,
+      probes.filter((_, index) => jobs[index]!.chain.id === chain.id),
+    ),
+  );
+}
+
+/**
+ * How to ask this chain for its head.
+ *
+ * `getBlock` is the universal answer and the wrong one on Solana, whose public
+ * endpoints disable it — so an adapter that knows better says so through
+ * `chainTip`. The fallback keeps a block's own timestamp where it has one and
+ * passes on the absence where it does not, because an undated head must read as
+ * undatable rather than as fresh.
+ */
+function tipReader(chain: ChainSpec): (target: ChainSpec) => Promise<ChainTip> {
+  const adapter = adapterFor(chain);
+
+  if (adapter.chainTip) return (target) => adapter.chainTip!(target);
+
+  return async (target) => {
+    const block = await adapter.getBlock(target, 'latest');
+    return {
+      height: block.number,
+      ...(block.timestamp ? { timestamp: block.timestamp } : {}),
+    };
+  };
 }
 
 /**

@@ -27,6 +27,7 @@ import type {
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
+import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { SingularityError } from '../core/errors.js';
 
 /** Telegram HTML mode needs exactly these three escaped. */
@@ -364,6 +365,54 @@ export interface EndpointHealth {
  * Endpoint health, failures first — a list of 40 green ticks buries the one
  * red line that the person actually needs to see.
  */
+/**
+ * The liveness board, for a chat window.
+ *
+ * Ordered worst first rather than by chain, because the whole reason this is
+ * not the old reachability list is that the interesting rows are the ones that
+ * would otherwise look fine. A live chain gets one line; anything else gets its
+ * reason, since "stale" without "the head is 76 days old" is not actionable.
+ */
+export function formatLiveness(report: ChainLiveness[]): string {
+  const icon: Record<ChainLiveness['status'], string> = {
+    live: '✅',
+    single: '⚠️',
+    undatable: '⚠️',
+    skewed: '⚠️',
+    lagging: '⚠️',
+    stale: '🛑',
+    down: '❌',
+  };
+
+  const rank: Record<ChainLiveness['status'], number> = {
+    stale: 0,
+    down: 1,
+    lagging: 2,
+    skewed: 3,
+    undatable: 4,
+    single: 5,
+    live: 6,
+  };
+
+  const sorted = [...report].sort((a, b) => rank[a.status] - rank[b.status]);
+  const live = report.filter((c) => c.status === 'live').length;
+
+  const lines = [bold('Chain liveness'), `${live}/${report.length} fully live`, ''];
+
+  for (const chain of sorted) {
+    const age = chain.ageSeconds !== undefined ? ` <i>${esc(describeAge(chain.ageSeconds))}</i>` : '';
+    lines.push(
+      `${icon[chain.status]} ${bold(chain.chain)} — ${esc(chain.status)}` +
+        ` <i>${chain.answering}/${chain.configured} rpc</i>${age}`,
+    );
+    if (chain.status !== 'live') {
+      for (const note of chain.notes) lines.push(`   ${esc(note)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function formatHealth(results: EndpointHealth[]): string {
   const failed = results.filter((r) => !r.ok);
   const healthy = results.filter((r) => r.ok);

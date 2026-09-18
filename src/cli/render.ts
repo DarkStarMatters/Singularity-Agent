@@ -10,6 +10,7 @@ import type {
   UnsignedTx,
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
+import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import type {
   BalanceResult,
   BurnClaim,
@@ -61,6 +62,86 @@ function visibleLength(text: string): number {
 
 function pad(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
+}
+
+/**
+ * The liveness board.
+ *
+ * Every status but `live` prints its reason, because the point of this command
+ * is the chains that answer and should not be trusted, and a coloured word on
+ * its own does not tell anyone what to do about it. Endpoints stay folded away
+ * unless asked for or unless something is wrong with them — an eighty-row dump
+ * is how a report stops being read.
+ */
+export function renderLiveness(
+  report: ChainLiveness[],
+  options: { endpoints: boolean } = { endpoints: false },
+): string {
+  const mark: Record<ChainLiveness['status'], string> = {
+    live: green('live'),
+    single: yellow('single'),
+    undatable: yellow('undated'),
+    skewed: yellow('skewed'),
+    lagging: yellow('lagging'),
+    stale: red('STALE'),
+    down: red('down'),
+  };
+
+  const rows = report.map((chain) => [
+    mark[chain.status],
+    chain.chain,
+    chain.height !== undefined ? `#${chain.height}` : dim('—'),
+    chain.ageSeconds !== undefined ? describeAge(chain.ageSeconds) : dim('—'),
+    `${chain.answering}/${chain.configured}`,
+  ]);
+
+  const out = [table(rows, ['', 'CHAIN', 'HEAD', 'AGE', 'RPC'])];
+
+  const explained = report.filter((c) => c.notes.length);
+  if (explained.length) {
+    out.push('');
+    for (const chain of explained) {
+      out.push(`  ${bold(chain.chain)}`);
+      for (const note of chain.notes) out.push(`    ${dim(note)}`);
+    }
+  }
+
+  const detailed = options.endpoints ? report : report.filter((c) => c.endpoints.some((e) => !e.ok));
+  if (detailed.length) {
+    out.push('');
+    for (const chain of detailed) {
+      out.push(`  ${bold(chain.chain)}`);
+      for (const endpoint of chain.endpoints) {
+        out.push(
+          `    ${endpoint.ok ? green('ok') : red('fail')}  ${pad(endpoint.host, 34)} ` +
+            `${pad(`${endpoint.ms}ms`, 8)}` +
+            (endpoint.ok
+              ? `${endpoint.height !== undefined ? `#${endpoint.height} ` : ''}` +
+                `${endpoint.ageSeconds !== undefined ? dim(describeAge(endpoint.ageSeconds)) : dim('undated')}`
+              : dim(truncate(endpoint.error ?? 'failed', 80))),
+        );
+      }
+    }
+  }
+
+  const bad = report.filter((c) => c.status !== 'live').length;
+  out.push(
+    '',
+    bad
+      ? `  ${yellow(`${bad} of ${report.length} chains are not fully live.`)} ${dim('Public endpoints rate-limit aggressively — set SINGULARITY_RPC_<CHAIN> to your own.')}`
+      : `  ${green(`All ${report.length} chains are live.`)}`,
+  );
+
+  return out.join('\n');
+}
+
+/** Trim on a word boundary so a cut-off host or reason stays readable. */
+function truncate(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut}…`;
 }
 
 export function renderChains(chains: ChainSummary[]): string {

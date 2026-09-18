@@ -18,7 +18,7 @@ import {
   formatDecoded,
   formatFees,
   formatHistory,
-  formatHealth,
+  formatLiveness,
   formatPortfolio,
   formatReadResult,
   formatResolved,
@@ -387,11 +387,16 @@ const identity: Command = {
 
 const health: Command = {
   name: 'health',
+  aliases: ['chain_liveness', 'liveness'],
   usage: '/health [chain,chain,…]',
-  summary: 'Check which RPC endpoints are reachable',
+  summary: 'Check which chains are serving current state',
   async run(ctx) {
     const named = ctx.args[0]?.split(',').map((c) => c.trim()).filter(Boolean);
-    return formatHealth(await ops.checkEndpoints(named));
+
+    // Reachability was the weaker question and it was the one being asked. A
+    // halted chain answers every request it is given, so "reachable" came back
+    // green for a chain serving a head block months old.
+    return formatLiveness(await ops.checkLiveness(named));
   },
 };
 

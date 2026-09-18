@@ -641,6 +641,24 @@ export const solanaAdapter: ChainAdapter = {
     await withConnection(chain, 'getSlot', (connection) => connection.getSlot());
   },
 
+  async chainTip(chain) {
+    return withConnection(chain, 'getSlot', async (connection) => {
+      const slot = await connection.getSlot();
+
+      // getBlockTime is a separate call because the one method that returns both
+      // is getBlock, which public endpoints disable. It answers null for a
+      // skipped slot and is itself restricted on some providers — either way the
+      // height stands on its own and the tip is reported undated rather than
+      // guessed at. An undated tip reads as `undatable`, not as fresh.
+      const blockTime = await connection.getBlockTime(slot).catch(() => null);
+
+      return {
+        height: slot,
+        ...(blockTime ? { timestamp: new Date(blockTime * 1000).toISOString() } : {}),
+      };
+    });
+  },
+
   async estimateFees(chain) {
     return withConnection(chain, 'getRecentPrioritizationFees', async (connection) => {
       const recent = await connection.getRecentPrioritizationFees().catch(() => []);

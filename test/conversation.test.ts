@@ -90,6 +90,7 @@ describe('tool catalogue', () => {
       'block',
       'build_burn',
       'build_transfer',
+      'chain_liveness',
       'chains',
       'decode',
       'fees',

@@ -31,6 +31,7 @@ describe('MCP server', () => {
       'block',
       'build_burn',
       'build_transfer',
+      'chain_liveness',
       'chains',
       'decode',
       'fees',

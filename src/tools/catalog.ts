@@ -372,6 +372,20 @@ export const TOOLS: ToolDefinition[] = [
     },
     run: (args) => ops.tokenIdentity(args),
   }),
+
+  defineTool({
+    name: 'chain_liveness',
+    title: 'Whether a chain is serving current state',
+    description:
+      'Check that a chain is actually producing blocks, rather than merely answering. A chain that has halted still responds to every request, with the correct chain id, serving the last block it ever made — so a balance read from it is historical state carrying no indication that it is historical. Each configured endpoint is probed separately, so this also reports endpoints that answer but lag behind the others, and chains left with no working failover. Call it when a read looks implausible, when an answer must be current to be worth acting on, or before treating an absence as fact. `status` is one of: `live`; `stale` (the head is old enough that nothing here is current); `lagging` (endpoints disagree enough that which one answers changes the result); `single` (only one endpoint answered, so the next failure is total); `undatable` (answering, but nothing will say when the head was produced); `skewed` (the head is dated in the future, so its age proves nothing); `down`. Only `live` means the chain can be read with confidence, and `stale` in particular does not surface as an error anywhere else.',
+    shape: {
+      chain: z
+        .array(z.string())
+        .optional()
+        .describe('Chain ids or aliases to check. Defaults to every configured chain.'),
+    },
+    run: ({ chain }) => ops.checkLiveness(chain),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
