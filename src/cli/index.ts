@@ -7,6 +7,30 @@ import { allChains } from '../core/registry.js';
 import { adapterFor } from '../adapters/index.js';
 import { VERSION } from '../version.js';
 import * as render from './render.js';
+import { parseBudget, type ResponseBudget } from '../core/budget.js';
+
+/**
+ * Read `--budget` off the command line.
+ *
+ * A flag arrives as a string whatever it means, so "40" has to become a count
+ * here rather than being handed on as a name nothing recognizes. An unusable
+ * value is rejected rather than ignored: silently falling back to the default
+ * would answer a mistyped `--budget ful` with a full-sized response and no
+ * indication the flag did nothing.
+ */
+function cliBudget(value: string | undefined): ResponseBudget | undefined {
+  if (value === undefined) return undefined;
+
+  const parsed = parseBudget(/^\d+$/.test(value.trim()) ? Number(value) : value.trim());
+  if (!parsed) {
+    throw new SingularityError(
+      'INVALID_BUDGET',
+      `"${value}" is not a response budget.`,
+      'Use small, standard, full, or a positive whole number of items.',
+    );
+  }
+  return parsed;
+}
 
 const program = new Command();
 
@@ -54,10 +78,17 @@ program
   .option('-t, --token <token...>', 'Specific token addresses, mints, or denoms.')
   .option('--no-tokens', 'Fetch only the native balance.')
   .option('--at-block <height>', 'Read as of this block height (EVM and Cosmos archive endpoints).')
+  .option('--budget <size>', "How much of each list to return: small, standard, full, or an exact count.")
   .action(
     async (
       address: string,
-      options: { chain: string; token?: string[]; tokens: boolean; atBlock?: string },
+      options: {
+        chain: string;
+        token?: string[];
+        tokens: boolean;
+        atBlock?: string;
+        budget?: string;
+      },
     ) => {
       const result = await ops.getBalance({
         address,
@@ -65,6 +96,7 @@ program
         tokens: options.token,
         includeTokens: options.tokens,
         atBlock: options.atBlock,
+        budget: cliBudget(options.budget),
       });
       emit(result, render.renderBalance);
     },
@@ -76,37 +108,50 @@ program
   .argument('<address>', 'Address, ENS/SNS name, or configured alias.')
   .option('-c, --chain <chain...>', 'Chains to query. Defaults to a spread across all families.')
   .option('--no-tokens', 'Native balances only (much faster).')
-  .action(async (address: string, options: { chain?: string[]; tokens: boolean }) => {
-    const result = await ops.getPortfolio({
-      address,
-      chains: options.chain,
-      includeTokens: options.tokens,
-    });
-    emit(result, render.renderPortfolio);
-  });
+  .option('--budget <size>', "How much of each list to return: small, standard, full, or an exact count.")
+  .action(
+    async (address: string, options: { chain?: string[]; tokens: boolean; budget?: string }) => {
+      const result = await ops.getPortfolio({
+        address,
+        chains: options.chain,
+        includeTokens: options.tokens,
+        budget: cliBudget(options.budget),
+      });
+      emit(result, render.renderPortfolio);
+    },
+  );
 
 program
   .command('history')
   .description("Recent transactions for an address on one chain, newest first.")
   .argument('<address>', 'Address, ENS/SNS name, or configured alias.')
   .requiredOption('-c, --chain <chain>', 'Chain id or alias.')
-  .option('-n, --limit <count>', 'How many entries to return.', '25')
+  .option('-n, --limit <count>', 'Exact entries to return. With --budget, the smaller wins.')
+  .option('--budget <size>', "How much of each list to return: small, standard, full, or an exact count.")
   .option('--cursor <cursor>', 'Continuation token from a previous call.')
-  .action(async (address: string, options: { chain: string; limit: string; cursor?: string }) => {
-    const result = await ops.getHistory({
-      address,
-      chain: options.chain,
-      limit: Number(options.limit),
-      ...(options.cursor ? { cursor: options.cursor } : {}),
-    });
+  .action(
+    async (
+      address: string,
+      options: { chain: string; limit?: string; cursor?: string; budget?: string },
+    ) => {
+      const result = await ops.getHistory({
+        address,
+        chain: options.chain,
+        // No default here. The adapter's own fallback is the default, and
+        // restating it in the CLI is how the two drift apart.
+        ...(options.limit ? { limit: Number(options.limit) } : {}),
+        ...(options.cursor ? { cursor: options.cursor } : {}),
+        budget: cliBudget(options.budget),
+      });
 
-    if (program.opts().json) {
-      console.log(toJson(result));
-      return;
-    }
+      if (program.opts().json) {
+        console.log(toJson(result));
+        return;
+      }
 
-    console.log(render.renderHistory(result));
-  });
+      console.log(render.renderHistory(result));
+    },
+  );
 
 program
   .command('tx')

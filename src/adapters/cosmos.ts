@@ -1,4 +1,5 @@
 import type { ChainAdapter } from '../core/adapter.js';
+import { type BudgetBounds, applyBudget, budgetNote, itemBudget } from '../core/budget.js';
 import type {
   BalanceEntry,
   ChainSpec,
@@ -32,6 +33,69 @@ import {
 } from '../core/format.js';
 import { fetchWithFailover, fetchWithFailoverDetail } from '../core/http.js';
 import { bech32ToBytes, bytesToBech32 } from '../core/address-codec.js';
+
+/**
+ * Entries one history page returns.
+ *
+ * `fallback` is the default that shipped, so a caller stating no budget sees
+ * what it saw before. `ceiling` is what this source will page in a single call.
+ * A caller with room asks for `full` and gets the ceiling; a caller without
+ * asks for `small` and stops paying for entries it has no space to read.
+ */
+const HISTORY_BOUNDS: BudgetBounds = { fallback: 25, ceiling: 50 };
+
+/**
+ * How many denoms an unfiltered bank scan will return.
+ *
+ * This list had no cap at all until response shaping went in, and that was the
+ * Solana dust bug sitting unfixed on another family. The bank module enumerates
+ * every denom an account holds, IBC vouchers included, and an active Osmosis
+ * address holds hundreds — each one costing a denom-metadata read and a row in
+ * the response. Nothing bounded that, so the ceiling was whatever the account
+ * happened to hold.
+ *
+ * Capping it changes answers for accounts above the fallback: what came back
+ * claiming `exhaustive` now comes back `truncated`, with counts. That is the
+ * point. The list was never exhaustive in any sense a caller could rely on —
+ * it was unbounded, which is a different thing, and it read as the first.
+ */
+const TOKEN_SCAN_BOUNDS: BudgetBounds = { fallback: 50, ceiling: 200 };
+
+/**
+ * Order two base-unit amounts, largest first.
+ *
+ * `BigInt` rather than `Number`, because a bank balance is an arbitrary-length
+ * decimal string and the denoms most likely to need cutting are exactly the
+ * ones with eighteen decimals and a balance past 2^53. Sorting those through a
+ * float collapses distinct amounts onto the same value and makes the cut
+ * arbitrary — which would be a silently unstable answer, the thing this whole
+ * file is careful about.
+ */
+function compareAmounts(a: string, b: string): number {
+  const left = toBigInt(a);
+  const right = toBigInt(b);
+  return left === right ? 0 : left > right ? 1 : -1;
+}
+
+function toBigInt(value: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    // A denom whose amount is not an integer string is malformed rather than
+    // large, and sorts last rather than throwing the whole scan away.
+    return -1n;
+  }
+}
+
+/** What a scan covers when the caller named the denoms it wanted. */
+function filteredNote(at: string): string {
+  return `Every balance the account holds${at} in the denom(s) you named. Cosmos bank balances enumerate fully, so a denom absent here is genuinely not held.`;
+}
+
+/** What a scan covers when it returned everything the account holds. */
+function fullNote(at: string): string {
+  return `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash. Decimals come from the chain's own denom metadata; where it publishes none, the amount is shown in base units and marked, rather than scaled by a guess.`;
+}
 
 /** Gas the Cosmos SDK typically needs for a single MsgSend. */
 const MSG_SEND_GAS = 200_000n;
@@ -329,14 +393,35 @@ export const cosmosAdapter: ChainAdapter = {
   async getTokenBalances(chain, address, tokens, options) {
     const owner = requireAddress(chain, address);
     const balances = await bankBalances(chain, owner, options?.atBlock);
+    const at = options?.atBlock === undefined ? '' : ` at height ${options.atBlock}`;
 
     const filter = tokens?.length ? new Set(tokens.map((t) => t.toLowerCase())) : null;
     const entries: BalanceEntry[] = [];
 
-    for (const coin of balances) {
-      if (coin.denom === chain.denom) continue; // reported by getNativeBalance
-      if (coin.amount === '0') continue;
+    const held = balances.filter(
+      // The native denom is reported by getNativeBalance, and a zero balance is
+      // an account that was closed rather than a holding.
+      (coin) => coin.denom !== chain.denom && coin.amount !== '0',
+    );
 
+    // A named filter matches on symbol as well as denom, and the symbol only
+    // exists after the metadata read — so a filtered scan cannot be cut early
+    // and does not need to be: it is bounded by what the caller asked for.
+    // An unfiltered one is bounded by nothing, so it is ordered and cut here,
+    // before the per-denom reads, where cutting actually saves the work.
+    const shaped = filter
+      ? { entries: held, completeness: completeness.exhaustive(filteredNote(at)) }
+      : applyBudget(
+          [...held].sort((a, b) => compareAmounts(b.amount, a.amount)),
+          itemBudget(options?.budget, TOKEN_SCAN_BOUNDS),
+          completeness.exhaustive(fullNote(at)),
+          (shown, omitted) =>
+            `${budgetNote(shown, omitted, 'denoms held')} Ordered by raw balance, which is ` +
+            'magnitude and not value — there is no pricing here, so a trillion units of an IBC ' +
+            'voucher outranks a hundred USDC. Pass `tokens` with denoms to check specific holdings.',
+        );
+
+    for (const coin of shaped.entries) {
       const info = await denomInfo(chain, coin.denom);
       if (filter && !filter.has(coin.denom.toLowerCase()) && !filter.has(info.symbol.toLowerCase())) {
         continue;
@@ -370,16 +455,7 @@ export const cosmosAdapter: ChainAdapter = {
       });
     }
 
-    const at = options?.atBlock === undefined ? '' : ` at height ${options.atBlock}`;
-
-    return {
-      entries,
-      completeness: completeness.exhaustive(
-        tokens?.length
-          ? `Every balance the account holds${at} in the denom(s) you named. Cosmos bank balances enumerate fully, so a denom absent here is genuinely not held.`
-          : `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash. Decimals come from the chain's own denom metadata; where it publishes none, the amount is shown in base units and marked, rather than scaled by a guess.`,
-      ),
-    };
+    return { entries, completeness: shaped.completeness };
   },
 
   /**
@@ -398,7 +474,7 @@ export const cosmosAdapter: ChainAdapter = {
    */
   async getHistory(chain, address, options) {
     const owner = requireAddress(chain, address);
-    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 50);
+    const limit = itemBudget(options?.budget, HISTORY_BOUNDS, options?.limit);
     const offset = Number(options?.cursor ?? 0) || 0;
 
     const search = async (query: string): Promise<TxSearchResponse | null> => {

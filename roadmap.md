@@ -1038,10 +1038,52 @@ deployed across every supported EVM chain" — was wrong when it was written, an
 inherited rather than read. It is a named exemption now, so the day it changes, deleting
 the line is what fails.
 
-### 4.2 Response shaping
-Let the caller state its budget. A model with limited context and one with a large one
-want different amounts of the same answer; the current fixed cap of 50 is a reasonable
-default standing in for a parameter that should exist.
+### 4.2 Response shaping — **shipped**
+Every list in this repo was capped by a constant somebody chose once: 50 Solana mints, 25
+history entries, and — it turned out — no cap at all on a Cosmos bank balance. Those
+numbers answered a question the tool never asked, which is how much room the thing calling
+it has. `budget` asks it: `small`, `standard`, `full`, or an exact count, on `balance`,
+`portfolio` and `history`. Omitting it changes nothing, which is the compatibility claim
+and the first thing the tests check.
+
+**A budget may not quietly shorten an answer.** Shrinking a list is the exact operation
+behind the two worst bugs this project has shipped — the Solana dust truncation and the
+EVM scan whose dropped failures came back as `[]` — and response shaping makes that
+operation routine and caller-controlled, which is precisely why it cannot be left to
+discipline. `applyBudget` returns the entries and their `Completeness` **together**, so
+there is no way to cut one without restating the other. `entries.slice(0, n)` compiles
+anywhere; that call does not exist here.
+
+Three properties hold, each tested: a budget never upgrades a claim (a `curated` list cut
+to ten keeps its caveat and gains a truncation, rather than swapping one for the other); a
+budget that cuts nothing changes nothing, down to returning the identical completeness
+object, so `exhaustive` still licenses an absence claim; and a budget that does cut always
+produces `truncated` carrying both counts. The note says the *budget* cut it rather than
+the chain, because "there is no more" and "you asked for less" are different facts and
+only one of them is fixed by asking again.
+
+**And a Cosmos bank scan had no cap at all**, which is the Solana dust bug sitting unfixed
+on another family. The bank module enumerates every denom an account holds, IBC vouchers
+included; an active Osmosis address holds hundreds, each costing a denom-metadata read and
+a row in the response. Nothing bounded it, so the real ceiling was whatever the account
+happened to hold — and it came back claiming `exhaustive`, the one shape that reads as
+safe to act on. It is bounded now, ordered by raw balance so which 50 of 140 come back is
+explicable rather than arbitrary, and compared as `BigInt` because an eighteen-decimal
+denom overflows a float and two distinct balances that compare equal make the cut
+unstable between calls. Accounts above the cap now answer `truncated` where they answered
+`exhaustive`. That is a changed answer, and it is the honest one: the list was never
+exhaustive in a sense any caller could rely on, it was unbounded, and it read as the first.
+
+`full` is not "everything". It asks for the source's own ceiling — 200 mints or denoms, 50
+to 100 history entries — and nothing, including an explicit `maxItems`, reaches past it.
+An unbounded response is the 1.27 MB Solana balance, and it stays unreachable through this
+parameter. Where a `budget` and a `limit` disagree the **smaller wins**, so there is no
+precedence rule to remember: both readings are requests for less, and the stricter one is
+never wrong.
+
+The EVM token scan is deliberately untouched. Its list is the curated set, bounded by
+construction and already small, so a budget there would buy no response size and cost a
+reordering.
 
 ### 4.3 Watch mode
 `singularity watch <address>` — poll and report changes. Natural for the CLI, and the
@@ -1094,5 +1136,5 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (658 tests); `npm run typecheck`
+Every change needs a test. `npm test` runs the suite (898 tests); `npm run typecheck`
 must pass clean.

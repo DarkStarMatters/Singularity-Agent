@@ -22,7 +22,8 @@ import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
 import { lookupSelector } from '../core/selectors.js';
 import { explorerUrl, parseUnits, shortAddress } from '../core/format.js';
 import { convertBech32Prefix } from '../core/address-codec.js';
-import type { StateOptions, TransferParams } from '../core/adapter.js';
+import type { ScanOptions, StateOptions, TransferParams } from '../core/adapter.js';
+import type { ResponseBudget } from '../core/budget.js';
 import { completeness, weakest, type Completeness } from '../core/envelope.js';
 import type {
   BalanceEntry,
@@ -261,6 +262,7 @@ export async function getBalance(options: {
   tokens?: string[];
   includeTokens?: boolean;
   atBlock?: string | number;
+  budget?: ResponseBudget;
 }): Promise<BalanceResult> {
   const chain = getChain(options.chain);
   const adapter = adapterFor(chain);
@@ -268,6 +270,16 @@ export async function getBalance(options: {
 
   const atBlock = parseAtBlock(options.atBlock);
   const state: StateOptions | undefined = atBlock === undefined ? undefined : { atBlock };
+
+  // The native balance is one entry and has no size to shape, so it takes the
+  // state options alone; only the token scan is given a budget.
+  const scanOptions: ScanOptions | undefined =
+    atBlock === undefined && options.budget === undefined
+      ? undefined
+      : {
+          ...(atBlock === undefined ? {} : { atBlock }),
+          ...(options.budget === undefined ? {} : { budget: options.budget }),
+        };
 
   const native = await adapter.getNativeBalance(chain, address, state);
 
@@ -278,7 +290,7 @@ export async function getBalance(options: {
 
   if (options.includeTokens !== false) {
     try {
-      const scan = await adapter.getTokenBalances(chain, address, options.tokens, state);
+      const scan = await adapter.getTokenBalances(chain, address, options.tokens, scanOptions);
       tokens = scan.entries;
       tokenCompleteness = scan.completeness;
 
@@ -341,6 +353,7 @@ export async function getPortfolio(options: {
   address: string;
   chains?: string[];
   includeTokens?: boolean;
+  budget?: ResponseBudget;
 }): Promise<PortfolioResult> {
   const lookup = lookupAlias(options.address);
   const raw = lookup.target;
@@ -385,7 +398,16 @@ export async function getPortfolio(options: {
 
   const settled = await Promise.allSettled(
     candidates.map((chain) =>
-      getBalance({ address, chain: chain.id, includeTokens: options.includeTokens }),
+      getBalance({
+        address,
+        chain: chain.id,
+        includeTokens: options.includeTokens,
+        // Per chain, not divided between them. A portfolio is a fan-out of
+        // independent scans and each one is shaped to the stated budget; this
+        // does not pretend to divide a context window across twelve chains,
+        // because a caller that wants that arithmetic can name fewer chains.
+        ...(options.budget === undefined ? {} : { budget: options.budget }),
+      }),
     ),
   );
 
@@ -439,6 +461,7 @@ export async function getHistory(options: {
   chain: string;
   limit?: number;
   cursor?: string;
+  budget?: ResponseBudget;
 }): Promise<TransactionHistory> {
   const chain = getChain(options.chain);
   const adapter = adapterFor(chain);
@@ -457,6 +480,7 @@ export async function getHistory(options: {
   return adapter.getHistory(chain, options.address.trim(), {
     ...(options.limit !== undefined ? { limit: options.limit } : {}),
     ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+    ...(options.budget !== undefined ? { budget: options.budget } : {}),
   });
 }
 

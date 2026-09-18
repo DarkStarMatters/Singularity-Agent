@@ -15,6 +15,7 @@
  */
 import { z } from 'zod';
 import * as ops from './operations.js';
+import { parseBudget } from '../core/budget.js';
 
 export interface ToolAnnotations {
   readOnlyHint: boolean;
@@ -31,6 +32,26 @@ export interface ToolDefinition {
   annotations: ToolAnnotations;
   run(args: Record<string, unknown>): Promise<unknown> | unknown;
 }
+
+/**
+ * How much of a list the caller has room for.
+ *
+ * Offered on every tool that returns one. The named sizes exist because a model
+ * knows its own context far better than it knows how many SPL mints a wallet
+ * holds, so "I have room for a little" is a question it can actually answer;
+ * `maxItems` is there for a caller that has done the arithmetic.
+ *
+ * Shaping never hides a cut. A list shortened to fit comes back with
+ * `completeness.kind === 'truncated'` and both counts, and the note says the
+ * budget did it rather than the chain — so a caller can tell the difference
+ * between "there is no more" and "ask again for more".
+ */
+const budgetArg = z
+  .union([z.enum(['small', 'standard', 'full']), z.number().int().positive()])
+  .optional()
+  .describe(
+    "How much of each list to return: 'small' (10 items, for a tight context), 'standard' (the default), 'full' (this source's maximum), or a number for an exact count. Omitting it changes nothing. Anything cut is reported in `completeness` as truncated with counts, never dropped silently.",
+  );
 
 /** Everything here reads public chain state and cannot change it. */
 const READ_ONLY: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
@@ -107,8 +128,9 @@ export const TOOLS: ToolDefinition[] = [
         .describe(
           'Read state as of this block height instead of now. Supported on EVM (needs an archive endpoint) and Cosmos (needs an archive LCD). Solana and UTXO chains reject it outright rather than answering with current state, so a result carrying `atBlock` is always genuinely historical.',
         ),
+      budget: budgetArg,
     },
-    run: (args) => ops.getBalance(args),
+    run: (args) => ops.getBalance({ ...args, budget: parseBudget(args.budget) }),
   }),
 
   defineTool({
@@ -123,8 +145,9 @@ export const TOOLS: ToolDefinition[] = [
         .optional()
         .describe('Chains to query. Defaults to a spread of major chains across all four families.'),
       includeTokens: z.boolean().optional().describe('Set false for native balances only.'),
+      budget: budgetArg,
     },
-    run: (args) => ops.getPortfolio(args),
+    run: (args) => ops.getPortfolio({ ...args, budget: parseBudget(args.budget) }),
   }),
 
   defineTool({
@@ -147,13 +170,19 @@ export const TOOLS: ToolDefinition[] = [
     shape: {
       address: z.string().describe('Address to look up.'),
       chain: z.string().describe('Chain id or alias. History is single-chain.'),
-      limit: z.number().optional().describe('Entries to return (default 25; adapters cap it).'),
+      limit: z
+        .number()
+        .optional()
+        .describe(
+          'Exact entries to return. Where `budget` is also given the smaller of the two wins, so neither can talk the other into a bigger response.',
+        ),
+      budget: budgetArg,
       cursor: z
         .string()
         .optional()
         .describe('Continuation token from a previous call. Opaque — pass it back unchanged.'),
     },
-    run: (args) => ops.getHistory(args),
+    run: (args) => ops.getHistory({ ...args, budget: parseBudget(args.budget) }),
   }),
 
   defineTool({

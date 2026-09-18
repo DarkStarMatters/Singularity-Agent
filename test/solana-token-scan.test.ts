@@ -124,4 +124,57 @@ describe('solana token scan', () => {
     expect(entries[0].amount.raw).toBe('1500000');
     expect(entries[0].tokenAccounts).toBe(2);
   });
+  it('honours a small budget instead of the shipped cap', async () => {
+    setAccounts(account(USDC, '1000000'), ...Array.from({ length: 80 }, (_, i) => account(dustMint(i), '1')));
+
+    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER, undefined, {
+      budget: 'small',
+    });
+
+    expect(scan.entries).toHaveLength(10);
+    expect(scan.completeness.kind).toBe('truncated');
+    expect(scan.completeness.omitted).toBe(71);
+    // The note distinguishes a cut the caller asked for from one the chain
+    // imposed — only one of those is fixed by asking again.
+    expect(scan.completeness.note).toContain('Raise `budget`');
+    // Ordering survives the budget: a curated token still outranks dust.
+    expect(scan.entries[0].token.symbol).toBe('USDC');
+  });
+
+  it('gives a full budget more than the default, and still bounds it', async () => {
+    setAccounts(...Array.from({ length: 400 }, (_, i) => account(dustMint(i), '1')));
+
+    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER, undefined, {
+      budget: 'full',
+    });
+
+    expect(scan.entries).toHaveLength(200);
+    // `full` means this source's maximum, never "everything". The 1.27 MB
+    // response stays unreachable through this parameter.
+    expect(scan.completeness.kind).toBe('truncated');
+    expect(scan.completeness.omitted).toBe(200);
+  });
+
+  it('leaves the default untouched when no budget is stated', async () => {
+    // The compatibility claim. An unstated budget must still mean 50, or
+    // adding the parameter silently changed every existing answer.
+    setAccounts(...Array.from({ length: 80 }, (_, i) => account(dustMint(i), '1')));
+
+    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER);
+
+    expect(scan.entries).toHaveLength(50);
+  });
+
+  it('does not let a budget cut a scan that already fits', async () => {
+    setAccounts(account(USDC, '1000000'));
+
+    const scan = await solanaAdapter.getTokenBalances(SOLANA, OWNER, undefined, {
+      budget: 'small',
+    });
+
+    // Asking for less than there is returns all of it, still exhaustive —
+    // a budget is a ceiling, not a quota to fill or a claim to weaken.
+    expect(scan.entries).toHaveLength(1);
+    expect(scan.completeness.kind).toBe('exhaustive');
+  });
 });

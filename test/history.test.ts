@@ -253,3 +253,88 @@ describe('a page of an unknown total', () => {
     expect(supportsAbsenceClaim(page)).toBe(false);
   });
 });
+
+/**
+ * History pages, and the size of a page used to be a constant.
+ *
+ * The risk a budget introduces here is not returning too few entries — it is
+ * returning too few while still looking like a page boundary, so a caller reads
+ * "that is all the chain would give" when the real answer is "that is all you
+ * asked for". These check that the knob works in both directions and that
+ * neither knob can talk the other into a larger response.
+ */
+describe('a history page and the budget that sizes it', () => {
+  const OWNER = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+  /** `n` confirmed single-output transactions to this address. */
+  function txs(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      txid: `tx${i}`,
+      version: 2,
+      locktime: 0,
+      size: 1,
+      weight: 1,
+      fee: 1,
+      vin: [],
+      vout: [{ scriptpubkey_address: OWNER, value: 1000 }],
+      status: { confirmed: true, block_height: 800_000 - i, block_time: 1_700_000_000 - i },
+    }));
+  }
+
+  it('returns the shipped default when no budget is stated', async () => {
+    stubJson(txs(60));
+
+    const result = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER);
+
+    expect(result.entries).toHaveLength(25);
+  });
+
+  it('shrinks to a small budget', async () => {
+    stubJson(txs(60));
+
+    const result = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER, {
+      budget: 'small',
+    });
+
+    expect(result.entries).toHaveLength(10);
+  });
+
+  it('grows to the source ceiling on a full budget', async () => {
+    stubJson(txs(60));
+
+    const result = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER, {
+      budget: 'full',
+    });
+
+    // Esplora pages at 50, and `full` asks for that rather than for everything.
+    expect(result.entries).toHaveLength(50);
+  });
+
+  it('takes the smaller when a budget and a limit disagree', async () => {
+    stubJson(txs(60));
+
+    const small = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER, {
+      budget: 'small',
+      limit: 40,
+    });
+    expect(small.entries).toHaveLength(10);
+
+    const explicit = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER, {
+      budget: 'full',
+      limit: 3,
+    });
+    expect(explicit.entries).toHaveLength(3);
+  });
+
+  it('never claims a budgeted page is the whole history', async () => {
+    stubJson(txs(60));
+
+    const result = await bitcoinAdapter.getHistory!(getChain('bitcoin'), OWNER, {
+      budget: 'small',
+    });
+
+    // The point of the whole exercise: a shorter list is still a page, and a
+    // page is never evidence that there is nothing more.
+    expect(supportsAbsenceClaim(result.completeness)).toBe(false);
+  });
+});

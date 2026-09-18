@@ -1,3 +1,4 @@
+import type { ResponseBudget } from './budget.js';
 import type { Completeness } from './envelope.js';
 import type {
   BalanceEntry,
@@ -48,7 +49,7 @@ export interface TransactionHistory {
   cursor?: string;
 }
 
-export interface HistoryOptions {
+export interface HistoryOptions extends ShapedOptions {
   /** How many entries to return. Adapters cap this; the cap is reported. */
   limit?: number;
   /** A `cursor` from a previous call. */
@@ -78,6 +79,21 @@ export interface StateOptions {
   /** Block height / slot to read at. Absent means current state. */
   atBlock?: number;
 }
+
+/**
+ * How much of the answer the caller has room for.
+ *
+ * Separate from {@link StateOptions} because it asks a different question —
+ * *when* to read versus *how much* to return — and because getting them
+ * confused is how a budget would end up silently narrowing a historical read.
+ * Omitting it leaves every existing response exactly as it was.
+ */
+export interface ShapedOptions {
+  budget?: ResponseBudget;
+}
+
+/** Reading state, at a point in time, at a size the caller can hold. */
+export interface ScanOptions extends StateOptions, ShapedOptions {}
 
 export interface ContractReadParams extends StateOptions {
   /** Contract address (EVM) or account/program address (SVM). */
@@ -123,7 +139,7 @@ export interface ChainAdapter {
     chain: ChainSpec,
     address: string,
     tokens?: string[],
-    options?: StateOptions,
+    options?: ScanOptions,
   ): Promise<TokenScan>;
   getTransaction(chain: ChainSpec, hash: string): Promise<NormalizedTx>;
   /**

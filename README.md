@@ -383,14 +383,14 @@ Add `--json` to any command for machine-readable output.
 | --- | --- |
 | `chains` | List supported chains, with families, ids, aliases, native assets. |
 | `resolve` | Identify an address / tx hash / name and which chains it belongs to. |
-| `balance` | Native + token balances on one chain, now or `atBlock`, with a `completeness` saying what the list covers. |
-| `portfolio` | One address across many chains in parallel. |
+| `balance` | Native + token balances on one chain, now or `atBlock`, with a `completeness` saying what the list covers. Takes a `budget`. |
+| `portfolio` | One address across many chains in parallel. Takes a `budget`, applied per chain. |
 | `transaction` | Fetch and normalize a transaction, decoding EVM calldata. |
 | `block` | A block by height, hash, or `latest`. |
 | `fees` | Current fee conditions, normalized. |
 | `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
 | `decode` | Decode EVM calldata into a signature and arguments. |
-| `history` | What an address has been doing, newest first. Reports that it has no answer rather than an empty list when an EVM indexer key is missing. |
+| `history` | What an address has been doing, newest first. Takes a `budget` or an exact `limit`. Reports that it has no answer rather than an empty list when an EVM indexer key is missing. |
 | `build_transfer` | Build an **unsigned** transfer payload. |
 | `mint_audit` | What a Solana mint permits: authorities, Token-2022 extensions, and who holds each power. |
 | `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
@@ -536,6 +536,16 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   an adapter to return a list without one. An empty result may be read as "holds nothing"
   only when it says `exhaustive`. `portfolio` reports the weakest guarantee across every
   chain it queried.
+- **Every list is capped, and says when the cap bit.** Solana and Cosmos can enumerate
+  holdings, and do — but an unbounded list is how a Solana balance once came back at
+  1.27 MB, so an unfiltered scan returns the largest 50 and reports `truncated` with
+  counts rather than pretending to be complete. `balance`, `portfolio` and `history` take
+  a `budget` — `small`, `standard`, `full`, or an exact number — so a caller sizes the
+  answer to the context it has. Omitting it changes nothing. `full` asks for the source's
+  own ceiling and never for everything, and where a `budget` and a `limit` disagree the
+  smaller wins. A list shortened to fit always comes back `truncated` with both counts and
+  a note saying the budget did it, not the chain — the difference between "there is no
+  more" and "ask again for more".
 - **On-chain text is marked, not trusted.** Token symbols and names read from a contract
   or a Solana mint, and Cosmos denoms, come back `untrusted: true`, stripped of control
   characters, newlines, code fences, forged chat role markers and anything past 48

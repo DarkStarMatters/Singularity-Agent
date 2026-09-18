@@ -1,4 +1,5 @@
 import type { ChainAdapter } from '../core/adapter.js';
+import { type BudgetBounds, itemBudget } from '../core/budget.js';
 import type {
   ChainSpec,
   FeeEstimate,
@@ -22,6 +23,16 @@ import {
   varInt,
   type NetworkParams,
 } from '../core/address-codec.js';
+
+/**
+ * Entries one history page returns.
+ *
+ * `fallback` is the default that shipped, so a caller stating no budget sees
+ * what it saw before. `ceiling` is what this source will page in a single call.
+ * A caller with room asks for `full` and gets the ceiling; a caller without
+ * asks for `small` and stops paying for entries it has no space to read.
+ */
+const HISTORY_BOUNDS: BudgetBounds = { fallback: 25, ceiling: 50 };
 
 /** Rough vbyte costs used for fee estimation and coin selection. */
 const VBYTES_PER_INPUT = 68; // P2WPKH input, the common case
@@ -166,7 +177,7 @@ export const bitcoinAdapter: ChainAdapter = {
    */
   async getHistory(chain, address, options) {
     const owner = requireAddress(chain, address);
-    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 50);
+    const limit = itemBudget(options?.budget, HISTORY_BOUNDS, options?.limit);
 
     // Esplora pages by the last txid seen rather than by offset.
     const path = options?.cursor

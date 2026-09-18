@@ -20,6 +20,7 @@ import type {
   TransactionHistory,
   TransferParams,
 } from '../core/adapter.js';
+import { type BudgetBounds, itemBudget } from '../core/budget.js';
 import type {
   BalanceEntry,
   ChainSpec,
@@ -43,6 +44,16 @@ import { checkImpersonation } from '../core/impersonation.js';
 import { getChain } from '../core/registry.js';
 
 /** 21000 gas — the cost of a bare ETH transfer, used for fee quotes. */
+/**
+ * Entries one history page returns.
+ *
+ * `fallback` is the default that shipped, so a caller stating no budget sees
+ * what it saw before. `ceiling` is what this source will page in a single call.
+ * A caller with room asks for `full` and gets the ceiling; a caller without
+ * asks for `small` and stops paying for entries it has no space to read.
+ */
+const HISTORY_BOUNDS: BudgetBounds = { fallback: 25, ceiling: 100 };
+
 const SIMPLE_TRANSFER_GAS = 21_000n;
 
 /** A token to look up, with whatever metadata we already know about it. */
@@ -459,7 +470,7 @@ export const evmAdapter: ChainAdapter = {
    */
   async getHistory(chain, address, options) {
     const owner = requireAddress(chain, address);
-    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+    const limit = itemBudget(options?.budget, HISTORY_BOUNDS, options?.limit);
     const key = process.env.SINGULARITY_ETHERSCAN_KEY?.trim();
 
     const unavailable = (why: string): TransactionHistory => ({

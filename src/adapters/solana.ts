@@ -8,6 +8,7 @@ import {
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 import type { ChainAdapter, ContractReadParams, TransferParams } from '../core/adapter.js';
+import { type BudgetBounds, applyBudget, budgetNote, itemBudget } from '../core/budget.js';
 import type {
   BalanceEntry,
   BurnEvent,
@@ -149,12 +150,31 @@ const TOKEN_ACCOUNT_AMOUNT_OFFSET = 64;
 const TOKEN_ACCOUNT_STATE_OFFSET = 108;
 const TOKEN_ACCOUNT_FROZEN = 2;
 /**
- * Most mints an unfiltered scan will return. Solana lets anyone airdrop a token
- * account onto any wallet, so an active address accumulates thousands of dust
- * mints; returning all of them buries the real holdings and can overflow a
- * model's tool-result budget outright.
+ * How many mints an unfiltered scan will return.
+ *
+ * Solana lets anyone airdrop a token account onto any wallet, so an active
+ * address accumulates thousands of dust mints; returning all of them buries the
+ * real holdings and can overflow a model's tool-result budget outright — which
+ * is not hypothetical, it is the 1.27 MB response in the whitepaper.
+ *
+ * `fallback` is the number that shipped, so a caller that states no budget sees
+ * exactly what it saw before. `ceiling` is higher because metadata is read
+ * through `getMultipleAccountsInfo` in batches, so asking for four times as
+ * many mints costs a few more round trips rather than 150 more requests. It
+ * stays finite regardless: `full` means this source's maximum, never
+ * everything.
  */
-const TOKEN_SCAN_LIMIT = 50;
+const TOKEN_SCAN_BOUNDS: BudgetBounds = { fallback: 50, ceiling: 200 };
+
+/**
+ * Entries one history page returns.
+ *
+ * `fallback` is the default that shipped, so a caller stating no budget sees
+ * what it saw before. `ceiling` is what this source will page in a single call.
+ * A caller with room asks for `full` and gets the ceiling; a caller without
+ * asks for `small` and stops paying for entries it has no space to read.
+ */
+const HISTORY_BOUNDS: BudgetBounds = { fallback: 25, ceiling: 100 };
 
 const connections = new Map<string, Connection>();
 
@@ -405,29 +425,30 @@ export const solanaAdapter: ChainAdapter = {
       // ranking by worth.
       all.sort((a, b) => Number(Boolean(b.known)) - Number(Boolean(a.known)) || b.magnitude - a.magnitude);
 
-      if (all.length <= TOKEN_SCAN_LIMIT) {
-        const named = await withMetadata(connection, chain, owner, all);
-        return {
-          entries: named.entries,
-          completeness: completeness.exhaustive(
-            'Complete: on Solana token accounts are owned by the wallet, so this really is every SPL and Token-2022 mint held, summed across accounts.' +
-              named.caveat,
-          ),
-        };
-      }
+      // The budget is applied to the mint rows, before metadata is read for
+      // them, so asking for less genuinely costs less rather than fetching
+      // everything and throwing most of it away. `applyBudget` hands back the
+      // list and the claim about it together, which is why the slice below
+      // cannot quietly keep calling itself exhaustive.
+      const shaped = applyBudget(
+        all,
+        itemBudget(options?.budget, TOKEN_SCAN_BOUNDS),
+        completeness.exhaustive(
+          'Complete: on Solana token accounts are owned by the wallet, so this really is every SPL and Token-2022 mint held, summed across accounts.',
+        ),
+        (shown, omitted) =>
+          `${budgetNote(shown, omitted, 'mints held')} Curated tokens come first, then raw ` +
+          'balance — and because there is no pricing here that order is magnitude, not value. ' +
+          'Pass `tokens` with mint addresses to check specific holdings.',
+      );
 
-      const omitted = all.length - TOKEN_SCAN_LIMIT;
-      const named = await withMetadata(connection, chain, owner, all.slice(0, TOKEN_SCAN_LIMIT));
+      const named = await withMetadata(connection, chain, owner, shaped.entries);
       return {
         entries: named.entries,
-        completeness: completeness.truncated(
-          TOKEN_SCAN_LIMIT,
-          omitted,
-          `Showing ${TOKEN_SCAN_LIMIT} of ${all.length} mints held — curated tokens first, ` +
-            `then by raw balance. ${omitted} omitted, and because there is no pricing here that ` +
-            'order is magnitude, not value. Pass `tokens` with mint addresses to check specific holdings.' +
-            named.caveat,
-        ),
+        completeness: {
+          ...shaped.completeness,
+          note: shaped.completeness.note + named.caveat,
+        },
       };
     });
   },
@@ -452,7 +473,7 @@ export const solanaAdapter: ChainAdapter = {
    */
   async getHistory(chain, rawAddress, options) {
     const owner = requirePubkey(rawAddress, 'address');
-    const limit = Math.min(Math.max(options?.limit ?? 25, 1), 100);
+    const limit = itemBudget(options?.budget, HISTORY_BOUNDS, options?.limit);
 
     return withConnection(chain, 'getSignaturesForAddress', async (connection) => {
       const signatures = await connection.getSignaturesForAddress(owner, {
