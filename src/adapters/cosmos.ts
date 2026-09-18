@@ -21,7 +21,14 @@ import {
   SingularityError,
   UnsupportedOperationError,
 } from '../core/errors.js';
-import { amount, explorerUrl, nativeAmount, parseUnits, shortAddress } from '../core/format.js';
+import {
+  amount,
+  baseUnits,
+  explorerUrl,
+  nativeAmount,
+  parseUnits,
+  shortAddress,
+} from '../core/format.js';
 import { fetchWithFailover, fetchWithFailoverDetail } from '../core/http.js';
 import { bech32ToBytes, bytesToBech32 } from '../core/address-codec.js';
 
@@ -159,18 +166,80 @@ async function bankBalances(
   return result.data?.balances ?? [];
 }
 
-function denomInfo(chain: ChainSpec, denom: string): { symbol: string; decimals: number } {
+/**
+ * Decimals the chain states for a denom, or nothing.
+ *
+ * The bank module publishes `denom_units` per denom, and where it does, that is
+ * an answer rather than an inference. Where it does not — Stride declares
+ * nothing for `stinj`, Kava publishes no metadata at all — there is no answer,
+ * and this returns undefined instead of inventing one.
+ *
+ * It used to return 6 for everything that was not the gas asset, on the
+ * reasoning that `u` means micro. That is true of most denoms and catastrophic
+ * for the rest: `stinj` and `staevmos` track INJ and EVMOS at 18, so a Stride
+ * account holding 0.16 stEVMOS was reported as holding 159,974,492,619 of it.
+ * The account held six microSTRD. Nothing about the output suggested a problem.
+ *
+ * Negative results are cached too. A denom the chain has never heard of will
+ * not start being heard of because it was asked about twice.
+ */
+const decimalCache = new Map<string, number | undefined>();
+
+interface DenomMetadata {
+  metadata?: { display?: string; denom_units?: { denom: string; exponent: number }[] };
+}
+
+async function statedDecimals(chain: ChainSpec, denom: string): Promise<number | undefined> {
+  const key = `${chain.id}:${denom}`;
+  if (decimalCache.has(key)) return decimalCache.get(key);
+
+  let decimals: number | undefined;
+  try {
+    const meta = await fetchWithFailover<DenomMetadata>(
+      chain,
+      `/cosmos/bank/v1beta1/denoms_metadata/${encodeURIComponent(denom)}`,
+      { nullOn404: true },
+    );
+
+    // The display unit is the one a human means by the name; its exponent is
+    // the decimals. A metadata entry without one states nothing useful.
+    const display = meta?.metadata?.display;
+    const unit = meta?.metadata?.denom_units?.find((candidate) => candidate.denom === display);
+    if (unit && Number.isInteger(unit.exponent)) decimals = unit.exponent;
+  } catch {
+    // An endpoint that will not answer is not a chain that declared 6.
+    decimals = undefined;
+  }
+
+  decimalCache.set(key, decimals);
+  return decimals;
+}
+
+/** Test seam: the cache is process-wide and would otherwise leak between cases. */
+export function resetDenomCache(): void {
+  decimalCache.clear();
+}
+
+async function denomInfo(
+  chain: ChainSpec,
+  denom: string,
+): Promise<{ symbol: string; decimals?: number }> {
   if (denom === chain.denom) {
     return { symbol: chain.nativeCurrency.symbol, decimals: chain.nativeCurrency.decimals };
   }
+
+  const decimals = await statedDecimals(chain, denom);
+
   if (denom.startsWith('ibc/')) {
     // Resolving an IBC hash to its origin needs a denom-trace lookup per token;
-    // showing the hash beats guessing wrong about which asset it is.
-    return { symbol: `IBC/${denom.slice(4, 12)}…`, decimals: 6 };
+    // showing the hash beats guessing wrong about which asset it is. The origin
+    // chain is also where its decimals live, which is why they are so often
+    // absent here — and absent is what gets reported.
+    return { symbol: `IBC/${denom.slice(4, 12)}…`, ...(decimals !== undefined ? { decimals } : {}) };
   }
-  // Most Cosmos denoms are micro-units of a 6-decimal asset.
+
   const stripped = denom.startsWith('u') ? denom.slice(1).toUpperCase() : denom.toUpperCase();
-  return { symbol: stripped, decimals: 6 };
+  return { symbol: stripped, ...(decimals !== undefined ? { decimals } : {}) };
 }
 
 export const cosmosAdapter: ChainAdapter = {
@@ -220,7 +289,7 @@ export const cosmosAdapter: ChainAdapter = {
       if (coin.denom === chain.denom) continue; // reported by getNativeBalance
       if (coin.amount === '0') continue;
 
-      const info = denomInfo(chain, coin.denom);
+      const info = await denomInfo(chain, coin.denom);
       if (filter && !filter.has(coin.denom.toLowerCase()) && !filter.has(info.symbol.toLowerCase())) {
         continue;
       }
@@ -240,12 +309,15 @@ export const cosmosAdapter: ChainAdapter = {
         token: {
           address: coin.denom,
           symbol,
-          decimals: info.decimals,
+          ...(info.decimals !== undefined ? { decimals: info.decimals } : {}),
           native: false,
           untrusted: true as const,
           ...(impersonation ? { impersonation } : {}),
         },
-        amount: amount(coin.amount, info.decimals, symbol),
+        amount:
+          info.decimals === undefined
+            ? baseUnits(coin.amount, symbol)
+            : amount(coin.amount, info.decimals, symbol),
         atBlock: options?.atBlock,
       });
     }
@@ -257,7 +329,7 @@ export const cosmosAdapter: ChainAdapter = {
       completeness: completeness.exhaustive(
         tokens?.length
           ? `Every balance the account holds${at} in the denom(s) you named. Cosmos bank balances enumerate fully, so a denom absent here is genuinely not held.`
-          : `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash, and decimals for non-native denoms are assumed to be 6.`,
+          : `Complete: the Cosmos bank module returns every denom the account holds${at}. IBC denoms show as their hash. Decimals come from the chain's own denom metadata; where it publishes none, the amount is shown in base units and marked, rather than scaled by a guess.`,
       ),
     };
   },
@@ -417,10 +489,21 @@ export const cosmosAdapter: ChainAdapter = {
       throw new SingularityError('MISSING_DENOM', `No base denom is configured for ${chain.name}.`);
     }
 
-    const info = params.token ? denomInfo(chain, params.token) : {
-      symbol: chain.nativeCurrency.symbol,
-      decimals: chain.nativeCurrency.decimals,
-    };
+    const info = params.token
+      ? await denomInfo(chain, params.token)
+      : { symbol: chain.nativeCurrency.symbol, decimals: chain.nativeCurrency.decimals };
+
+    // A display amount cannot be turned into base units without knowing the
+    // scale, and being wrong here is not a rendering problem — it is a transfer
+    // of a millionth or a trillionth of what was meant. Refusing beats guessing.
+    if (info.decimals === undefined) {
+      throw new SingularityError(
+        'DENOM_DECIMALS_UNKNOWN',
+        `${chain.name} does not declare how many decimals ${denom} has, so "${params.amount}" cannot be converted to base units.`,
+        'Pass the amount in base units as the denom itself, or transfer a denom whose metadata the chain publishes.',
+      );
+    }
+
     const value = parseUnits(params.amount, info.decimals);
 
     const account = await fetchWithFailover<AccountResponse>(

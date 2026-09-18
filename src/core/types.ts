@@ -45,6 +45,17 @@ export interface Amount {
   formatted: string;
   decimals: number;
   symbol: string;
+  /**
+   * Set when nothing on-chain says how many decimals this denom has.
+   *
+   * `decimals` is then 0 and `formatted` is the base-unit integer, because the
+   * alternative is worse than useless: a Cosmos denom carrying 18 decimals
+   * rendered at an assumed 6 reads as a trillion times more than it is. A
+   * Stride account holding 0.16 stEVMOS reported as 159,974,492,619 was the
+   * case that put this field here. Base units are awkward and true; the
+   * formatted number was neither.
+   */
+  decimalsUnknown?: true;
 }
 
 export interface TokenRef {
@@ -52,7 +63,13 @@ export interface TokenRef {
   address?: string;
   symbol: string;
   name?: string;
-  decimals: number;
+  /**
+   * Absent when the chain does not declare it. Omitted rather than defaulted:
+   * a guessed exponent is indistinguishable from a known one once it is a
+   * number, and the guess is wrong often enough to matter. See
+   * `Amount.decimalsUnknown`.
+   */
+  decimals?: number;
   /** True for ETH, SOL, BTC, ATOM — the chain's gas asset. */
   native: boolean;
   /**

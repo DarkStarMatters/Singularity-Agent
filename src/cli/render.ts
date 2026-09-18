@@ -117,7 +117,12 @@ export function renderBalance(result: BalanceResult): string {
     lines.push(
       table(
         result.tokens.map((t) => [
-          bold(t.amount.formatted),
+          // A base-unit figure has to say so in the row. Unmarked, the honest
+          // integer reads as an enormous holding, which is a different wrong
+          // answer from the one it replaced rather than a fix.
+          t.amount.decimalsUnknown
+            ? `${bold(t.amount.formatted)} ${dim('base units')}`
+            : bold(t.amount.formatted),
           t.token.symbol,
           dim(
             [

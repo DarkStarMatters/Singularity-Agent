@@ -718,6 +718,36 @@ visible symptom, and the first where the wrong answer was the repo's own claim t
 
 ---
 
+### 1.11 What a denom is actually worth — **shipped**
+
+A Cosmos denom does not carry its scale. Every non-native denom was rendered at 6
+decimals, on the reasoning that `u` means micro — true of most denoms, and a
+trillion-fold error on the rest.
+
+It surfaced the moment Stride shipped, which is the whole argument for checking a chain
+by reading it rather than by adding it. Stride's liquid-staking receipts track the assets
+they represent: `stinj` follows INJ at 18 and `staevmos` follows EVMOS at 18. A real
+account holding **0.16 stEVMOS was reported as holding 159,974,492,619** of it. The same
+account held six microSTRD, which is the only reason a human looked twice. Nothing in the
+output suggested a problem — the number was well-formatted, plausibly large, and wrong by
+10¹².
+
+The fix is not a better guess. The bank module publishes `denom_units` per denom, and
+where it does, the stated exponent is an answer. Where it does not — Stride returns 404
+for `stinj`, Kava publishes no metadata at all — there is no answer, and inventing one is
+the bug. So an undeclared denom now reports **base units**, marked as such in the entry,
+in the rendered row and in the completeness note. `Amount.decimalsUnknown` says it in the
+type, and `TokenRef.decimals` is absent rather than defaulted, because a guessed exponent
+is indistinguishable from a known one once it is a number.
+
+Two consequences worth stating. Base units are uglier, and the ugliness is the point: an
+unmarked integer reads as an enormous holding, which is a different wrong answer rather
+than a fix. And `build_transfer` now **refuses** a denom whose scale the chain does not
+state, because converting a display amount without knowing the exponent is not a
+rendering mistake — it is transferring a millionth or a trillionth of what was meant.
+
+---
+
 ## Phase 2 — Trust boundaries
 
 *Goal: on-chain data is adversarial input. Treat it that way structurally.*

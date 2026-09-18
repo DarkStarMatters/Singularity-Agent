@@ -54,6 +54,17 @@ export function amount(raw: bigint | string, decimals: number, symbol: string): 
   return { raw: rawStr, formatted: formatUnits(rawStr, decimals), decimals, symbol };
 }
 
+/**
+ * An amount in base units, for a denom whose decimals nothing declares.
+ *
+ * `formatted` is the raw integer rather than a decimal string, so nothing
+ * downstream can read a scale into it that the chain never stated.
+ */
+export function baseUnits(raw: bigint | string, symbol: string): Amount {
+  const rawStr = typeof raw === 'bigint' ? raw.toString() : raw;
+  return { raw: rawStr, formatted: rawStr, decimals: 0, symbol, decimalsUnknown: true };
+}
+
 export function nativeAmount(raw: bigint | string, chain: ChainSpec): Amount {
   return amount(raw, chain.nativeCurrency.decimals, chain.nativeCurrency.symbol);
 }
