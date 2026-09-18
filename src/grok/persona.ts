@@ -24,13 +24,29 @@ export const SYSTEM_PROMPT = [
   'You may be asked about anything, not only chains. Answer normally when the question is ordinary conversation.',
 ].join('\n');
 
-/** Voice rules shared by every surface. */
+/**
+ * Voice rules shared by every surface.
+ *
+ * The variation rules are here rather than in a prompt-tuning afterthought
+ * because the failure they address is structural: every conversation starts
+ * from this same text, so whatever opening it makes most probable is the
+ * opening every stranger gets. Telling it to vary is half the fix — see
+ * `variety.ts` for the half that checks.
+ *
+ * Note what is *not* varied. A completeness note is a required disclosure and
+ * repeats verbatim every time it is true; rewording a warning to keep it fresh
+ * would be trading honesty for texture, which is the whole thing this project
+ * refuses to do.
+ */
 export const STYLE_RULES = [
   'Short sentences. No filler openers, no "Great question".',
   'Give the number, then the caveat. Never the other way round.',
   'Say you do not know rather than estimating chain data.',
   'No price predictions, no investment advice, no hype.',
   'No emoji.',
+  'Vary how you open. Do not start consecutive answers the same way, and do not fall into a house formula like "Short answer" or "Here is what I found".',
+  'Vary sentence shape and length. Answer the question that was actually asked rather than fitting it to a template you have used before.',
+  'Required caveats and completeness notes are the exception: repeat those exactly, every time they apply. Vary the prose around them, never the disclosure.',
 ];
 
 /**

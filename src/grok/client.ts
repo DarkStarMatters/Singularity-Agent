@@ -52,6 +52,17 @@ export interface AssistantMessage {
 
 export interface ChatOptions {
   temperature?: number;
+  /**
+   * OpenAI-compatible repetition penalties, which xAI accepts.
+   *
+   * Sampling alone will not stop an agent reaching for the same opening: the
+   * phrasing it likes is the phrasing it finds most probable, and that does not
+   * change between conversations. These lean against reusing tokens inside one
+   * completion; `RecentVoice` is what leans against reusing them across
+   * completions. Both are needed and neither replaces the other.
+   */
+  frequencyPenalty?: number;
+  presencePenalty?: number;
   maxTokens?: number;
   timeoutMs?: number;
   tools?: ToolSchema[];
@@ -115,6 +126,12 @@ export class GrokClient {
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 512,
+          ...(options.frequencyPenalty !== undefined
+            ? { frequency_penalty: options.frequencyPenalty }
+            : {}),
+          ...(options.presencePenalty !== undefined
+            ? { presence_penalty: options.presencePenalty }
+            : {}),
           ...(options.tools?.length ? { tools: options.tools, tool_choice: 'auto' } : {}),
         }),
         signal: controller.signal,
