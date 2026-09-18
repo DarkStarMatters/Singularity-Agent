@@ -14,7 +14,7 @@ encodings, four transaction shapes, four ways to be wrong about decimals. An age
 handed four SDKs spends its context reconciling them instead of answering the question.
 
 Singularity Agent puts one normalized, read-only surface over EVM, Solana, Bitcoin/UTXO,
-and Cosmos — 28 chains today — exposed simultaneously as a terminal CLI and as fourteen MCP
+and Cosmos — 32 chains today — exposed simultaneously as a terminal CLI and as fifteen MCP
 tools. It holds no private keys. It can build an unsigned transaction for a human to sign
 in their own wallet; it cannot sign, and it cannot broadcast.
 
@@ -98,7 +98,7 @@ architecture, and §3.4 argues it should stay.
   viem   web3.js  esplora   LCD
 ```
 
-~4,600 lines of TypeScript, 76 tests, six runtime dependencies.
+~18,900 lines of TypeScript, 858 tests, six runtime dependencies.
 
 ### 2.1 The adapter contract
 
@@ -148,6 +148,33 @@ osmo1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5helwsw
 The error does not merely reject. It hands back the corrected input.
 
 ---
+
+### 2.4 Coverage
+
+Thirty-two chains: twenty-eight mainnets and four testnets. Every one had to answer for
+itself before it was written down — the chain id it reports, a head block seconds old, and
+independent providers responding — and every mainnet answers from at least two verified
+endpoints, held there by a test rather than by intent.
+
+| Family | Chains |
+| --- | --- |
+| **EVM** (18) | Ethereum (1), Base (8453), Arbitrum One (42161), OP Mainnet (10), Polygon PoS (137), BNB Smart Chain (56), Avalanche C-Chain (43114), Gnosis (100), Scroll (534352), Linea (59144), ZKsync Era (324), Blast (81457), Mantle (5000), Mode (34443), Fraxtal (252), opBNB (204), plus Sepolia (11155111) and Base Sepolia (84532) |
+| **Solana** (2) | mainnet-beta, devnet |
+| **UTXO** (3) | Bitcoin, Litecoin, Bitcoin testnet |
+| **Cosmos** (9) | Cosmos Hub (cosmoshub-4), Osmosis (osmosis-1), Celestia (celestia), Injective (injective-1), dYdX (dydx-mainnet-1), Sei (pacific-1), Neutron (neutron-1), Stride (stride-1), Kava (kava_2222-10) |
+
+Any other EVM or Cosmos chain works through the config file without a code change; the
+registry is data, and an entry there is indistinguishable from a built-in one.
+
+Two absences are deliberate and worth more than the presences. **Polygon zkEVM** is not
+here: its endpoints answer, report the right chain id, and serve a head block seventy-six
+days old. A chain that has stopped producing blocks would return historical state wearing
+a current-state label, which is precisely the failure this paper is about. **Dogecoin and
+Bitcoin Cash** are not here either: the UTXO adapter speaks Esplora, and neither chain has
+a public Esplora-compatible endpoint — they are served by Blockbook, a different protocol
+in a similar shape. Both ship when they can meet the bar, or not at all. A chain admitted
+at reduced quality would cost more than it adds, because the value of the whole surface is
+that a caller need not ask which member of it they are talking to.
 
 ## 3. Design principles
 

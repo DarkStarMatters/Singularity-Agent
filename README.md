@@ -390,6 +390,7 @@ Add `--json` to any command for machine-readable output.
 | `fees` | Current fee conditions, normalized. |
 | `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
 | `decode` | Decode EVM calldata into a signature and arguments. |
+| `history` | What an address has been doing, newest first. Reports that it has no answer rather than an empty list when an EVM indexer key is missing. |
 | `build_transfer` | Build an **unsigned** transfer payload. |
 | `mint_audit` | What a Solana mint permits: authorities, Token-2022 extensions, and who holds each power. |
 | `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
@@ -499,15 +500,25 @@ it expanded, either way.
 
 ## Supported chains
 
-**EVM** — Ethereum, Base, Arbitrum, OP Mainnet, Polygon, BNB Smart Chain, Avalanche,
-Gnosis, Scroll, Linea, ZKsync Era, Sepolia, Base Sepolia. Any other EVM chain works via
-the config file.
+Thirty-two: twenty-eight mainnets and four testnets. Every mainnet answers from at least
+two verified endpoints, and a test holds it there.
 
-**Solana** — mainnet-beta, devnet.
+**EVM** (18) — Ethereum, Base, Arbitrum One, OP Mainnet, Polygon PoS, BNB Smart Chain,
+Avalanche C-Chain, Gnosis, Scroll, Linea, ZKsync Era, Blast, Mantle, Mode, Fraxtal, opBNB,
+plus Sepolia and Base Sepolia. Any other EVM chain works via the config file.
 
-**UTXO** — Bitcoin, Bitcoin testnet, Litecoin.
+**Solana** (2) — mainnet-beta, devnet.
 
-**Cosmos** — Cosmos Hub, Osmosis, Celestia, Injective, dYdX.
+**UTXO** (3) — Bitcoin, Litecoin, Bitcoin testnet.
+
+**Cosmos** (9) — Cosmos Hub, Osmosis, Celestia, Injective, dYdX, Sei, Neutron, Stride,
+Kava.
+
+Not included, on purpose: **Polygon zkEVM**, whose endpoints answer with a head block
+seventy-six days old — a stopped chain returns history wearing a current-state label.
+**Dogecoin and Bitcoin Cash**, because the UTXO adapter speaks Esplora and neither has a
+public Esplora-compatible endpoint. Both ship when they can meet the same bar as the rest,
+or not at all.
 
 ---
 
