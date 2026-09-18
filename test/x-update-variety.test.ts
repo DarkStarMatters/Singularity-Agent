@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { XListener } from '../src/x/listener.js';
 import { GrokAgent } from '../src/grok/agent.js';
 import { collectProjectFacts, updateBriefs, nextUpdate } from '../src/x/updates.js';
@@ -143,5 +143,92 @@ describe('a declined post costs the next subject, not the next four hours', () =
 
     expect(update).toBeNull();
     expect(prompts.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('a failed post must not pin the account to one subject', () => {
+  /**
+   * The bug this covers, in the words it was reported in: "the agent gets
+   * stuck trying to post the same status over and over".
+   *
+   * `postUpdate` threw, the throw escaped to the poll loop, the loop logged it
+   * and carried on — and the state write that advances `lastUpdateAt` and
+   * records the subject never ran. So the next poll, seconds later, found
+   * itself due, chose the same brief, and failed identically. Not a retry
+   * policy: an unbounded loop at poll frequency, burning API calls on one post.
+   */
+  function listenerThatFails(): { listener: XListener; attempts: () => number } {
+    let calls = 0;
+
+    const grok = {
+      async complete(): Promise<AssistantMessage> {
+        calls += 1;
+        throw new Error('xAI API returned 400: Model grok-4 does not support parameter x');
+      },
+    } as unknown as GrokClient;
+
+    const client = {
+      async verify() {
+        return { id: 'me', username: 'SingularityAgnt', name: 'S' };
+      },
+      async mentions(): Promise<MentionPage> {
+        return { mentions: [] };
+      },
+      async post(text: string) {
+        return { published: true, text, id: '1', url: 'https://x.com/i/web/status/1' };
+      },
+    } as unknown as XClient;
+
+    const path = `${process.env.TEMP ?? '.'}/singularity-x-failure.json`;
+    rmSync(path, { force: true });
+    process.env.SINGULARITY_X_STATE = path;
+
+    const listener = new XListener(client, new GrokAgent(grok, { system: 'sys', tools: false }), {
+      updateIntervalHours: 4,
+      now: () => NOW,
+      dryRun: true,
+    });
+    Object.assign(listener, { userId: 'me', username: 'SingularityAgnt' });
+
+    return { listener, attempts: () => calls };
+  }
+
+  it('does not throw out to the caller', async () => {
+    const { listener } = listenerThatFails();
+    await expect(listener.maybePostUpdate()).resolves.toBeNull();
+  });
+
+  it('gives up after one failure instead of working through the subjects', async () => {
+    const { listener, attempts } = listenerThatFails();
+    await listener.maybePostUpdate();
+
+    // The API being unavailable is not this brief being unwritable, and three
+    // more calls would fail the same way.
+    expect(attempts()).toBe(1);
+  });
+
+  it('advances the clock, so the next poll is not due', async () => {
+    const { listener, attempts } = listenerThatFails();
+
+    await listener.maybePostUpdate();
+    const afterFirst = attempts();
+
+    // A second poll a minute later. Before the fix this found itself still due
+    // and attempted the identical post again.
+    await listener.maybePostUpdate();
+
+    expect(attempts()).toBe(afterFirst);
+  });
+
+  it('records the subject, so the next slot is about something else', async () => {
+    const { listener } = listenerThatFails();
+    await listener.maybePostUpdate();
+
+    const state = JSON.parse(
+      readFileSync(process.env.SINGULARITY_X_STATE as string, 'utf8'),
+    ) as { lastUpdateAt?: number; recentSubjects?: string[] };
+
+    expect(state.lastUpdateAt).toBe(NOW);
+    expect(state.recentSubjects?.length).toBeGreaterThan(0);
   });
 });

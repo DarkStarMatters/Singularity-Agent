@@ -262,14 +262,30 @@ export class XListener {
     // already posted — should cost the next subject, not the next four hours.
     // Otherwise tightening the repetition guard buys variety at the price of
     // silence, which is the same problem wearing different clothes.
+    // A thrown attempt must still reach the state write below. It used to
+    // escape to the poll loop, which logged it and moved on — leaving
+    // `lastUpdateAt` unadvanced and the subject unrecorded, so the next poll
+    // seconds later chose the same brief and failed the same way, forever. The
+    // xAI 400s made that visible, but any transient failure pinned the account
+    // to one post and retried it at poll frequency instead of hourly.
+    let failure: Error | null = null;
+
     for (let attempt = 0; attempt < 3 && brief; attempt++) {
-      update = await postUpdate(this.client, this.agent, facts, brief, {
-        // With a gate in place nothing is published here: the composed text is
-        // captured as a draft and handed to the reviewer below.
-        ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
-        now: () => now,
-        recentPosts,
-      });
+      try {
+        update = await postUpdate(this.client, this.agent, facts, brief, {
+          // With a gate in place nothing is published here: the composed text is
+          // captured as a draft and handed to the reviewer below.
+          ...(this.options.dryRun || this.gate ? { dryRun: true } : {}),
+          now: () => now,
+          recentPosts,
+        });
+      } catch (err) {
+        // Stop attempting rather than trying the next subject: a failure here
+        // is the model or the API being unavailable, not this brief being
+        // unwritable, and three more calls will fail the same way.
+        failure = err as Error;
+        break;
+      }
 
       if (update) break;
 
@@ -309,6 +325,17 @@ export class XListener {
       ...(update ? { recentPosts: [update.text, ...recentPosts].slice(0, 12) } : {}),
     };
     saveState(this.state);
+
+    if (failure) {
+      // The subject is burned along with the clock. A brief that could not be
+      // posted is not one to retry immediately, and if the failure is really
+      // the API being down then every subject fails equally — better to move
+      // through them slowly than to hammer one.
+      console.error(
+        `[singularity-x] update failed on ${brief.subject}, backing off to the next slot: ${failure.message}`,
+      );
+      return null;
+    }
 
     if (update) {
       console.error(
