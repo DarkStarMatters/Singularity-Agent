@@ -859,12 +859,39 @@ single documented exemption — this adapter speaks Esplora, and litecoinspace i
 Esplora-compatible Litecoin API — and it is named in a list rather than quietly skipped,
 so the day a second one exists, deleting that line is what fails.
 
+### Shipped: four Cosmos chains
+
+**Sei, Neutron, Stride and Kava.** Each was read off the chain before it was written
+down: the chain id it reports, a head block seconds old, the bond denom from its own
+staking params, and the bech32 prefix taken from a real validator operator address
+rather than from the chain's name. Decimals were then confirmed against the Cosmos chain
+registry's denom units rather than inferred from the `u` in `usei` — micro is a
+convention, and Injective spends `inj` at 18 while dYdX spends `adydx` at 18, so the
+convention is exactly the kind of thing that is true until it is not. All four are 6.
+Every one answers from two or three verified endpoints, and a live balance was read
+through the CLI on each before this paragraph was written.
+
+One near miss worth recording, because it was a fault in the checking rather than in the
+chain: **Sei was nearly excluded for a bug in the probe.** A first pass reported no
+answer from any of its four endpoints, which would have read as a dead chain and kept it
+out. Sei pretty-prints its JSON, the probe was matching `"height":"` with no space, and
+every other chain happens to answer in compact JSON. The chain was fine. A measurement
+that silently disagrees with reality is the same failure this file is about, and it does
+not stop being that when it is the measurement doing the lying.
+
+**Dogecoin and Bitcoin Cash do not ship.** This adapter speaks Esplora, and neither chain
+has a public Esplora-compatible API — both are served by Blockbook, which is a different
+protocol wearing a similar shape. Every candidate was checked against `/blocks/tip/height`
+alongside two known-good Esplora instances as a control, and none answered. Shipping them
+means writing a Blockbook adapter, which is a real piece of work and a separate decision,
+not "the same adapter, different params" as this file previously claimed.
+
 ### Still to come
 
 - **EVM L2s:** Polygon zkEVM, when it produces blocks again
 - **Non-EVM:** Sui, Aptos (Move-family account model), TON, Tron
-- **UTXO:** Dogecoin, Bitcoin Cash — same adapter, different params
-- **Cosmos:** Sei, Neutron, Stride, Kava — registry-driven, with the HRP trap already solved
+- **UTXO:** Dogecoin and Bitcoin Cash, behind a Blockbook adapter that does not exist yet
+- **Cosmos:** more of the same, now that the shape is proven
 
 Explicitly deferred: chains whose only public RPC is a single vendor endpoint. Failover
 is a core guarantee, and one endpoint is not failover.

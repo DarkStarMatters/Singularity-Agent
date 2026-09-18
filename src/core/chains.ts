@@ -318,6 +318,75 @@ export const BUILTIN_CHAINS: ChainSpec[] = [
     bech32Prefix: 'dydx',
     denom: 'adydx',
   },
+  // Each of the four below was read off the chain before it was written here:
+  // the chain id it reports, a head block seconds old, a bond denom from its
+  // own staking params, and a bech32 prefix taken from a real validator
+  // operator address rather than from the chain's name. Decimals were then
+  // confirmed against the Cosmos chain registry's denom units, because `u` for
+  // micro is a convention and not a promise — Injective above spends `inj` at
+  // 18 and dYdX spends `adydx` at 18, and either one assumed at 6 would be
+  // wrong by a factor of a trillion.
+  {
+    id: 'sei',
+    name: 'Sei',
+    family: 'cosmos',
+    chainId: 'pacific-1',
+    nativeCurrency: { name: 'Sei', symbol: 'SEI', decimals: 6 },
+    rpc: [
+      'https://rest.cosmos.directory/sei',
+      'https://rest.sei-apis.com',
+      'https://sei-api.polkachu.com',
+    ],
+    explorer: 'https://www.mintscan.io/sei',
+    bech32Prefix: 'sei',
+    denom: 'usei',
+    aliases: ['pacific'],
+  },
+  {
+    id: 'neutron',
+    name: 'Neutron',
+    family: 'cosmos',
+    chainId: 'neutron-1',
+    nativeCurrency: { name: 'Neutron', symbol: 'NTRN', decimals: 6 },
+    rpc: ['https://rest.cosmos.directory/neutron', 'https://neutron-api.polkachu.com'],
+    explorer: 'https://www.mintscan.io/neutron',
+    bech32Prefix: 'neutron',
+    denom: 'untrn',
+    aliases: ['ntrn'],
+  },
+  {
+    id: 'stride',
+    name: 'Stride',
+    family: 'cosmos',
+    chainId: 'stride-1',
+    nativeCurrency: { name: 'Stride', symbol: 'STRD', decimals: 6 },
+    rpc: ['https://rest.cosmos.directory/stride', 'https://stride-api.polkachu.com'],
+    explorer: 'https://www.mintscan.io/stride',
+    bech32Prefix: 'stride',
+    denom: 'ustrd',
+    aliases: ['strd'],
+  },
+  {
+    id: 'kava',
+    name: 'Kava',
+    family: 'cosmos',
+    chainId: 'kava_2222-10',
+    nativeCurrency: { name: 'Kava', symbol: 'KAVA', decimals: 6 },
+    rpc: [
+      'https://rest.cosmos.directory/kava',
+      'https://kava-api.polkachu.com',
+      'https://kava-rest.publicnode.com',
+    ],
+    explorer: 'https://www.mintscan.io/kava',
+    bech32Prefix: 'kava',
+    // Kava runs a Cosmos chain and an EVM chain under one name, and this entry
+    // is the Cosmos one. Its chain id carries the EVM id inside a Cosmos
+    // string — `kava_2222-10`, where 2222 is the EVM chain id. Resolution
+    // matches chain ids exactly, so `2222` does not land here and an EVM Kava
+    // could be added later without collision; test/registry.test.ts holds that,
+    // because it is a property of the lookup rather than of this entry.
+    denom: 'ukava',
+  },
 ];
 
 /** Chains queried by default when a portfolio request names no chains. */

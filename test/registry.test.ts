@@ -92,6 +92,54 @@ describe('the chains added in Phase 3', () => {
   });
 });
 
+describe('the Cosmos chains added in Phase 3', () => {
+  // Read off each chain before being written down: the chain id it reports,
+  // a head block seconds old, the bond denom from its own staking params, and
+  // the bech32 prefix taken from a real validator operator address. Decimals
+  // were confirmed against the Cosmos chain registry rather than inferred from
+  // the `u` in the denom, because Injective spends `inj` at 18 and dYdX spends
+  // `adydx` at 18, and the convention is a convention.
+  const added = [
+    { id: 'sei', chainId: 'pacific-1', symbol: 'SEI', denom: 'usei', prefix: 'sei' },
+    { id: 'neutron', chainId: 'neutron-1', symbol: 'NTRN', denom: 'untrn', prefix: 'neutron' },
+    { id: 'stride', chainId: 'stride-1', symbol: 'STRD', denom: 'ustrd', prefix: 'stride' },
+    { id: 'kava', chainId: 'kava_2222-10', symbol: 'KAVA', denom: 'ukava', prefix: 'kava' },
+  ];
+
+  it('resolves each one by id and by the chain id it reports', () => {
+    for (const { id, chainId } of added) {
+      expect(getChain(id).id).toBe(id);
+      expect(getChain(chainId).id).toBe(id);
+    }
+  });
+
+  it('carries the denom, prefix and decimals that were read from the chain', () => {
+    for (const { id, symbol, denom, prefix } of added) {
+      const chain = getChain(id);
+      expect(chain.family).toBe('cosmos');
+      expect(chain.nativeCurrency.symbol).toBe(symbol);
+      expect(chain.nativeCurrency.decimals).toBe(6);
+      expect(chain.denom).toBe(denom);
+      expect(chain.bech32Prefix).toBe(prefix);
+    }
+  });
+
+  it('does not answer to the EVM chain id buried in kava_2222-10', () => {
+    // Kava runs a Cosmos chain and an EVM chain under one name, and 2222 is the
+    // EVM one. Chain ids match exactly, so the number resolves to nothing
+    // rather than quietly to the Cosmos entry — which is what would let an EVM
+    // Kava be added later without either one shadowing the other.
+    expect(() => getChain(2222)).toThrow();
+    expect(getChain('kava_2222-10').id).toBe('kava');
+  });
+
+  it('resolves the aliases people actually type', () => {
+    expect(getChain('ntrn').id).toBe('neutron');
+    expect(getChain('strd').id).toBe('stride');
+    expect(getChain('pacific').id).toBe('sei');
+  });
+});
+
 describe('failover is a guarantee or it is not', () => {
   /**
    * The roadmap says "failover is a core guarantee, and one endpoint is not
