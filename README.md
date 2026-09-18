@@ -18,18 +18,29 @@ in your own wallet; it cannot sign, and it cannot broadcast.
 
 ## Install
 
+Nothing to clone and nothing to build:
+
+```bash
+npx singularity-agent chains
+```
+
+Or install it properly, for `singularity` and `singularity-mcp` on your PATH:
+
+```bash
+npm install -g singularity-agent
+```
+
+### From source
+
+For working on it, or running an unreleased commit:
+
 ```bash
 npm install
 npm run build
-```
-
-Then either link it globally:
-
-```bash
 npm link          # provides `singularity` and `singularity-mcp`
 ```
 
-…or run it straight from source with no build step:
+…or with no build step at all:
 
 ```bash
 npx tsx src/cli/index.ts chains
@@ -63,10 +74,10 @@ Verify with `claude plugin list`. To update after a rebuild, bump `version` in b
 
 ### As a plain MCP server
 
-The quickest route — no marketplace, no plugin:
+The quickest route — no clone, no marketplace, no plugin:
 
 ```bash
-claude mcp add singularity -- node /absolute/path/to/Singularity-Agent/dist/mcp/server.js
+claude mcp add singularity -- npx -y -p singularity-agent singularity-mcp
 ```
 
 Or add it to any MCP client's config by hand:
@@ -75,11 +86,17 @@ Or add it to any MCP client's config by hand:
 {
   "mcpServers": {
     "singularity": {
-      "command": "node",
-      "args": ["/absolute/path/to/Singularity-Agent/dist/mcp/server.js"]
+      "command": "npx",
+      "args": ["-y", "-p", "singularity-agent", "singularity-mcp"]
     }
   }
 }
+```
+
+Running from a clone instead, point it at the built server:
+
+```bash
+claude mcp add singularity -- node /absolute/path/to/Singularity-Agent/dist/mcp/server.js
 ```
 
 Working inside this repo, the committed `.mcp.json` already does this with a relative

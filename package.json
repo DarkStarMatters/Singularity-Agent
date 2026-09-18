@@ -4,8 +4,18 @@
   "description": "Universal CLI + MCP plugin for practical blockchain interaction across EVM, Solana, Bitcoin and Cosmos.",
   "type": "module",
   "license": "MIT",
+  "author": "Deadsg",
+  "homepage": "https://github.com/DarkStarMatters/Singularity-Agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DarkStarMatters/Singularity-Agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DarkStarMatters/Singularity-Agent/issues"
+  },
   "bin": {
     "singularity": "./dist/cli/index.js",
+    "singularity-agent": "./dist/cli/index.js",
     "singularity-mcp": "./dist/mcp/server.js"
   },
   "main": "./dist/index.js",
@@ -15,6 +25,7 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.map",
     "README.md",
     "LICENSE",
     ".claude-plugin",
