@@ -21,6 +21,79 @@ non-goals."
 
 ---
 
+## Shipped — v0.0.9, answering is not the same as being alive
+
+Two things, and they are the same thing seen from either end: nobody could run this in one
+line, and the tool that was supposed to say whether a chain could be trusted was asking a
+question with no teeth.
+
+**`npx singularity-agent` — the package is on npm.** Every install path in the README used
+to begin with a clone and a build, which is a five-step funnel in front of a tool whose
+whole pitch is that it removes steps. The one-line form then turned out not to work:
+`npx <package>` resolves a bin named for the package, and this one declared `singularity`
+and `singularity-mcp` under the name `singularity-agent`, so with two candidates and no
+match npx refuses rather than guessing. Every route exercised from inside the repo — `npm
+link`, a relative `node dist/…`, the plugin's `CLAUDE_PLUGIN_ROOT` — worked exactly as
+written, which is why it survived to the day it would have been announced. There is a bin
+alias now, and a test holding the bin table to what the README promises. The MCP server
+carries the same boundary: over npx it needs `-p singularity-agent singularity-mcp`,
+because `npx singularity-mcp` names a package that does not exist and that nobody here
+owns.
+
+**`doctor` asks whether the chain is producing blocks.** It used to call an endpoint
+healthy when a request to it did not throw. That is not a weak version of the question, it
+is a different question: a chain that has halted answers everything it is asked, with the
+correct chain id, forever, serving the last block it ever made. Polygon zkEVM is kept out
+of this tool for exactly that — endpoints answering, chain id 1101, a head 76 days old —
+and it would have passed the old check on the day it was excluded. Every read against such
+a chain is historical state wearing a current-state label, which is the failure this file
+opens with, sitting inside the command meant to catch it.
+
+So three questions are asked instead. How old is the head, which is the only one that sees
+a halt. Do the endpoints agree, because failover takes whichever answers first and one
+endpoint hours behind makes reads stale intermittently rather than always. And how many
+actually answer, because two configured endpoints and two working ones are different
+facts. Statuses are `live`, `stale`, `lagging`, `single`, `undatable`, `skewed` and `down`,
+and only the first licenses acting on a read.
+
+Thresholds are per family and deliberately generous. The question is not whether an
+endpoint is two blocks behind — it always is, and chasing that produces a permanently red
+board nobody reads. Per-chain block times are deliberately not carried: that would be 32
+numbers read off documentation rather than off a chain, and a wrong one fails in the
+direction of calling a live chain dead.
+
+Three things the checking caught, which is the usual pattern here:
+
+- **The EVM client cache made the endpoint list unreachable.** It was keyed on chain id
+  alone, and the transport is a `fallback` fixed at construction over whatever `rpc` held
+  then. Probing one endpoint at a time returned the *first* endpoint's answer every time,
+  so a chain with three configured endpoints reported three healthy ones after contacting
+  one host — the failover guarantee appearing to hold precisely where it does not. It
+  reaches users too: `SINGULARITY_RPC_<CHAIN>` rewrites `rpc` and was ignored once
+  anything had warmed the map.
+- **Nine of 32 chains have fewer than two endpoints that answer**, Ethereum among them at
+  one of three: llamarpc returns 525, and Ankr now requires an API key, which it reports
+  as a JSON-RPC error inside an HTTP 200. "Failover is a guarantee or it is not" is held
+  by a test asserting `chain.rpc.length >= 2` — it counts entries in a config file and
+  never asks whether any of them answer. Polygon, Avalanche, Sepolia, Neutron and Bitcoin
+  are in the same state. The endpoints are a separate fix; the test that cannot see it is
+  the finding.
+- **A head dated in the future read as fresher than a fresh one**, because a negative age
+  is below every threshold in the file. Bitcoin permits a timestamp two hours ahead of
+  network-adjusted time and testnet uses the room, so `skewed` is its own answer now
+  rather than an accidental pass.
+
+The sweep serializes by host. `rest.cosmos.directory` serves nine of these chains, and
+asking it nine questions at once would report whatever it rate-limited as down — the Sei
+near-miss, where a bug in the probe rather than in the chain nearly kept a healthy one out
+of a release.
+
+It is the sixteenth MCP tool, `chain_liveness`, so an agent can ask whether the chain it is
+about to read is current before it reads it; `/health` on the bot was asking the weaker
+question and now asks this one.
+
+---
+
 ## Shipped — v0.0.8, what nothing was checking
 
 Every item in this release was already believed to be true. That is the whole theme.

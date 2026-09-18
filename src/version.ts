@@ -8,4 +8,4 @@
  * down. `test/version.test.ts` holds all five together now, and the roadmap to
  * having an entry for whatever number this is.
  */
-export const VERSION = '0.0.8';
+export const VERSION = '0.0.9';
