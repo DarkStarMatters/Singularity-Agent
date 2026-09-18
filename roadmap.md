@@ -290,7 +290,7 @@ results with codes and hints, never transport exceptions.
 **Response discipline.** `portfolio` skips inapplicable chains instead of erroring on
 them. EVM token scans carry their curated-list caveat inline. Solana scans aggregate
 token accounts per mint and cap unfiltered results at 50 with a note naming the omission
-([whitepaper §4](whitepaper.md) — 1.27 MB → 22 KB on the wallet that exposed it).
+([whitepaper §5.1](whitepaper.md) — 1.27 MB → 22 KB on the wallet that exposed it).
 
 ---
 

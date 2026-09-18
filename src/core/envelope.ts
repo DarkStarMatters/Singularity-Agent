@@ -8,7 +8,7 @@
  * the scan covered nine tokens out of thousands, or every RPC call failed.
  *
  * Twice now that gap has produced a shipped bug — the Solana dust truncation
- * ([whitepaper §4](../../whitepaper.md)) and an EVM historical scan whose dropped
+ * ([whitepaper §5.1](../../whitepaper.md)) and an EVM historical scan whose dropped
  * failures came back as `[]`. Both were caught by a human noticing, which does
  * not scale.
  *
