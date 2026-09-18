@@ -74,5 +74,10 @@
     "@elizaos/core": {
       "optional": true
     }
+  },
+  "overrides": {
+    "rpc-websockets": {
+      "uuid": "^11.1.0"
+    }
   }
 }
