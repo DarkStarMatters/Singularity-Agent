@@ -2,7 +2,7 @@
 
 **Read-only blockchain access for agents, and the enforcement that makes it safe to act on**
 
-Version 0.0.9 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.1.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
 *This paper describes `main`. Everything in it is implemented and tested; where something
 has landed since the v0.0.9 tag it is marked.*
@@ -166,9 +166,14 @@ be separated eventually will be, by someone in a hurry, and the separation will 
     viem   web3.js  esplora   LCD
 ```
 
-19,342 lines of TypeScript in `src`, 898 tests, six runtime dependencies
+20,453 lines of TypeScript in `src`, 1,019 tests, six runtime dependencies
 (`viem`, `@solana/web3.js`, `@modelcontextprotocol/sdk`, `commander`, `zod`, `bs58`).
 Node ≥20.10.
+
+A further 1,904 lines live in `singularity-sdk/`, a separate package at its own version
+that builds applications on this one. It takes the agent as a peer dependency rather
+than bundling it — the chain registry is module state, and two copies in one tree would
+mean configuring a registry the operations are not reading from. It is described in §6.4.
 
 ### 3.1 Surfaces
 
@@ -540,6 +545,47 @@ worst outcome of a misdirected burn is that it does not happen.
 against a claim; `redeem` spends it exactly once against a local ledger. `redeem` is
 deliberately **not** an MCP tool — it mutates state, and the fifteen tools are all
 read-only. It lives on the CLI, where a human runs it.
+
+### 6.4 The seam moves; it does not dissolve
+
+§6.1 is a claim about *this* system, and it invites an obvious objection: an application
+that can only read is not an application. Something has to sign eventually, and a
+position that never answers where is a position that gets worked around rather than
+followed.
+
+`singularity-sdk` is the answer, and it holds §6.1 verbatim by relocating the boundary
+instead of relaxing it. The SDK defines the **port** a write travels through — an
+interface with `sign`, an optional `send`, and a statement of which families the
+implementation covers — and ships no implementation of it. There is no keypair loader in
+that package, no wallet adapter, no derivation from a secret in the environment. Keys
+stay in the browser wallet, KMS, hardware device or approval queue that already holds
+them, none of which wanted to hand a secret to a library.
+
+The consequence worth stating precisely: **the SDK's own network layer remains
+read-only.** It never puts bytes on a chain. Broadcasting, where it happens at all,
+happens inside the caller's implementation of `send`, against the caller's endpoint. The
+property §6.1 relies on — that nothing published here can cause an irreversible loss — is
+unchanged, because nothing published here can sign or transmit.
+
+Two mechanisms hold that, and neither is prose:
+
+1. **A type.** `sdk.write` is `WriteApi` when a signer was supplied and a stand-in type
+   with no methods otherwise, so a write on a read-only client fails to compile with a
+   message naming its own fix. "Did you configure custody" is answered by the type
+   checker before a key is near a network.
+2. **A source scan.** `singularity-sdk/test/custody.test.ts` reads the package's own
+   source and fails if any of eleven signing or key-handling patterns appears in it. Per
+   the X filter in §2, a gate measured only against what it blocks proves nothing, so the
+   test plants each pattern and confirms the scanner catches it, rather than passing on a
+   clean tree and demonstrating only that it ran.
+
+Three checks then stand between a built payload and a broadcast, each for a failure that
+is otherwise silent. Family membership is checked *before* anything is built, so a
+signer for the wrong family fails naming both rather than inside an encoder. The chain is
+checked *after* signing, because a signer returning a mainnet signature for a testnet
+payload produces a perfectly valid transaction and nothing else in the stack would
+notice. And a signer without `send` returns `broadcast: false` rather than a receipt with
+no hash, which an application would otherwise read as success and not retry.
 
 ---
 

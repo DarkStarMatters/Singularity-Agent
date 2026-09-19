@@ -779,6 +779,7 @@
       <li><a href="#try">Try it</a></li>
       <li><a href="#claude">Use with Claude</a></li>
       <li><a href="#do">What you can ask</a></li>
+      <li><a href="#sdk">Build on it</a></li>
       <li><a href="#chains">Chains</a></li>
       <li><a href="#words">Vocabulary</a></li>
       <li><a href="#config">Configuration</a></li>
@@ -1422,6 +1423,115 @@ base
         </div>
 
       </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================== sdk -->
+    <section id="sdk">
+      <p class="eyebrow">For developers</p>
+      <h2>Build something on it — the SDK</h2>
+      <p>
+        Everything above asks one question and reads one answer. An <em>application</em> is
+        different: it runs for weeks, asks the same question hundreds of times an hour, and
+        sooner or later has to write. <strong>singularity-sdk</strong> is the package for that —
+        a separate install, versioned separately, built on the same engine as the commands on
+        this page.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">npx singularity-sdk new my-app --template reader</code>
+          <button class="copy" type="button" data-copy="npx singularity-sdk new my-app --template reader">Copy</button>
+        </div>
+        <pre><code><span class="ok">✓</span> Created my-app from the "reader" template.
+
+  cd my-app
+  npm install
+  npm start
+
+<span class="dim">It reads public endpoints and needs no key to run.</span></code></pre>
+      </figure>
+      <figcaption class="sample">Three templates: <code>reader</code>, <code>monitor</code>, <code>agent</code>. All of them run on the first try.</figcaption>
+
+      <h3>The same answers, in code</h3>
+      <p>
+        Set your defaults once, then ask. The result carries the same honesty the terminal
+        output does — including the note about what a token list covers.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">TS</span>
+          <code class="cmd">app.ts</code>
+        </div>
+        <pre><code><span class="dim">import</span> { createSingularity } <span class="dim">from</span> <span class="ok">'singularity-sdk'</span>;
+
+<span class="dim">const</span> sdk = createSingularity({ chain: <span class="ok">'ethereum'</span>, budget: { maxItems: 8 } });
+
+<span class="dim">const</span> balance = <span class="dim">await</span> sdk.balance({ address: <span class="ok">'vitalik.eth'</span>, includeTokens: <span class="ok">true</span> });
+
+balance.native.amount.formatted    <span class="dim">// '6.71259795'</span>
+balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this before the list</span></code></pre>
+      </figure>
+
+      <h3>Watching, rather than asking again</h3>
+      <p>
+        Poll a balance, a chain's head, or one transaction until it's confirmed. These are
+        polling loops and the SDK says so plainly — there's no push feed hiding underneath.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">TS</span>
+          <code class="cmd">monitor.ts</code>
+        </div>
+        <pre><code>sdk.watch.balance({ address: <span class="ok">'vitalik.eth'</span> }, ({ value, previous }) =&gt; {
+  <span class="dim">if</span> (!previous) <span class="dim">return</span>;          <span class="dim">// the first reading isn't a change</span>
+  notify(previous.native.amount.formatted, value.native.amount.formatted);
+}, { intervalMs: <span class="ok">15_000</span> });</code></pre>
+      </figure>
+
+      <h3>Your keys stay yours — still</h3>
+      <p>
+        The tool on this page cannot sign, and neither can the SDK. But an app that can only
+        read isn't much of an app, so the SDK defines the <em>shape</em> of a signer and ships
+        none: you plug in the browser wallet, hardware device or key service you already use,
+        and it never hands a secret to the library.
+      </p>
+      <p>
+        Until you do, the write methods don't exist — and your editor says so before you ever
+        run anything.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">TS</span>
+          <code class="cmd">read-only.ts</code>
+        </div>
+        <pre><code><span class="dim">const</span> sdk = createSingularity({ chain: <span class="ok">'ethereum'</span> });
+
+<span class="dim">await</span> sdk.build.transfer({ to: <span class="ok">'vitalik.eth'</span>, amount: <span class="ok">'0.1'</span> });  <span class="dim">// fine</span>
+<span class="dim">await</span> sdk.write.transfer({ to: <span class="ok">'vitalik.eth'</span>, amount: <span class="ok">'0.1'</span> });
+<span class="bad">             ~~~~~</span>
+<span class="bad">Property 'transfer' does not exist on type 'SignerRequired'.</span></code></pre>
+      </figure>
+
+      <div class="callout">
+        <strong>It also makes your app an agent</strong>
+        <span>
+          The sixteen tools Claude uses are defined once in this project. The SDK hands you the
+          same set in Anthropic, OpenAI-style and MCP shapes, with a hook to approve or refuse
+          each call before it runs — so anything you build can be driven by a model too,
+          without you transcribing a single tool definition.
+        </span>
+      </div>
+
+      <p>
+        Full documentation, the signer guide and four runnable examples:
+        <a href="https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-sdk">singularity-sdk on GitHub</a>.
+      </p>
     </section>
 
     <hr class="rule">

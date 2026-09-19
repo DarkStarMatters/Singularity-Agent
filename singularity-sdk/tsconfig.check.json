@@ -1,0 +1,24 @@
+{
+  // Typechecks the things that are not shipped as compiled output but are
+  // shipped as *code people run*: the examples, and the templates the
+  // scaffolder copies.
+  //
+  // Worth a config of its own because a broken template is invisible until
+  // somebody scaffolds from it, at which point it is their first impression of
+  // the package. The templates resolve `singularity-sdk` through the workspace
+  // link in the repository root, which is the same specifier a scaffolded
+  // project uses against the published package.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts", "examples/**/*.ts", "templates/**/*.ts"],
+  // `extends` inherits `exclude`, and the base config excludes `templates` so
+  // the build does not compile them. Without this line that exclusion wins over
+  // the `include` above and this config silently checks nothing — which is
+  // exactly what it did on first run.
+  "exclude": ["node_modules", "dist"]
+}

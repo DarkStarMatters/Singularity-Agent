@@ -21,6 +21,77 @@ non-goals."
 
 ---
 
+## Shipped — v0.1.0, the third caller
+
+The agent has had two callers since v0.0.3: a human at a terminal, and a model over MCP.
+Both ask one question and read one answer. Neither of them is an *application* — something
+that runs for weeks, asks the same question four hundred times an hour, and eventually has
+to write. `singularity-sdk` is that third caller, shipping at v0.0.1 alongside this
+release, in its own directory and with its own version.
+
+**The custody seam moved without dissolving.** "No signing, ever" is still the non-goal
+below, and it is still literally true of everything this repository publishes. But an
+application that can only read is not an application, and the honest answer to that was
+not to relax the rule — it was to define the *port* a write travels through and ship no
+implementation of it. The SDK has a `Signer` interface and no keypair loader, no wallet
+adapter, no `fromPrivateKey`, no secret read from the environment. Keys stay in the
+browser wallet, the KMS, the hardware device or the approval queue that already holds
+them, none of which wanted to hand a secret to a library. The SDK's own network layer
+never puts bytes on a chain; broadcasting goes out through `Signer.send`, which is the
+application's code and the application's endpoint.
+
+That guarantee is not left in prose, because this repository keeps learning what happens
+to guarantees left in prose. `singularity-sdk/test/custody.test.ts` scans the published
+source for eleven patterns that cannot appear in a package that does not sign, and — this
+is the part the X filter taught — plants each one to confirm the scanner finds it, rather
+than passing on a clean tree and proving nothing. `write` is additionally gated at the
+type level: on a client built without a signer, `sdk.write.transfer(…)` does not compile.
+
+**Three checks between a built payload and a broadcast**, each for a failure that is
+otherwise silent. Family, before anything is built, so an EVM-only signer asked for a
+Solana burn fails naming both families rather than inside an encoder. Chain, after
+signing, because a signer that returns a mainnet signature for a testnet payload produces
+a *perfectly valid transaction* and nothing else in the stack would notice. And broadcast
+capability, so a signer with no `send` returns `broadcast: false` rather than a receipt
+with no hash that reads like success.
+
+**4.3 shipped, under its real name.** Watch mode has been on this roadmap since v0.0.3
+and stayed unshipped, and the reason is visible in what it turned out to be: polling
+loops. There is no push here, no websocket, no reorg feed — four families offer four
+incompatible subscription mechanisms and most of the public endpoints expose none of
+them. The module says so at the top, because the gap between "subscribed" and "polled
+every twelve seconds" is exactly where an application draws a wrong conclusion. What the
+loops do promise is narrower and testable: no overlapping ticks, backoff on failure,
+errors delivered rather than swallowed, and a first delivery that is explicitly *not* a
+change — `previous` is absent, which is the flag that stops a balance alert firing on
+startup for every address it watches.
+
+**A cache with a rule rather than a TTL.** An application makes the same read far more
+often than a CLI does, and caching that is both the obvious win and the obvious way to
+start serving confidently wrong answers. The rule is: a cached answer may only be wrong in
+the direction that is already safe. Reads pinned to a height are immutable and cached for
+minutes; current state defaults to *off*; and liveness, endpoint health and burn
+verification are never cached at any TTL, with no option to turn it on — a cached
+"responding" is indistinguishable from the outage the probe exists to catch, and the
+option would be a bug with a config flag in front of it. Failures are never stored, so one
+bad minute on an endpoint does not outlive itself.
+
+**One catalogue, four shapes.** The sixteen tools were already defined once, with schema,
+description and implementation attached; what was missing was everything outside MCP. An
+application that wanted to *be* an agent had to transcribe them by hand, and a transcribed
+schema drifts on the first change nobody propagated. The SDK derives Anthropic,
+OpenAI-style and MCP shapes from that one source, adds argument validation — the caller
+there is a model improvising JSON, and nothing on that path was validating — and puts a
+policy hook in front. A tool excluded by selection is *refused by name*, not merely
+omitted from the list, because a model can name a tool it was never offered.
+
+**Two exports the library was missing.** `Completeness`, `ResponseBudget`, `Finality` and
+the liveness types lived one directory below the export surface, which meant a library
+consumer received a completeness envelope on every list-shaped result and had no way to
+name its type without reaching past `exports` into `dist/`. A caveat you cannot type is
+one you end up not handling, which is the failure this project has now shipped three
+times. They are exported.
+
 ## Shipped — v0.0.9, answering is not the same as being alive
 
 Two things, and they are the same thing seen from either end: nobody could run this in one
@@ -1188,9 +1259,16 @@ The EVM token scan is deliberately untouched. Its list is the curated set, bound
 construction and already small, so a budget there would buy no response size and cost a
 reordering.
 
-### 4.3 Watch mode
-`singularity watch <address>` — poll and report changes. Natural for the CLI, and the
-obvious substrate for scheduled agent work.
+### 4.3 Watch mode — **shipped, in the SDK**
+`singularity-sdk`'s `sdk.watch.*` polls and reports changes: balances, chain tips, one
+transaction to a confirmation depth, and liveness across a set of chains. The v0.1.0
+section above has the account of what a poll can and cannot see, which is the part that
+took the longest to be willing to write down.
+
+Still open: the **CLI** half. `singularity watch <address>` does not exist, and it should
+— the loop is written and the rendering is the only missing piece. And the loops are
+in-process, so "poll every twelve seconds for a week" is still a process somebody has to
+keep alive, which is the substrate question 4.5 left open below.
 
 ### 4.4 Cross-family portfolio
 `portfolio` today takes one address and finds the chains it is valid on. Accept a *set*
@@ -1252,5 +1330,7 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (898 tests); `npm run typecheck`
-must pass clean.
+Every change needs a test. `npm test` runs the suite (1,019 tests) across both packages;
+`npm run typecheck` must pass clean, and so must `npm run typecheck -w singularity-sdk`,
+which also checks the SDK's examples and the templates its scaffolder copies — a broken
+template is invisible until somebody starts a project from it.

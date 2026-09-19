@@ -1,0 +1,66 @@
+{
+  "name": "singularity-sdk",
+  "version": "0.0.1",
+  "description": "Build blockchain applications on Singularity Agent — one typed client over EVM, Solana, Bitcoin and Cosmos, with watch primitives, an agent-tool bridge, and a custody seam the SDK never crosses.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Deadsg",
+  "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DarkStarMatters/Singularity-Agent.git",
+    "directory": "singularity-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/DarkStarMatters/Singularity-Agent/issues"
+  },
+  "bin": {
+    "singularity-sdk": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./tools": "./dist/tools.js",
+    "./watch": "./dist/watch.js",
+    "./signer": "./dist/signer.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "templates",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.check.json",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sdk",
+    "blockchain",
+    "evm",
+    "solana",
+    "bitcoin",
+    "cosmos",
+    "web3",
+    "mcp",
+    "agent",
+    "claude",
+    "singularity"
+  ],
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "singularity-agent": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "singularity-agent": "file:..",
+    "typescript": "^5.9.3"
+  }
+}

@@ -421,6 +421,55 @@ itself instead of stalling.
 
 ---
 
+## Building applications — `singularity-sdk`
+
+The CLI and the MCP plugin both ask one question and read one answer. An *application*
+is different: it runs for weeks, asks the same question four hundred times an hour, and
+eventually has to write. [`singularity-sdk`](singularity-sdk/README.md) is that third
+caller — a separate package in this repository, versioned separately.
+
+```bash
+npm install singularity-sdk singularity-agent
+# or start from a project that already runs:
+npx singularity-sdk new my-app --template reader
+```
+
+```ts
+import { createSingularity } from 'singularity-sdk';
+
+const sdk = createSingularity({ chain: 'ethereum', budget: { maxItems: 8 } });
+
+const balance = await sdk.balance({ address: 'vitalik.eth', includeTokens: true });
+balance.tokenCompleteness.kind;   // read this before the list
+
+sdk.watch.balance({ address: 'vitalik.eth' }, ({ value, previous }) => {
+  if (previous) alert(`${previous.native.amount.formatted} → ${value.native.amount.formatted}`);
+});
+```
+
+It adds four things a command line does not need: a configured client with a cache that
+only holds what is safe to hold, watch primitives, an agent-tool bridge that derives
+Anthropic / OpenAI-style / MCP shapes from this repository's one catalogue, and a
+scaffolder.
+
+**It does not add a way to sign.** "No signing, ever" below is still literally true of
+everything published here. The SDK defines the *port* a write travels through — a
+`Signer` interface your application implements against the browser wallet, KMS, hardware
+device or approval queue that already holds your keys — and ships no implementation of
+it. There is no keypair loader in that package, and a test scans its source to keep that
+true. `build` always works; `write` does not exist as a type until you supply a signer:
+
+```ts
+const readOnly = createSingularity({ chain: 'ethereum' });
+await readOnly.write.transfer({ to: 'vitalik.eth', amount: '0.1' });
+//               ~~~~~~~~
+// Property 'transfer' does not exist on type 'SignerRequired'.
+```
+
+Full documentation: **[singularity-sdk/README.md](singularity-sdk/README.md)**.
+
+---
+
 ## What makes it practical
 
 **It figures out what you pasted.** `resolve` distinguishes an EVM address from a Solana

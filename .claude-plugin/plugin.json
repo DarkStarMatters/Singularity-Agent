@@ -1,7 +1,7 @@
 {
   "name": "singularity-agent",
   "description": "Universal blockchain client for EVM, Solana, Bitcoin and Cosmos. Read-only: resolves addresses and names, reads balances and transactions, decodes calldata, and builds unsigned transactions for you to sign in your own wallet. Holds no keys.",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "author": {
     "name": "Deadsg"
   },
