@@ -55,16 +55,26 @@ a *perfectly valid transaction* and nothing else in the stack would notice. And 
 capability, so a signer with no `send` returns `broadcast: false` rather than a receipt
 with no hash that reads like success.
 
-**4.3 shipped, under its real name.** Watch mode has been on this roadmap since v0.0.3
-and stayed unshipped, and the reason is visible in what it turned out to be: polling
-loops. There is no push here, no websocket, no reorg feed — four families offer four
-incompatible subscription mechanisms and most of the public endpoints expose none of
-them. The module says so at the top, because the gap between "subscribed" and "polled
-every twelve seconds" is exactly where an application draws a wrong conclusion. What the
-loops do promise is narrower and testable: no overlapping ticks, backoff on failure,
-errors delivered rather than swallowed, and a first delivery that is explicitly *not* a
-change — `previous` is absent, which is the flag that stops a balance alert firing on
-startup for every address it watches.
+**4.3 shipped, under its real name, on both surfaces.** Watch mode has been on this
+roadmap since v0.0.3 and stayed unshipped, and the reason is visible in what it turned
+out to be: polling loops. There is no push here, no websocket, no reorg feed — four
+families offer four incompatible subscription mechanisms and most of the public endpoints
+expose none of them. The module says so at the top and `singularity watch --help` says it
+to the user, because the gap between "subscribed" and "polled every twelve seconds" is
+exactly where a caller draws a wrong conclusion. What the loops do promise is narrower
+and testable: no overlapping ticks, backoff on failure, errors delivered rather than
+swallowed, and a first delivery that is explicitly *not* a change — `previous` is absent,
+which is the flag that stops a balance alert firing on startup for every address it
+watches.
+
+`singularity watch balance|tip|tx|liveness` and `sdk.watch.*` are one loop, in
+`src/core/watch.ts`. It sits in the agent rather than the SDK because the dependency only
+runs one way, and the alternative was the CLI reimplementing it — two sets of backoff
+semantics, of which whichever one somebody happened to be looking at gets fixed. The same
+reasoning moved `balanceIdentity` next to `BalanceResult`: deciding *what counts as a
+change* is the interesting half of a watch, and a second copy of that rule would drift
+silently, because a watch comparing slightly different fields does not fail, it just
+reports the wrong set of changes.
 
 **A cache with a rule rather than a TTL.** An application makes the same read far more
 often than a CLI does, and caching that is both the obvious win and the obvious way to
@@ -1259,16 +1269,29 @@ The EVM token scan is deliberately untouched. Its list is the curated set, bound
 construction and already small, so a budget there would buy no response size and cost a
 reordering.
 
-### 4.3 Watch mode — **shipped, in the SDK**
-`singularity-sdk`'s `sdk.watch.*` polls and reports changes: balances, chain tips, one
-transaction to a confirmation depth, and liveness across a set of chains. The v0.1.0
-section above has the account of what a poll can and cannot see, which is the part that
-took the longest to be willing to write down.
+### 4.3 Watch mode — **shipped**
+`singularity watch balance|tip|tx|liveness` on the CLI, and `sdk.watch.*` in the SDK.
+Both are the same loop: it lives in `src/core/watch.ts` because the dependency only runs
+one way, and two loops would be two sets of backoff semantics with only one of them ever
+getting fixed. The v0.1.0 section above has the account of what a poll can and cannot
+see, which is the part that took the longest to be willing to write down.
 
-Still open: the **CLI** half. `singularity watch <address>` does not exist, and it should
-— the loop is written and the rendering is the only missing piece. And the loops are
-in-process, so "poll every twelve seconds for a week" is still a process somebody has to
-keep alive, which is the substrate question 4.5 left open below.
+`--json` on a watch is newline-delimited and compact rather than indented, unlike every
+other command. A watch is a stream, and `jq`, a log shipper and `grep` all want one
+record per line.
+
+One bug worth recording, because no unit test could have found it. `pollLoop` unrefs its
+timer — correct for a library, since a script that starts a watch and finishes its work
+should be allowed to exit. On the CLI the watch *is* the work, so with nothing refd
+holding the event loop open, Node exited after the first tick: one line of output, exit
+code 0, and the command looking like it had worked. Awaiting the subscription's `done`
+promise does not help, because a pending promise is not a reason for Node to stay up. The
+loop was behaving exactly as designed, which is why `test/watch-cli.test.ts` runs the
+real binary as a subprocess against a local fake chain rather than calling a function.
+
+Still open: the loops are in-process, so "poll every twelve seconds for a week" remains a
+process somebody has to keep alive. That is the substrate question 4.5 leaves open below,
+and it is a deployment concern rather than a missing feature.
 
 ### 4.4 Cross-family portfolio
 `portfolio` today takes one address and finds the chains it is valid on. Accept a *set*
@@ -1330,7 +1353,7 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (1,019 tests) across both packages;
+Every change needs a test. `npm test` runs the suite (1,051 tests) across both packages;
 `npm run typecheck` must pass clean, and so must `npm run typecheck -w singularity-sdk`,
 which also checks the SDK's examples and the templates its scaffolder copies — a broken
 template is invisible until somebody starts a project from it.

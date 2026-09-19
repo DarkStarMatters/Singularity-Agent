@@ -389,9 +389,24 @@ singularity verify-burn <signature> --mint <mint>
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
+
+# Poll something and report what changes. Ctrl-C to stop.
+singularity watch balance vitalik.eth -c ethereum
+singularity watch tip -c solana -i 2               # -i is seconds between polls
+singularity watch tx <hash> -c ethereum --confirmations 12   # stops when it gets there
+singularity watch liveness -c ethereum -c base
 ```
 
 Add `--json` to any command for machine-readable output.
+
+`watch` is the one exception to that last sentence: under `--json` it emits
+**newline-delimited** JSON, one compact object per change, because a watch is a stream
+and `jq`, a log shipper and `grep` all want one record per line.
+
+It also polls rather than subscribing, and says so in its own `--help`. There is no push
+feed underneath: four families offer four incompatible subscription mechanisms and most
+public endpoints expose none of them. A value that changed and changed back between two
+ticks is a value it never saw. A reorg is reported rather than smoothed over.
 
 ---
 

@@ -651,3 +651,121 @@ export function renderTokenIdentity(identity: TokenIdentity): string {
 
   return lines.join('\n');
 }
+
+// ─────────────────────────────────────────────────────────────── watch mode
+
+/**
+ * One line per change, for a terminal somebody is leaving open.
+ *
+ * Watch output is read differently from every other rendering in this file. A
+ * `balance` result is read once, in full, by someone who just asked for it.
+ * Watch output accumulates for hours in a scrollback nobody is staring at, and
+ * gets read backwards after something happened. So each line is timestamped,
+ * self-contained, and short enough not to wrap — a change you have to
+ * reconstruct from three wrapped lines is a change you misread at 3am.
+ */
+export function watchLine(at: Date, text: string): string {
+  return `${dim(at.toTimeString().slice(0, 8))}  ${text}`;
+}
+
+/** `6.71259795 ETH` → `6.71259795 ETH`, with the delta when there is one. */
+export function watchBalanceChange(
+  current: BalanceResult,
+  previous: BalanceResult | undefined,
+): string {
+  const symbol = current.native.token?.symbol ?? '';
+  const now = current.native.amount.formatted;
+
+  if (!previous) {
+    // The first reading is not a change, and saying "→" here would claim a
+    // movement that nothing observed.
+    return `${bold(now)} ${symbol}  ${dim('(first reading)')}`;
+  }
+
+  const before = previous.native.amount.formatted;
+  if (before === now) {
+    // Reached when a token moved but the native balance did not.
+    return `${dim(now)} ${symbol}  ${dim('native unchanged; a token balance moved')}`;
+  }
+
+  const rose = Number(now) > Number(before);
+  const arrow = rose ? green('↑') : red('↓');
+  return `${dim(before)} ${arrow} ${bold(now)} ${symbol}`;
+}
+
+/** A new chain head, and how far it moved. */
+export function watchTipChange(
+  current: NormalizedBlock,
+  previous: NormalizedBlock | undefined,
+): string {
+  if (!previous) return `#${current.number}  ${dim('(first reading)')}`;
+
+  const advanced = current.number - previous.number;
+
+  // A height that went backwards is a reorg. It is reported rather than
+  // smoothed over, because smoothing it is how a reorg becomes invisible to
+  // the one tool that was watching.
+  if (advanced < 0) {
+    return `${red('REORG')}  #${previous.number} → #${current.number}  ${dim(`(${-advanced} back)`)}`;
+  }
+
+  return `#${current.number}  ${dim(`+${advanced}`)}`;
+}
+
+/** A transaction's progress toward the depth the caller asked for. */
+export function watchTxChange(tx: NormalizedTx, target: number): string {
+  const confirmations = tx.finality?.confirmations ?? 0;
+  const status = tx.status === 'success' ? green(tx.status) : tx.status === 'failed' ? red(tx.status) : yellow(tx.status);
+
+  const depth =
+    tx.finality?.kind === 'final'
+      ? green('final')
+      : `${confirmations}/${target} ${dim('confirmations')}`;
+
+  return `${status}  ${depth}`;
+}
+
+/** Which chains changed status, and to what. */
+export function watchLivenessChange(
+  current: ChainLiveness[],
+  previous: ChainLiveness[] | undefined,
+): string[] {
+  if (!previous) {
+    return current.map(
+      (chain) =>
+        `${chain.chain.padEnd(14)} ${chain.status}  ${dim(`${chain.answering}/${chain.configured} answering`)}`,
+    );
+  }
+
+  const lines: string[] = [];
+
+  for (const now of current) {
+    const before = previous.find((c) => c.chain === now.chain);
+    if (!before || before.status === now.status) continue;
+
+    const worse = rank(now.status) > rank(before.status);
+    const arrow = worse ? red('→') : green('→');
+    lines.push(`${now.chain.padEnd(14)} ${dim(before.status)} ${arrow} ${bold(now.status)}`);
+
+    // The notes explain *why* a status changed, and they are the reason a
+    // human opened this terminal. Printing the status alone sends them to
+    // `doctor` to ask a question this already answered.
+    for (const note of now.notes) lines.push(`  ${dim(note)}`);
+  }
+
+  return lines;
+}
+
+/** How bad a status is, so a transition can be coloured by direction. */
+function rank(status: ChainLiveness['status']): number {
+  const order: Record<ChainLiveness['status'], number> = {
+    live: 0,
+    single: 1,
+    undatable: 2,
+    skewed: 3,
+    lagging: 4,
+    stale: 5,
+    down: 6,
+  };
+  return order[status];
+}

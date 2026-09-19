@@ -128,6 +128,13 @@ websocket, no reorg feed. A poll can miss a value that changed and changed back,
 reports *the state at the times it asked* — a weaker claim than "everything that
 happened".
 
+The loop itself lives in the agent, at `src/core/watch.ts`, because `singularity watch`
+needs the same one and the dependency only runs one way. What is in this package is the
+part that differs per watch: *what counts as a change*. That is the decision worth making
+carefully, and it is different each time — a block number is the whole answer for a chain
+tip and irrelevant for a balance, where a re-worded completeness note must not read as
+money moving. `balanceIdentity` is exported for anyone writing their own loop.
+
 ```ts
 const watch = sdk.watch.balance(
   { address: 'vitalik.eth' },

@@ -1422,6 +1422,40 @@ base
           <figcaption class="sample">That 21-second Bitcoin result is a slow public server, not a broken one. <a href="#config">Configuration</a> shows how to use a faster one.</figcaption>
         </div>
 
+        <div class="recipe">
+          <h3><span class="q">“</span>Tell me when this changes<span class="q">”</span></h3>
+          <p>
+            <code>watch</code> keeps asking and prints only what moved. It works on a balance, a
+            chain's head, one transaction until it's confirmed, or the health of several chains
+            at once.
+          </p>
+          <figure class="term">
+            <div class="term-bar">
+              <span class="prompt">$</span>
+              <code class="cmd">singularity watch tip -c solana -i 2</code>
+              <button class="copy" type="button" data-copy="singularity watch tip -c solana -i 2">Copy</button>
+            </div>
+            <pre><code>Watching solana
+<span class="dim">───────────────</span>
+  <span class="dim">Polling. Ctrl-C to stop.</span>
+
+<span class="dim">18:44:23</span>  #448546031  <span class="dim">(first reading)</span>
+<span class="dim">18:44:25</span>  #448546039  <span class="dim">+8</span>
+<span class="dim">18:44:27</span>  #448546047  <span class="dim">+8</span></code></pre>
+          </figure>
+          <figcaption class="sample">Real output. <code>-i</code> is seconds between checks; add <code>-n 3</code> to stop after three changes.</figcaption>
+
+          <div class="callout">
+            <strong>It asks repeatedly — it doesn't get pushed to</strong>
+            <span>
+              There's no live feed underneath this. It checks on a timer, so something that
+              changed and changed back between two checks is something it never saw. That's a
+              real limit and it's printed in <code>singularity watch --help</code> rather than
+              left for you to discover.
+            </span>
+          </div>
+        </div>
+
       </div>
     </section>
 

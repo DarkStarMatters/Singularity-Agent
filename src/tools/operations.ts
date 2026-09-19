@@ -271,6 +271,36 @@ export interface BalanceResult {
   explorerUrl?: string;
 }
 
+/**
+ * What makes two readings of a balance the *same* balance.
+ *
+ * Used by every watch over `getBalance` — `singularity watch balance` and
+ * `sdk.watch.balance` both — which is why it lives here beside the result it
+ * describes rather than in either caller. Two copies of this rule would drift,
+ * and the drift would be silent: a watch that compares slightly different
+ * fields does not fail, it just reports the wrong set of changes.
+ *
+ * Deliberately not the whole result object. That carries an explorer URL, a
+ * block height and a completeness note whose wording moves with the token
+ * count — comparing those would fire a handler on cosmetic churn and teach
+ * whoever left the terminal open to ignore it.
+ *
+ * Deliberately not the native amount alone either: a token moving is a balance
+ * change, and a watch that misses it is worse than no watch, because it is
+ * trusted.
+ *
+ * Token entries are sorted, so an endpoint returning the same holdings in a
+ * different order is not a change.
+ */
+export function balanceIdentity(balance: BalanceResult): string {
+  const tokens = balance.tokens
+    .map((entry) => `${entry.token?.symbol ?? entry.token?.address ?? '?'}:${entry.amount.formatted}`)
+    .sort()
+    .join(',');
+
+  return `${balance.native.amount.formatted}|${tokens}`;
+}
+
 export async function getBalance(options: {
   address: string;
   chain: string;

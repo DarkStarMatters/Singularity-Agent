@@ -166,11 +166,11 @@ be separated eventually will be, by someone in a hurry, and the separation will 
     viem   web3.js  esplora   LCD
 ```
 
-20,453 lines of TypeScript in `src`, 1,019 tests, six runtime dependencies
+21,128 lines of TypeScript in `src`, 1,051 tests, six runtime dependencies
 (`viem`, `@solana/web3.js`, `@modelcontextprotocol/sdk`, `commander`, `zod`, `bs58`).
 Node ≥20.10.
 
-A further 1,904 lines live in `singularity-sdk/`, a separate package at its own version
+A further 1,738 lines live in `singularity-sdk/`, a separate package at its own version
 that builds applications on this one. It takes the agent as a peer dependency rather
 than bundling it — the chain registry is module state, and two copies in one tree would
 mean configuring a registry the operations are not reading from. It is described in §6.4.

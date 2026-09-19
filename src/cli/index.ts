@@ -8,6 +8,8 @@ import { adapterFor } from '../adapters/index.js';
 import { VERSION } from '../version.js';
 import * as render from './render.js';
 import { parseBudget, type ResponseBudget } from '../core/budget.js';
+import { pollLoop } from '../core/watch.js';
+import { balanceIdentity } from '../tools/operations.js';
 
 /**
  * Read `--budget` off the command line.
@@ -384,6 +386,295 @@ program
     await server.connect(new StdioServerTransport());
     process.stderr.write(`singularity-agent MCP server ${VERSION} ready on stdio\n`);
   });
+
+/**
+ * `watch` — poll something and report what changes.
+ *
+ * Four subcommands rather than one guessing command, because the thing being
+ * watched determines what a *change* even is, and that is not inferable from an
+ * argument. A block number is the whole answer for a tip and irrelevant for a
+ * balance; a transaction watch has a natural end and the others do not.
+ *
+ * What this is honest about, out loud and in `--help`: it polls. There is no
+ * push feed here. A value that changed and changed back between two ticks is a
+ * value this never saw, and a reorg is reported rather than smoothed over.
+ *
+ * `--json` emits one JSON object per change, newline-delimited, so the output
+ * pipes into `jq` or a log shipper without anyone parsing a table.
+ */
+const watchCommand = program
+  .command('watch')
+  .description('Poll something and report changes. Ctrl-C to stop.')
+  .addHelpText(
+    'after',
+    `
+  This polls — it is not a subscription. It reports the state at the times it
+  asked, so a value that changed and changed back between two ticks is not
+  reported. Public endpoints are rate-limited; the interval floor is 1s.
+
+  Examples:
+    singularity watch balance vitalik.eth -c ethereum
+    singularity watch tip -c solana -i 2
+    singularity watch tx 0xabc… -c ethereum --confirmations 12
+    singularity watch liveness -c ethereum -c base --json`,
+  );
+
+/**
+ * Wire a running watch to the terminal.
+ *
+ * Shared by all four subcommands because the lifecycle is identical and getting
+ * it subtly different per command is how one of them ends up not flushing on
+ * Ctrl-C. Returns the promise the action awaits, so commander does not exit
+ * while the watch is still running.
+ */
+function runWatch(subscription: {
+  stop(): void;
+  done: Promise<void>;
+}): Promise<void> {
+  let stopping = false;
+
+  const onSignal = (): void => {
+    // A second Ctrl-C should kill it outright. Someone pressing it twice has
+    // decided they are done waiting for a graceful stop.
+    if (stopping) process.exit(130);
+    stopping = true;
+    if (!program.opts().json) console.error(render.dim('\n  stopping…'));
+    subscription.stop();
+  };
+
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+
+  // `pollLoop` unrefs its timer, which is right for a library: a script that
+  // starts a watch and then finishes its work should be allowed to exit. It is
+  // wrong here, where the watch *is* the work — without a handle of its own the
+  // process has nothing refd keeping the event loop alive, and Node exits after
+  // the first tick with the command apparently having worked. Awaiting `done`
+  // does not help, because a pending promise is not a reason for Node to stay
+  // up. So the CLI holds the handle, which is the same thing the SDK's docs
+  // tell a long-running application to do.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+
+  return subscription.done.finally(() => {
+    clearInterval(keepAlive);
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+  });
+}
+
+/**
+ * One JSON object per line, or the pretty line. Never both.
+ *
+ * `--json` here is newline-delimited and compact, unlike everywhere else in
+ * this CLI, where it is indented for a human reading one result. A watch is a
+ * *stream*: its output goes to `jq`, to a log shipper, or to a file that gets
+ * tailed, and every one of those wants one record per line. Indented output
+ * would make each change span twenty lines and turn `grep` into a tool that
+ * finds a fragment it cannot attribute to anything.
+ */
+function emitChange(kind: string, at: Date, payload: unknown, pretty: () => string | string[]): void {
+  if (program.opts().json) {
+    console.log(toJson({ kind, at: at.toISOString(), ...(payload as object) }, 0));
+    return;
+  }
+
+  const rendered = pretty();
+  for (const line of Array.isArray(rendered) ? rendered : [rendered]) {
+    console.log(render.watchLine(at, line));
+  }
+}
+
+/**
+ * `--interval` in seconds, because nobody thinks about polling in
+ * milliseconds. The floor lives in `pollLoop` and is not restated here —
+ * a limit enforced in two places is a limit that disagrees with itself.
+ */
+function intervalMs(value: string | undefined, fallbackSeconds: number): number {
+  if (value === undefined) return fallbackSeconds * 1_000;
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new SingularityError(
+      'INVALID_INTERVAL',
+      `"${value}" is not a number of seconds.`,
+      'Pass a positive number, e.g. --interval 30. Intervals below 1 second are raised to 1.',
+    );
+  }
+  return Math.round(seconds * 1_000);
+}
+
+watchCommand
+  .command('balance')
+  .description('Poll an address and report when its balance moves.')
+  .argument('<address>', 'Address, ENS/SNS name, or configured alias.')
+  .requiredOption('-c, --chain <chain>', 'Chain id or alias.')
+  .option('-i, --interval <seconds>', 'Seconds between polls. Default 30.')
+  .option('--no-tokens', 'Watch only the native balance (much cheaper).')
+  .option('-n, --changes <count>', 'Stop after this many changes.')
+  .action(
+    async (
+      address: string,
+      options: { chain: string; interval?: string; tokens: boolean; changes?: string },
+    ) => {
+      const limit = options.changes ? Number(options.changes) : undefined;
+      let seen = 0;
+
+      if (!program.opts().json) {
+        console.log(render.heading(`Watching ${address} on ${options.chain}`));
+        console.log(render.dim('  Polling. Ctrl-C to stop.\n'));
+      }
+
+      const subscription = pollLoop(
+        () => ops.getBalance({ address, chain: options.chain, includeTokens: options.tokens }),
+        balanceIdentity,
+        ({ value, previous, at }) => {
+          seen += 1;
+          emitChange('balance', at, { chain: value.chain, address, balance: value }, () =>
+            render.watchBalanceChange(value, previous),
+          );
+        },
+        {
+          intervalMs: intervalMs(options.interval, 30),
+          until: () => limit !== undefined && seen >= limit,
+          onError: watchError,
+          label: 'singularity watch balance',
+        },
+      );
+
+      await runWatch(subscription);
+    },
+  );
+
+watchCommand
+  .command('tip')
+  .description("Poll a chain's head and report each new block.")
+  .requiredOption('-c, --chain <chain>', 'Chain id or alias.')
+  .option('-i, --interval <seconds>', 'Seconds between polls. Default 12.')
+  .option('-n, --changes <count>', 'Stop after this many blocks.')
+  .action(async (options: { chain: string; interval?: string; changes?: string }) => {
+    const limit = options.changes ? Number(options.changes) : undefined;
+    let seen = 0;
+
+    if (!program.opts().json) {
+      console.log(render.heading(`Watching ${options.chain}`));
+      console.log(render.dim('  Polling. Ctrl-C to stop.\n'));
+    }
+
+    const subscription = pollLoop(
+      () => ops.getBlock({ chain: options.chain }),
+      (block) => String(block.number),
+      ({ value, previous, at }) => {
+        seen += 1;
+        emitChange('tip', at, { chain: options.chain, height: value.number, hash: value.hash }, () =>
+          render.watchTipChange(value, previous),
+        );
+      },
+      {
+        intervalMs: intervalMs(options.interval, 12),
+        until: () => limit !== undefined && seen >= limit,
+        onError: watchError,
+        label: 'singularity watch tip',
+      },
+    );
+
+    await runWatch(subscription);
+  });
+
+watchCommand
+  .command('tx')
+  .description('Poll one transaction until it reaches a confirmation depth, then stop.')
+  .argument('<hash>', 'Transaction hash or signature.')
+  .option('-c, --chain <chain>', 'Chain id or alias. Searched across chains when omitted.')
+  .option('--confirmations <count>', 'Depth to wait for. Default 1.')
+  .option('-i, --interval <seconds>', 'Seconds between polls. Default 12.')
+  .action(
+    async (hash: string, options: { chain?: string; confirmations?: string; interval?: string }) => {
+      const target = options.confirmations ? Number(options.confirmations) : 1;
+      let settled = false;
+
+      if (!program.opts().json) {
+        console.log(render.heading(`Watching ${hash.slice(0, 18)}…`));
+        console.log(render.dim(`  Waiting for ${target} confirmation(s). Ctrl-C to stop.\n`));
+      }
+
+      const subscription = pollLoop(
+        async () => {
+          const result = await ops.getTransaction({ hash, ...(options.chain ? { chain: options.chain } : {}) });
+          const tx = result.found[0];
+          // Not mined yet is neither a change nor an error. It prints nothing
+          // and keeps waiting, because "not yet" and "never" are the same from
+          // here and only one is worth interrupting somebody for.
+          if (!tx) return undefined;
+          if ((tx.finality?.confirmations ?? 0) >= target) settled = true;
+          return tx;
+        },
+        (tx) => `${tx.status}|${tx.finality?.confirmations ?? 0}|${tx.finality?.kind ?? ''}`,
+        ({ value, at }) => {
+          emitChange('tx', at, { hash, chain: value.chain, status: value.status, finality: value.finality }, () =>
+            render.watchTxChange(value, target),
+          );
+        },
+        {
+          intervalMs: intervalMs(options.interval, 12),
+          until: () => settled,
+          onError: watchError,
+          label: 'singularity watch tx',
+        },
+      );
+
+      await runWatch(subscription);
+
+      // A transaction watch ends on its own, so it can report an outcome the
+      // open-ended watches cannot. Exit non-zero if it stopped without ever
+      // reaching the depth, so a script waiting on this can tell.
+      if (!settled) process.exitCode = 1;
+    },
+  );
+
+watchCommand
+  .command('liveness')
+  .description('Poll chain health and report every status change.')
+  .option('-c, --chain <chain...>', 'Chains to watch. Defaults to all of them.')
+  .option('-i, --interval <seconds>', 'Seconds between polls. Default 60.')
+  .action(async (options: { chain?: string[]; interval?: string }) => {
+    if (!program.opts().json) {
+      console.log(render.heading('Watching chain liveness'));
+      console.log(render.dim('  Polling. Ctrl-C to stop.\n'));
+    }
+
+    const subscription = pollLoop(
+      () => ops.checkLiveness(options.chain),
+      (all) => all.map((c) => `${c.chain}:${c.status}`).join(','),
+      ({ value, previous, at }) => {
+        emitChange('liveness', at, { chains: value }, () =>
+          render.watchLivenessChange(value, previous),
+        );
+      },
+      {
+        // Liveness is the slowest-moving of these and the most expensive to
+        // ask, since it probes every endpoint on every chain. A minute is
+        // already aggressive against public infrastructure.
+        intervalMs: intervalMs(options.interval, 60),
+        onError: watchError,
+        label: 'singularity watch liveness',
+      },
+    );
+
+    await runWatch(subscription);
+  });
+
+/**
+ * A failed tick, reported without stopping.
+ *
+ * Written to stderr so it does not corrupt a `--json` stream somebody is
+ * piping. The watch keeps going and backs off, because one unreachable minute
+ * is the normal condition of a public endpoint and is not a reason to abandon
+ * a watch somebody left running overnight.
+ */
+function watchError(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`  ${render.yellow('tick failed')}  ${truncate(message, 100)}`);
+}
 
 program
   .command('doctor')

@@ -29,8 +29,20 @@ export { applyBudget, itemBudget, parseBudget } from './core/budget.js';
 export type { TokenScan, TransactionHistory, HistoryOptions, ScanOptions, StateOptions } from './core/adapter.js';
 export type { ChainLiveness, ChainTip, EndpointProbe, LivenessStatus } from './core/liveness.js';
 export { describeAge, isDegraded } from './core/liveness.js';
+
+/**
+ * Polling. One loop, shared by `singularity watch` and `singularity-sdk`,
+ * because the dependency only runs one way and two loops would be two sets of
+ * backoff semantics. Read the note in `core/watch.ts` on what a poll can and
+ * cannot see before building on it.
+ */
+export { pollLoop } from './core/watch.js';
+export type { Change, Handler, PollOptions, Subscription, WatchOptions } from './core/watch.js';
 export type { Finality, FinalityKind } from './core/finality.js';
 export { finality } from './core/finality.js';
+
+/** The change-detection rule for a balance, shared by the CLI and the SDK. */
+export { balanceIdentity } from './tools/operations.js';
 
 /** Result shapes the operations return, for callers typing their own layers. */
 export type {
