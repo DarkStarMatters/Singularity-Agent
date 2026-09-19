@@ -652,6 +652,40 @@ export const evmAdapter: ChainAdapter = {
     }
   },
 
+  /**
+   * The finalized checkpoint, or null where the endpoint will not name one.
+   *
+   * Two ways this answers null, and both matter more than the happy path.
+   *
+   * An endpoint that has never implemented the tag throws — pre-Merge clients,
+   * several L2s, and most chains whose consensus has no finality gadget at all.
+   * That is a refusal to answer and travels as one.
+   *
+   * The second is the trap. Some endpoints alias `finalized` straight to the
+   * head, so the call succeeds and reports the tip. Taken at face value that
+   * says every block including the one just produced is irreversible, which is
+   * the single most dangerous answer this function could give — it converts "I
+   * do not implement this" into "settled" for every read on the chain. A
+   * genuine finality gadget always lags: Ethereum by two epochs, an OP-stack
+   * rollup by however far L1 is behind, BSC by a couple of blocks. Equality
+   * with the tip is therefore treated as the non-answer it is.
+   */
+  async finalizedHeight(chain) {
+    const client = clientFor(chain);
+
+    try {
+      const [finalized, latest] = await Promise.all([
+        client.getBlock({ blockTag: 'finalized' }),
+        client.getBlock({ blockTag: 'latest' }),
+      ]);
+
+      if (finalized.number === null || latest.number === null) return null;
+      return finalized.number >= latest.number ? null : Number(finalized.number);
+    } catch {
+      return null;
+    }
+  },
+
   async getBlock(chain, ref) {
     const client = clientFor(chain);
     try {

@@ -11,6 +11,7 @@ import type {
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
+import type { Finality } from '../core/finality.js';
 import type {
   BalanceResult,
   BurnClaim,
@@ -349,6 +350,9 @@ export function renderTx(tx: NormalizedTx): string {
   if (tx.fee) lines.push(`  ${bold('Fee')}       ${tx.fee.formatted} ${tx.fee.symbol}`);
   if (tx.blockNumber !== undefined) lines.push(`  ${bold('Block')}     ${tx.blockNumber}`);
   if (tx.timestamp) lines.push(`  ${bold('Time')}      ${tx.timestamp}`);
+  // Directly under the status it qualifies. "success" and "settled" are
+  // different claims and reading one as the other is the whole hazard.
+  lines.push(...renderFinality(tx.finality));
 
   lines.push(`\n  ${tx.summary}`);
 
@@ -435,6 +439,33 @@ function carriesMarkedText(tx: NormalizedTx): boolean {
   );
 }
 
+/**
+ * How settled a result is, coloured by whether it may be acted on.
+ *
+ * `final` is the only green, and `probabilistic` is deliberately not green
+ * however many confirmations it carries — the colour would be this tool making
+ * a risk decision that belongs to whoever is reading.
+ */
+export function renderFinality(
+  value: Finality | undefined,
+  indent = '  ',
+  labelWidth = 9,
+): string[] {
+  if (!value) return [];
+
+  const label: Record<Finality['kind'], string> = {
+    final: green('final'),
+    probabilistic: yellow(`probabilistic${value.confirmations !== undefined ? ` (${value.confirmations} conf)` : ''}`),
+    reversible: yellow('reversible'),
+    unknown: dim('unknown'),
+  };
+
+  return [
+    `${indent}${bold(pad('Settled', labelWidth))} ${label[value.kind]}`,
+    `${indent}  ${dim(value.note)}`,
+  ];
+}
+
 export function renderBlock(block: NormalizedBlock): string {
   const lines = [
     heading(`${block.chain} block ${block.number}`),
@@ -442,6 +473,7 @@ export function renderBlock(block: NormalizedBlock): string {
     `  ${bold('Txs')}         ${block.txCount}`,
   ];
   if (block.timestamp) lines.push(`  ${bold('Time')}        ${block.timestamp}`);
+  lines.push(...renderFinality(block.finality, '  ', 11));
   if (block.parentHash) lines.push(`  ${bold('Parent')}      ${dim(block.parentHash)}`);
 
   for (const [key, value] of Object.entries(block.raw ?? {})) {

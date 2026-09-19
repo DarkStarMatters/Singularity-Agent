@@ -23,6 +23,13 @@ import {
   type ChainLiveness,
   type ChainTip,
 } from '../core/liveness.js';
+import {
+  finality as finalityOf,
+  finalityFromCheckpoint,
+  finalityFromCommit,
+  finalityFromConfirmations,
+  type Finality,
+} from '../core/finality.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
@@ -505,7 +512,7 @@ export async function getTransaction(options: {
   if (options.chain) {
     const chain = getChain(options.chain);
     const tx = await adapterFor(chain).getTransaction(chain, hash);
-    return { found: [tx], searched: [chain.id] };
+    return { found: [await withFinality(chain, tx)], searched: [chain.id] };
   }
 
   const detection = detect(hash);
@@ -526,9 +533,11 @@ export async function getTransaction(options: {
     candidates.map((chain) => adapterFor(chain).getTransaction(chain, hash)),
   );
 
-  const found = settled
-    .filter((r): r is PromiseFulfilledResult<NormalizedTx> => r.status === 'fulfilled')
-    .map((r) => r.value);
+  const found = await Promise.all(
+    settled
+      .filter((r): r is PromiseFulfilledResult<NormalizedTx> => r.status === 'fulfilled')
+      .map((r) => withFinality(getChain(r.value.chain), r.value)),
+  );
 
   if (!found.length) {
     throw new SingularityError(
@@ -546,6 +555,28 @@ export async function getTransaction(options: {
         ? 'This hash exists on more than one chain. That is normal for deterministic deployments and replayed transactions — check the chain field on each.'
         : undefined,
   };
+}
+
+/**
+ * Attach what this transaction's inclusion is worth.
+ *
+ * A pending transaction is given the reversible answer directly rather than
+ * being sent through a height it does not have: "not in a block yet" is a
+ * stronger and more useful statement than "unknown", and they are easy to
+ * confuse once both are absent.
+ */
+async function withFinality(chain: ChainSpec, tx: NormalizedTx): Promise<NormalizedTx> {
+  if (tx.blockNumber === undefined) {
+    return {
+      ...tx,
+      finality: finalityOf.reversible(
+        'This transaction is not in a block yet, so there is nothing to be final about. It can still be replaced or dropped.',
+      ),
+    };
+  }
+
+  const resolved = await resolveFinality(chain, tx.blockNumber);
+  return resolved ? { ...tx, finality: resolved } : tx;
 }
 
 /** Chains searched when a tx hash arrives with no chain specified. */
@@ -566,7 +597,93 @@ export async function getBlock(options: {
   ref?: string | number;
 }): Promise<NormalizedBlock> {
   const chain = getChain(options.chain);
-  return adapterFor(chain).getBlock(chain, options.ref ?? 'latest');
+  const block = await adapterFor(chain).getBlock(chain, options.ref ?? 'latest');
+  return { ...block, finality: await resolveFinality(chain, block.number) };
+}
+
+/**
+ * The finalized height and the tip, cached briefly.
+ *
+ * Finality is the slowest-moving number on any chain here — two epochs on
+ * Ethereum is nearly thirteen minutes, and a Tendermint commit is instant but
+ * costs a request to learn. Asking for both on every read would add a round
+ * trip to operations that currently take one, to answer a question whose
+ * answer barely changes.
+ *
+ * The TTL is short enough that the tip stays honest for a confirmation count
+ * and long enough that a burst of reads pays for one lookup. It is deliberately
+ * not longer: a stale *finalized* height is harmless because it can only
+ * understate finality, but a stale *tip* overstates confirmations, and that
+ * error points the wrong way.
+ */
+const FINALITY_TTL_MS = 8_000;
+
+interface FinalityHeads {
+  tip: number | null;
+  finalized: number | null;
+  readAt: number;
+}
+
+const finalityHeads = new Map<string, FinalityHeads>();
+
+async function headsFor(chain: ChainSpec): Promise<FinalityHeads> {
+  const cached = finalityHeads.get(chain.id);
+  if (cached && Date.now() - cached.readAt < FINALITY_TTL_MS) return cached;
+
+  const adapter = adapterFor(chain);
+
+  // Both are best-effort. A finality annotation must never be the reason a
+  // balance call fails — the worst it may do is decline to make a claim.
+  const [tip, finalized] = await Promise.all([
+    tipReader(chain)(chain)
+      .then((head) => head.height)
+      .catch(() => null),
+    adapter.finalizedHeight?.(chain).catch(() => null) ?? Promise.resolve(null),
+  ]);
+
+  const heads: FinalityHeads = { tip, finalized, readAt: Date.now() };
+  finalityHeads.set(chain.id, heads);
+  return heads;
+}
+
+/** Drops the cached heads. Exists so tests are not at the mercy of the clock. */
+export function resetFinalityCache(): void {
+  finalityHeads.clear();
+}
+
+/**
+ * What a result read at `height` is actually worth on this chain.
+ *
+ * Dispatches on family because the four do not agree on what settlement is —
+ * see `src/core/finality.ts`. UTXO never reaches `final` and Cosmos always
+ * does; the two checkpoint families are the only ones with a gap to measure.
+ */
+export async function resolveFinality(
+  chain: ChainSpec,
+  height: number | undefined,
+): Promise<Finality | undefined> {
+  if (height === undefined || !Number.isFinite(height)) return undefined;
+
+  if (chain.family === 'cosmos') return finalityFromCommit(height);
+
+  const heads = await headsFor(chain);
+
+  if (chain.family === 'utxo') {
+    if (heads.tip === null) {
+      return finalityOf.unknown(
+        `The chain tip could not be read, so the number of confirmations on block ${height} is unknown.`,
+        { height },
+      );
+    }
+    return finalityFromConfirmations(height, heads.tip);
+  }
+
+  return finalityFromCheckpoint({
+    family: chain.family,
+    height,
+    finalizedHeight: heads.finalized,
+    ...(heads.tip !== null ? { tipHeight: heads.tip } : {}),
+  });
 }
 
 export async function getFees(chainRef: string): Promise<FeeEstimate> {

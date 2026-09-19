@@ -641,6 +641,22 @@ export const solanaAdapter: ChainAdapter = {
     await withConnection(chain, 'getSlot', (connection) => connection.getSlot());
   },
 
+  /**
+   * The finalized (rooted) slot.
+   *
+   * This adapter reads at `confirmed` everywhere else, which is a supermajority
+   * vote and the right latency trade — but it is not a root, and a confirmed
+   * slot can still be abandoned. Nothing in a returned balance said so, which
+   * is the gap this closes rather than a behaviour change: reads stay at
+   * `confirmed` and now admit what that means.
+   */
+  async finalizedHeight(chain) {
+    return withConnection(chain, 'getSlot', async (connection) => {
+      const slot = await connection.getSlot('finalized').catch(() => null);
+      return typeof slot === 'number' ? slot : null;
+    });
+  },
+
   async chainTip(chain) {
     return withConnection(chain, 'getSlot', async (connection) => {
       const slot = await connection.getSlot();

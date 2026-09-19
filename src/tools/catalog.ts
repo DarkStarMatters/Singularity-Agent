@@ -154,7 +154,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'transaction',
     title: 'Look up a transaction',
     description:
-      'Fetch and normalize a transaction, with EVM calldata decoded where the selector is recognized. If no chain is given, searches the chains the hash format allows and reports every chain it was found on.',
+      'Fetch and normalize a transaction, with EVM calldata decoded where the selector is recognized. If no chain is given, searches the chains the hash format allows and reports every chain it was found on. Read `finality` alongside `status`, because they answer different questions: `status` says the chain executed the transaction and it did not revert, while `finality` says whether the block holding it can still be discarded. `final` is the only kind that licenses an irreversible decision. `reversible` means it sits at or near the head and a reorganization would erase it. `probabilistic` is proof-of-work settlement — it carries a confirmation count and never becomes `final` at any depth, because the chain offers no point past which reversal is disallowed, only one past which it is expensive; how many confirmations are enough is the caller’s decision. `unknown` means the endpoint would not say, which is not evidence that it is settled.',
     shape: {
       hash: z.string().describe('Transaction hash, txid, or Solana signature.'),
       chain: z.string().optional().describe('Chain id, to skip the cross-chain search.'),
@@ -189,7 +189,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'block',
     title: 'Get a block',
     description:
-      'Fetch a block by height, hash, or "latest". On Solana this addresses a slot; on Cosmos, a block height.',
+      'Fetch a block by height, hash, or "latest". On Solana this addresses a slot; on Cosmos, a block height. The `finality` field says whether the block can still be reorganized away: `final` is settled under the chain’s own consensus rules, `reversible` is not, `probabilistic` is proof-of-work depth and never reaches `final`, and `unknown` means the endpoint declined to say rather than that the block is settled.',
     shape: {
       chain: z.string().describe('Chain id or alias.'),
       ref: z

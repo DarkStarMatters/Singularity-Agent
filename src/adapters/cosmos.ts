@@ -662,6 +662,27 @@ export const cosmosAdapter: ChainAdapter = {
     } satisfies NormalizedTx;
   },
 
+  /**
+   * Every committed block, which is every block there is.
+   *
+   * Tendermint finalizes on commit: more than two thirds of voting power has
+   * already signed the block before it exists, and undoing one means that
+   * majority publishing evidence of its own double-signing and being slashed
+   * for it. So the finalized height is the tip, and this is the only family
+   * here where that answer is honest rather than the aliasing bug the EVM
+   * adapter guards against.
+   */
+  async finalizedHeight(chain) {
+    const response = await fetchWithFailover<BlockResponse>(
+      chain,
+      '/cosmos/base/tendermint/v1beta1/blocks/latest',
+      { nullOn404: true },
+    );
+
+    const height = Number(response?.block?.header?.height);
+    return Number.isFinite(height) ? height : null;
+  },
+
   async getBlock(chain, ref) {
     const path =
       ref === 'latest' || ref === ''

@@ -186,6 +186,21 @@ export interface ChainAdapter {
    */
   chainTip?(chain: ChainSpec): Promise<ChainTip>;
 
+  /**
+   * The height this chain currently considers irreversible.
+   *
+   * `null` means the chain or the endpoint declines to say, and that is a
+   * distinct answer from a low number — it produces `unknown` finality rather
+   * than `reversible`. Families that finalize on commit return the tip, because
+   * for them every committed block is the answer.
+   *
+   * Absent on an adapter whose family has no such point at all. Proof-of-work
+   * chains never finalize, they only get expensive to reverse, and an
+   * implementation here returning the tip would turn that into a guarantee the
+   * chain does not make.
+   */
+  finalizedHeight?(chain: ChainSpec): Promise<number | null>;
+
   /** Name service lookup (ENS, SNS, …). Returns null when unresolvable. */
   resolveName?(chain: ChainSpec, name: string): Promise<string | null>;
   /** Reverse lookup: address -> primary name. */

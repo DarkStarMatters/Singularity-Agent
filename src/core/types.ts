@@ -8,6 +8,7 @@
 
 import type { Impersonation } from './impersonation.js';
 import type { Completeness, UntrustedText } from './envelope.js';
+import type { Finality } from './finality.js';
 
 export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos';
 
@@ -158,6 +159,16 @@ export interface NormalizedTx {
   chain: string;
   hash: string;
   status: 'success' | 'failed' | 'pending' | 'unknown';
+  /**
+   * What this transaction's inclusion is actually worth.
+   *
+   * `status: 'success'` says the chain executed it and it did not revert. It
+   * says nothing about whether the block holding it can still be discarded, and
+   * the two were indistinguishable in this type until now — a successful
+   * transaction one block deep read exactly like one buried under a finalized
+   * checkpoint.
+   */
+  finality?: Finality;
   blockNumber?: number;
   timestamp?: string;
   from?: string;
@@ -309,6 +320,13 @@ export interface DecodedEvent {
 export interface NormalizedBlock {
   chain: string;
   number: number;
+  /**
+   * Whether this block can still be reorganized away.
+   *
+   * Absent only where it could not be worked out at all; `unknown` is the
+   * answer for a chain that declines to say, and it is a different answer.
+   */
+  finality?: Finality;
   hash: string;
   timestamp?: string;
   txCount: number;
