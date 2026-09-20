@@ -207,11 +207,11 @@ export function createPay(config: PayConfig): PayApi {
     },
 
     qr(url, options = {}) {
+      // No level pinned: the encoder takes the strongest that fits. A payment
+      // link's length depends on the domain, the mint and the memo, none of
+      // which this knows, and pinning one is how `/pay` came to fail on a
+      // 261-byte token payment against a 216-byte ceiling.
       const matrix = qrMatrix(url, {
-        // Level M: a payment code is read off a screen at arm's length, not a
-        // scuffed printed label, so ~15% recovery is plenty and the smaller
-        // module count scans better on a phone.
-        level: 'M',
         ...(options.margin !== undefined ? { margin: options.margin } : {}),
       });
       const scale = options.scale ?? 8;

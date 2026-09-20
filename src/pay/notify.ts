@@ -119,7 +119,7 @@ export async function notifyPayment(
 
   try {
     // The same matrix the terminal renders. One intent, one URL, one code.
-    const png = qrPng(qrMatrix(created.url, { level: 'M' }), { scale: 8 });
+    const png = qrPng(qrMatrix(created.url), { scale: 8 });
 
     const message = await new TelegramApi(token).sendPhoto({
       chatId,

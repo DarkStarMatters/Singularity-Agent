@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ecCodewords, formatBits, qrMatrix } from '../src/core/qr.js';
+import { ecCodewords, formatBits, qrMatrix, strongestLevel } from '../src/core/qr.js';
 import { qrPng, qrSvg, qrUnicode, qrDataUrl } from '../src/core/qr-render.js';
 
 /**
@@ -173,6 +173,68 @@ describe('the payload it exists for', () => {
 
   it('encodes non-ASCII as UTF-8 bytes rather than failing', () => {
     expect(() => qrMatrix('Pay 25 € to café')).not.toThrow();
+  });
+});
+
+describe('choosing the error-correction level', () => {
+  /**
+   * The regression this exists for.
+   *
+   * `/pay` shipped with `M` pinned and failed on the first token payment
+   * anybody tried — 261 bytes against a 216-byte ceiling, for content that
+   * encodes fine one level down. The `auto` chooser had already been written;
+   * nothing was using it. So the default is now `auto`, and this is the shape
+   * that broke.
+   */
+  const tokenPayment = (() => {
+    const url = new URL('https://singularity-agent.cicada71.net/api/pay');
+    url.searchParams.set('t', 'BTaPkeDYRuXbL6hEDsWPAWXUfZvjEoKoV3mCTQ91QFeH');
+    url.searchParams.set('a', '25');
+    url.searchParams.set('m', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+    url.searchParams.set('r', '695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB');
+    url.searchParams.set('o', 'sngl-pay:-1001234567890');
+    return `solana:${encodeURIComponent(url.toString())}`;
+  })();
+
+  it('encodes a full token payment link, which M alone cannot', () => {
+    expect(new TextEncoder().encode(tokenPayment).length).toBeGreaterThan(216);
+
+    // Pinned to M this is the live failure, verbatim.
+    expect(() => qrMatrix(tokenPayment, { level: 'M' })).toThrow(/does not fit/);
+
+    // By default it simply works.
+    expect(() => qrMatrix(tokenPayment)).not.toThrow();
+  });
+
+  it('defaults to auto rather than any fixed level', () => {
+    // A fixed default is a footgun: it fails on content the encoder can
+    // represent perfectly well one level down.
+    const short = 'solana:https://pay.example.com/i/abc';
+    expect(qrMatrix(short)).toEqual(qrMatrix(short, { level: 'auto' }));
+  });
+
+  it('takes the strongest level that fits, not merely a working one', () => {
+    // Short content should get real protection, not the weakest level that
+    // happens to encode.
+    expect(strongestLevel(5)).toBe('H');
+    expect(strongestLevel(260)).toBe('L');
+  });
+
+  it('still honours a level somebody pinned on purpose', () => {
+    const short = 'hello';
+    expect(qrMatrix(short, { level: 'L' })).not.toEqual(qrMatrix(short, { level: 'H' }));
+  });
+
+  it('degrades only as far as it must', () => {
+    // Monotonic: as content grows the chosen level never gets stronger.
+    const order = { H: 3, Q: 2, M: 1, L: 0 } as const;
+    let previous = 4;
+
+    for (const size of [5, 20, 50, 100, 150, 200, 260]) {
+      const rank = order[strongestLevel(size)];
+      expect(rank, `${size} bytes`).toBeLessThanOrEqual(previous);
+      previous = rank;
+    }
   });
 });
 

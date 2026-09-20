@@ -345,7 +345,7 @@ const pay: Command = {
     });
 
     return {
-      photo: qrPng(qrMatrix(created.url, { level: 'M' }), { scale: 8 }),
+      photo: qrPng(qrMatrix(created.url), { scale: 8 }),
       filename: `payment-${created.intent.id.slice(0, 8)}.png`,
       caption: payCaption(created),
     };
@@ -434,7 +434,7 @@ const burn: Command = {
       ].join('\n');
 
       return {
-        photo: qrPng(qrMatrix(link, { level: 'M' }), { scale: 8 }),
+        photo: qrPng(qrMatrix(link), { scale: 8 }),
         filename: `burn-${amount}.png`,
         caption,
       };
@@ -547,7 +547,7 @@ A <code>solana:</code> link from /burn is the usual one — paste it here and sc
     // Level M at eight pixels a module: large enough to scan off a phone
     // screen held at arm's length, small enough that Telegram does not
     // recompress it into mush.
-    const matrix = qrMatrix(text, { level: 'M' });
+    const matrix = qrMatrix(text);
 
     return {
       photo: qrPng(matrix, { scale: 8 }),

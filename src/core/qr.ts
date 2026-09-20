@@ -19,10 +19,16 @@
  * published test vectors in `test/qr.test.ts` rather than by eye.
  *
  * Scope is deliberate: byte mode, versions 1–10, all four error-correction
- * levels. Version 10 at level M holds 274 bytes and a Solana Pay intent link is
- * under a hundred, so the ceiling is far above the use case — and content that
- * does not fit raises an error naming the limit rather than silently truncating
- * into a QR that decodes to half a URL.
+ * levels. Version 10 holds 274 bytes at level L, which is comfortably above a
+ * Solana Pay link carrying two base58 addresses and a reference — and content
+ * that does not fit raises an error naming the limit rather than silently
+ * truncating into a QR that decodes to half a URL.
+ *
+ * The level is chosen automatically by default, and that is not a convenience.
+ * `/pay` shipped with `M` pinned and failed on the first token payment anybody
+ * tried: 261 bytes against a 216-byte ceiling, for content that encodes fine
+ * one level down. Picking the strongest level that *fits* is the only default
+ * that cannot fail on content the encoder can represent.
  */
 
 import { SingularityError } from './errors.js';
@@ -30,10 +36,9 @@ import { SingularityError } from './errors.js';
 /**
  * How much of the code can be lost and still decode.
  *
- * `M` is the default because a payment QR is read off a screen at arm's length
- * rather than off a printed label that may be scuffed: roughly 15% recovery is
- * plenty, and the alternatives cost modules, which cost physical size, which
- * costs scan reliability on a small screen.
+ * `L` recovers about 7%, `M` 15%, `Q` 25%, `H` 30% — and every step costs
+ * modules, which cost physical size, which costs scan reliability on a small
+ * screen. Nothing here picks one by default; see {@link EcChoice}.
  */
 export type EcLevel = 'L' | 'M' | 'Q' | 'H';
 
@@ -574,12 +579,18 @@ function applyVersion(grid: boolean[][], version: number): void {
 
 export interface QrOptions {
   /**
-   * Error correction, or `auto` to take the strongest that fits.
+   * Error correction. Defaults to `auto`: the strongest level that fits.
    *
-   * Default `M`. Callers encoding something whose length they do not control —
-   * a payment link carrying two base58 addresses, say — should pass `auto`
-   * rather than guess, because the difference between fitting and not is a
-   * handful of bytes of domain name.
+   * `auto` is the default because a fixed one is a footgun, and this is not
+   * hypothetical — `/pay` shipped pinned to `M` and failed on the first token
+   * payment somebody tried, at 261 bytes against a 216-byte ceiling, when the
+   * same content encodes fine at `L` with room to spare. A caller should not
+   * have to know that the difference between fitting and not is a handful of
+   * bytes of domain name.
+   *
+   * Pin a level only when the recovery strength matters more than whether it
+   * encodes at all — a code going to print, say, where `H` is worth a bigger
+   * symbol.
    */
   level?: EcChoice;
   /**
@@ -608,7 +619,10 @@ export function qrMatrix(text: string, options: QrOptions = {}): QrMatrix {
   }
 
   const bytes = new TextEncoder().encode(text);
-  const level = options.level === 'auto' ? strongestLevel(bytes.length) : (options.level ?? 'M');
+  const level =
+    options.level === undefined || options.level === 'auto'
+      ? strongestLevel(bytes.length)
+      : options.level;
   const version = chooseVersion(bytes.length, level);
   const size = version * 4 + 17;
 
