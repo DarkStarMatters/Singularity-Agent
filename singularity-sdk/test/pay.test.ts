@@ -170,16 +170,12 @@ describe('what the endpoint refuses', () => {
 });
 
 describe('the link a customer receives', () => {
-  it('carries the payment parameters, which the allowlist is what makes safe', async () => {
-    // This changed during deployment and the reason is worth keeping. The link
-    // originally carried an opaque id, so nothing in it could be tampered
-    // with — but resolving an id needs storage, and the endpoint runs
-    // serverless, where there is none. Parameters are safe instead because the
-    // endpoint refuses any recipient outside SINGULARITY_PAY_RECIPIENTS: a
-    // stranger editing the URL can only pay the merchant, and the payer sees
-    // the amount on their own approval screen.
-    process.env.SINGULARITY_PAY_RECIPIENTS = 'Merchant11111111111111111111111111111111111';
-
+  it('is a Solana Pay transfer request, which is the form a wallet accepts', async () => {
+    // This was a transaction request — a link to /api/pay — and Phantom
+    // rejected it outright. A payment is a transfer, so the wallet can build it
+    // itself; the endpoint form exists for what a wallet cannot construct, like
+    // a burn. Every piece of the old link was correct and the whole shape was
+    // wrong, which is only visible from the wallet's side.
     const { pay } = payWith();
     const created = await pay.createIntent({
       to: 'Merchant11111111111111111111111111111111111',
@@ -187,16 +183,25 @@ describe('the link a customer receives', () => {
       orderId: '7',
     });
 
-    const inner = decodeURIComponent(created.url.replace(/^solana:/, ''));
-    const query = new URL(inner).searchParams;
+    expect(created.url.startsWith('solana:Merchant11111111111111111111111111111111111?')).toBe(true);
 
-    expect(created.url.startsWith('solana:')).toBe(true);
-    expect(query.get('t')).toBe('Merchant11111111111111111111111111111111111');
-    expect(query.get('a')).toBe('25');
+    const query = new URLSearchParams(created.url.slice(created.url.indexOf('?') + 1));
+    expect(query.get('amount')).toBe('25');
 
-    // The reference travels too: it is what lets the merchant match this
-    // payment to the order without asking the payer to quote anything.
-    expect(query.get('r')).toBe(created.intent.reference);
+    // The reference travels as a spec parameter, and the wallet attaches it to
+    // the transfer instruction as a read-only non-signer key — the account
+    // settlement is found by.
+    expect(query.get('reference')).toBe(created.intent.reference);
+  });
+
+  it('needs no endpoint to be reachable', async () => {
+    // The property that matters most: a customer can pay while the deployment
+    // is down, because nothing fetches anything.
+    const { pay } = payWith();
+    const created = await pay.createIntent({ to: 'Merchant111', amount: '1' });
+
+    expect(created.url).not.toContain('http');
+    expect(created.url).not.toContain(ENDPOINT);
   });
 
   it('stays inside a scannable QR even with a token mint and a reference', async () => {

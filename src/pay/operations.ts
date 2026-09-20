@@ -29,7 +29,7 @@ import {
   type SettlementLevel,
 } from './types.js';
 import type { UnsignedTx } from '../core/types.js';
-import { paymentLink } from './payment-request.js';
+import { transferLink } from './payment-request.js';
 
 /** Solana only, and said out loud rather than assumed. */
 function solanaChain(chainRef: string | undefined): ReturnType<typeof getChain> {
@@ -79,27 +79,24 @@ export async function createIntent(
   const intent: StoredIntent = { ...prepared, ...(risk ? { risk } : {}) };
   await store.put(intent);
 
-  // The link carries the payment's own parameters rather than an opaque id.
+  // A transfer request, not a transaction request. Phantom rejected the latter
+  // and it was the wrong half of the spec regardless: a payment is a transfer,
+  // so the wallet can build it, and nothing here has to be reachable for a
+  // customer to pay. See `transferLink` for the full reasoning and the one
+  // thing the endpoint form is still better at.
   //
-  // That is a change from the first design, and the reason is deployment
-  // rather than taste: the endpoint runs serverless, where there is no
-  // filesystem to write to and no state between invocations, so an id has
-  // nothing to be resolved *against*. Parameters are safe here because the
-  // endpoint refuses any recipient outside its allowlist — which is the same
-  // guard `allowedMints()` puts on burns, and it removes the case that made
-  // parameters dangerous: a stranger choosing where the money goes.
-  //
-  // The intent is still stored. It holds the merchant's side — the order
-  // binding, the expiry, the mint risk read at creation, and the ledger that
-  // makes fulfilment happen exactly once — on the side where durable state
-  // actually exists.
+  // `endpoint` is now unused by this path and kept in the signature because a
+  // deployment that wants fetch-time refusal can still point at `/api/pay`.
+  void endpoint;
+
   return {
     intent,
-    url: paymentLink(endpoint, {
+    url: transferLink({
       to: intent.to,
       amount: intent.amount,
       ...(intent.mint ? { mint: intent.mint } : {}),
       reference: intent.reference,
+      label: intent.label,
       ...(intent.memo ? { memo: intent.memo } : {}),
     }),
     ...(risk ? { risk } : {}),

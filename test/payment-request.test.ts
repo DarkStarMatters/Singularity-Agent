@@ -3,6 +3,7 @@ import {
   describePaymentRequest,
   parsePaymentRequest,
   paymentLink,
+  transferLink,
 } from '../src/pay/payment-request.js';
 
 /**
@@ -190,5 +191,75 @@ describe('what the wallet shows beforehand', () => {
   it('lets a deployment override the icon', () => {
     process.env.SINGULARITY_PAY_ICON = 'https://example.com/me.png';
     expect(describePaymentRequest({ to: TO, amount: '25' }).icon).toBe('https://example.com/me.png');
+  });
+});
+
+describe('the transfer request a wallet actually accepts', () => {
+  /**
+   * Payments were built on the wrong half of Solana Pay.
+   *
+   * A transaction request is a link to an endpoint that builds the transaction,
+   * and it exists for what a wallet cannot construct from a URL — a burn. A
+   * payment is a transfer, so the wallet can build it, and the transfer-request
+   * form is what every wallet implements. Phantom rejected the endpoint form
+   * outright; this is what it takes.
+   */
+  it('puts the recipient straight after the scheme, unencoded', () => {
+    const link = transferLink({ to: TO, amount: '0.01' });
+    expect(link.startsWith(`solana:${TO}?`)).toBe(true);
+
+    // Base58 has no characters needing escaping, and encoding it would stop a
+    // wallet recognising this as a transfer request at all.
+    expect(link).not.toContain('%3A%2F%2F');
+  });
+
+  it('uses the spec parameter names, not our short internal ones', () => {
+    const link = transferLink({ to: TO, amount: '25', mint: MINT, reference: REF });
+    const query = new URLSearchParams(link.slice(link.indexOf('?') + 1));
+
+    expect(query.get('amount')).toBe('25');
+    expect(query.get('spl-token')).toBe(MINT);
+    expect(query.get('reference')).toBe(REF);
+
+    // The endpoint form's abbreviations would be silently ignored by a wallet.
+    expect(query.get('t')).toBeNull();
+    expect(query.get('m')).toBeNull();
+  });
+
+  it('carries the reference, which is what settlement is found by', () => {
+    // The spec requires the wallet to attach each reference as a read-only,
+    // non-signer key on the transfer instruction — the same account
+    // findPayment searches by.
+    const link = transferLink({ to: TO, amount: '1', reference: REF });
+    expect(link).toContain(`reference=${REF}`);
+  });
+
+  it('percent-encodes a label rather than using plus for spaces', () => {
+    // URLSearchParams would write `Order+7`, which is right for a form and
+    // wrong here — a wallet shows the label to a human.
+    const link = transferLink({ to: TO, amount: '1', label: 'Order 7' });
+    expect(link).toContain('label=Order%207');
+    expect(link).not.toContain('Order+7');
+  });
+
+  it('omits what it was not given', () => {
+    const link = transferLink({ to: TO, amount: '1' });
+    expect(link).toBe(`solana:${TO}?amount=1`);
+  });
+
+  it('is shorter than the endpoint form, which is why it scans better', () => {
+    const params = { to: TO, amount: '25', mint: MINT, reference: REF };
+    const transfer = transferLink(params);
+    const endpoint = paymentLink('https://singularity-agent.cicada71.net/api/pay', params);
+
+    expect(new TextEncoder().encode(transfer).length).toBeLessThan(
+      new TextEncoder().encode(endpoint).length,
+    );
+  });
+
+  it('needs no server to be reachable', () => {
+    // The property that matters most: this link works when the deployment is
+    // down, because the wallet builds the transaction itself.
+    expect(transferLink({ to: TO, amount: '1' })).not.toContain('http');
   });
 });

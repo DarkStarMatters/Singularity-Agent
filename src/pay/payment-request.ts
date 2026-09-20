@@ -36,6 +36,8 @@ import { allowedRecipients } from './file-store.js';
 const MAX_MEMO_LENGTH = 200;
 
 export interface PaymentRequestParams {
+  /** What the wallet shows as the payee, on a transfer request. */
+  label?: string;
   /** Who gets paid. Must be one of {@link allowedRecipients}. */
   to: string;
   /** Whole tokens as a decimal string, never base units. */
@@ -123,11 +125,60 @@ export function parsePaymentRequest(
 }
 
 /**
- * The `solana:` URL a wallet opens.
+ * The `solana:` URL a wallet opens — a Solana Pay **transfer request**.
  *
- * The inner https URL is percent-encoded whole, because it carries its own
- * query string and a wallet splitting on the first `?` would otherwise lose
- * everything after it — the same reason the burn link does it.
+ * This replaced a transaction request pointing at `/api/pay`, and the reason is
+ * that a payment never needed one. Solana Pay has two halves:
+ *
+ * - A **transaction request** is a link to an endpoint that builds the
+ *   transaction. It exists for things a wallet cannot construct from a URL —
+ *   a burn, a swap, anything multi-instruction. `/burn` needs this.
+ * - A **transfer request** names the recipient, the amount and the token
+ *   directly, and the wallet builds the transfer itself.
+ *
+ * A payment is a transfer, so the wallet can build it, and every reason to
+ * prefer this follows from that: no endpoint has to be reachable, no server has
+ * to be up, the link is far shorter — which matters when it has to fit in a
+ * scannable QR — and it is the half of the spec every wallet implements.
+ * Phantom's own payment documentation uses it.
+ *
+ * Settlement is unaffected, which is the part that could have gone wrong. The
+ * spec requires the wallet to attach each `reference` as a read-only,
+ * non-signer key on the transfer instruction — exactly the account
+ * `findPayment` searches by, and exactly what the endpoint used to attach by
+ * hand.
+ *
+ * The trade-off worth naming: a transfer request is self-contained, so it
+ * cannot be expired or revoked after it leaves. The stored intent still holds
+ * the merchant's own expiry and settle-once ledger, but a link that has escaped
+ * will keep working until the recipient stops accepting it. A transaction
+ * request can refuse at fetch time, which is the one thing it is still better
+ * at.
+ */
+export function transferLink(params: PaymentRequestParams): string {
+  // Built by hand rather than with URLSearchParams, which encodes a space as
+  // `+`. That is correct for form submission and wrong here: the spec asks for
+  // percent-encoded UTF-8, and a label reading "Order+7" in a wallet is the
+  // kind of thing nobody notices until a customer does.
+  const query: string[] = [`amount=${params.amount}`];
+
+  if (params.mint) query.push(`spl-token=${params.mint}`);
+  if (params.reference) query.push(`reference=${params.reference}`);
+  if (params.label) query.push(`label=${encodeURIComponent(params.label)}`);
+  if (params.memo) query.push(`memo=${encodeURIComponent(params.memo)}`);
+
+  // The recipient follows the scheme directly, unencoded — it is base58, which
+  // has no characters needing it.
+  return `solana:${params.to}?${query.join('&')}`;
+}
+
+/**
+ * The transaction-request form, pointing at a deployed `/api/pay`.
+ *
+ * Kept because it can do the one thing a transfer request cannot: refuse. The
+ * endpoint sees every fetch, so it can decline an expired or already-paid
+ * request before a wallet ever shows an approval screen. Costs a reachable
+ * server and a much longer link.
  */
 export function paymentLink(endpoint: string, params: PaymentRequestParams): string {
   const url = new URL(endpoint);
