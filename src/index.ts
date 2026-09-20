@@ -130,6 +130,17 @@ export {
 } from './art/receipt.js';
 export type { ReceiptFacts, ReceiptMetadataOptions } from './art/receipt.js';
 
+/**
+ * The unsigned transaction that mints a receipt.
+ *
+ * Built, never signed — except by a throwaway mint key that Solana requires for
+ * a new account's own creation, which `buildReceiptMint` hands back rather than
+ * using. The metadata it writes is immutable, and the supply is capped at one
+ * by an authority nobody holds.
+ */
+export { buildReceiptMint, metadataAddress, masterEditionAddress, associatedTokenAddress } from './art/mint.js';
+export type { ReceiptMint, ReceiptMintParams } from './art/mint.js';
+
 /** The change-detection rule for a balance, shared by the CLI and the SDK. */
 export { balanceIdentity } from './tools/operations.js';
 
