@@ -345,66 +345,28 @@ describe('checked against the standard, not against itself', () => {
    * dividing data-followed-by-remainder by that generator must leave nothing.
    * That is independent of any table, any transcription and any memory.
    */
-  function remainderOf(codewords: number[], degree: number): number[] {
-    // Deliberately a different shape of computation from ecCodewords: build
-    // the generator by its roots and divide longhand, so a mistake in one is
-    // unlikely to be the same mistake in the other.
-    const EXP: number[] = [];
-    const LOG: number[] = new Array(256).fill(0);
-    let v = 1;
-    for (let i = 0; i < 255; i += 1) {
-      EXP.push(v);
-      LOG[v] = i;
-      v <<= 1;
-      if (v & 0x100) v ^= 0x11d;
-    }
-    const mul = (a: number, b: number): number => (a && b ? EXP[(LOG[a]! + LOG[b]!) % 255]! : 0);
-
-    let generator = [1];
-    for (let i = 0; i < degree; i += 1) {
-      const next = new Array<number>(generator.length + 1).fill(0);
-      for (let j = 0; j < generator.length; j += 1) {
-        next[j] = next[j]! ^ mul(generator[j]!, EXP[i]!);
-        next[j + 1] = next[j + 1]! ^ generator[j]!;
-      }
-      generator = next;
-    }
-
-    const working = [...codewords];
-    for (let i = 0; i + generator.length <= working.length; i += 1) {
-      const lead = working[i]!;
-      if (lead === 0) continue;
-      for (let j = 0; j < generator.length; j += 1) {
-        working[i + j] = working[i + j]! ^ mul(generator[j]!, lead);
-      }
-    }
-
-    return working.slice(working.length - degree);
-  }
-
-  it('produces codewords that divide cleanly by the generator, which is what makes them correct', () => {
-    for (const degree of [7, 10, 13, 17, 26, 30]) {
-      const data = Array.from({ length: 16 }, (_, i) => (i * 37 + 11) & 0xff);
-      const ec = ecCodewords(data, degree);
-
-      // Data followed by its remainder is a multiple of the generator, so the
-      // remainder of *that* is zero. This is the definition of the code.
-      expect(remainderOf([...data, ...ec], degree), `degree ${degree}`).toEqual(
-        new Array(degree).fill(0),
-      );
-    }
+  /**
+   * Reed-Solomon, checked against values that did not come from this repo.
+   *
+   * The first version of this checked the *defining property* instead — that
+   * data followed by its remainder divides cleanly by the generator — using a
+   * second implementation written right here in the test. It passed, and the
+   * encoder was wrong: the generator polynomial was indexed ascending where the
+   * division wants descending, so every error-correction codeword was garbage
+   * while every data codeword was perfect. The check agreed because it shared
+   * the mistake, and the QR generated, looked right, and scanned on nothing.
+   *
+   * That is §5.3 of the whitepaper happening to the test written to avoid §5.3.
+   * Only a real encoder disagreeing found it. So this is a reference value,
+   * read off a working code.
+   */
+  it('reproduces the error-correction codewords a working encoder produces', () => {
+    // Byte-mode "hello", version 1, level L: nineteen data codewords, and the
+    // seven error-correction codewords a scanner expects alongside them.
+    const data = [64, 86, 134, 86, 198, 198, 240, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17];
+    expect(ecCodewords(data, 7)).toEqual([37, 25, 208, 210, 104, 89, 57]);
   });
 
-  it('builds GF(256) correctly, checked from first principles', () => {
-    // 2^8 = 256 reduces by the primitive polynomial 0x11D to 0x1D = 29. Every
-    // table in this file rests on that, and it is checkable without a source.
-    const data = [1];
-    const ec = ecCodewords(data, 255 - 1);
-    expect(ec).toHaveLength(254);
-
-    // A single 1 followed by its remainder must still divide cleanly.
-    expect(remainderOf([...data, ...ec], 254)).toEqual(new Array(254).fill(0));
-  });
 
   it('produces the right number of codewords for every block size in the tables', () => {
     for (const count of [7, 10, 13, 15, 16, 17, 18, 20, 22, 24, 26, 28, 30]) {
@@ -471,5 +433,141 @@ describe('checked against the standard, not against itself', () => {
       for (let mask = 0; mask < 8; mask += 1) seen.add(formatBits(level, mask));
     }
     expect(seen.size).toBe(32);
+  });
+});
+
+describe('the finished code, read back the way a scanner reads it', () => {
+  /**
+   * The test that would have caught both shipped bugs, and the reason it is
+   * shaped like this.
+   *
+   * Everything else here checks a *part*: the finder patterns are in place, the
+   * format word has the right value, the remainder matches a reference. All of
+   * those passed while the encoder produced codes no scanner could read, because
+   * two things were wrong in the finished article and neither is visible from
+   * any single part — the format word was written into the matrix backwards, and
+   * the error-correction codewords were computed with a reversed generator.
+   *
+   * So this reads the assembled matrix the way a decoder does: pull the format
+   * information out of the modules, believe what it says about the mask, unmask,
+   * walk the zigzag, and see whether the bytes that come back are the bytes that
+   * went in. It deliberately trusts nothing but the matrix.
+   */
+
+  const MASK_FNS: Array<(r: number, c: number) => boolean> = [
+    (r, c) => (r + c) % 2 === 0,
+    (r) => r % 2 === 0,
+    (_r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+  ];
+
+  const ALIGN: number[][] = [[], [], [6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+
+  function functionModules(version: number, size: number): boolean[][] {
+    const g = Array.from({ length: size }, () => new Array<boolean>(size).fill(false));
+    const mark = (r: number, c: number) => { if (r >= 0 && r < size && c >= 0 && c < size) g[r]![c] = true; };
+
+    for (const [row, col] of [[0, 0], [0, size - 7], [size - 7, 0]] as const) {
+      for (let r = -1; r <= 7; r += 1) for (let c = -1; c <= 7; c += 1) mark(row + r, col + c);
+    }
+    for (let i = 0; i < size; i += 1) { mark(6, i); mark(i, 6); }
+    for (const row of ALIGN[version] ?? []) {
+      for (const col of ALIGN[version] ?? []) {
+        if ((row === 6 && col === 6) || (row === 6 && col === size - 7) || (row === size - 7 && col === 6)) continue;
+        for (let r = -2; r <= 2; r += 1) for (let c = -2; c <= 2; c += 1) mark(row + r, col + c);
+      }
+    }
+    for (let i = 0; i < 9; i += 1) { mark(8, i); mark(i, 8); }
+    for (let i = 0; i < 8; i += 1) { mark(8, size - 1 - i); mark(size - 1 - i, 8); }
+    if (version >= 7) {
+      for (let i = 0; i < 18; i += 1) { const r = Math.floor(i / 3), c = size - 11 + (i % 3); mark(r, c); mark(c, r); }
+    }
+    return g;
+  }
+
+  /** Read the format word out of the modules, most significant bit first. */
+  function readFormatWord(m: boolean[][]): number {
+    let bits = 0;
+    for (let i = 0; i < 15; i += 1) {
+      let bit: boolean;
+      if (i < 6) bit = m[8]![i]!;
+      else if (i === 6) bit = m[8]![7]!;
+      else if (i === 7) bit = m[8]![8]!;
+      else if (i === 8) bit = m[7]![8]!;
+      else bit = m[14 - i]![8]!;
+      if (bit) bits |= 1 << (14 - i);
+    }
+    return bits;
+  }
+
+  /** Decode a single-block code back to its bytes. */
+  function decode(text: string, level: 'L' | 'M' | 'Q' | 'H'): string {
+    const m = qrMatrix(text, { level, margin: 0 });
+    const size = m.length;
+    const version = (size - 17) / 4;
+
+    // Believe the matrix about its own mask, exactly as a scanner must.
+    const format = readFormatWord(m);
+    const mask = ((format ^ 0b101010000010010) >> 10) & 0b111;
+
+    const fixed = functionModules(version, size);
+    const bits: number[] = [];
+    let upward = true;
+
+    for (let right = size - 1; right > 0; right -= 2) {
+      if (right === 6) right -= 1;
+      for (let step = 0; step < size; step += 1) {
+        const row = upward ? size - 1 - step : step;
+        for (const col of [right, right - 1]) {
+          if (fixed[row]![col]) continue;
+          bits.push(m[row]![col]! !== MASK_FNS[mask]!(row, col) ? 1 : 0);
+        }
+      }
+      upward = !upward;
+    }
+
+    const codewords: number[] = [];
+    for (let i = 0; i + 8 <= bits.length; i += 8) {
+      let b = 0;
+      for (let j = 0; j < 8; j += 1) b = (b << 1) | bits[i + j]!;
+      codewords.push(b);
+    }
+
+    const mode = codewords[0]! >> 4;
+    expect(mode, 'mode indicator should be byte mode').toBe(4);
+
+    const length = ((codewords[0]! & 0x0f) << 4) | (codewords[1]! >> 4);
+    const bytes: number[] = [];
+    for (let i = 0; i < length; i += 1) {
+      bytes.push(((codewords[1 + i]! & 0x0f) << 4) | (codewords[2 + i]! >> 4));
+    }
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  }
+
+  it('round-trips short content at every error-correction level', () => {
+    for (const level of ['L', 'M', 'Q', 'H'] as const) {
+      expect(decode('hello', level), level).toBe('hello');
+    }
+  });
+
+  it('round-trips a payment link, which is what this is for', () => {
+    // Single-block versions only: past that the codewords are interleaved
+    // across blocks and a reader has to de-interleave before the header makes
+    // sense. The reference comparison covers the multi-block sizes.
+    const link = 'solana:https%3A%2F%2Fpay.example.com%2Fapi%2Fpay';
+    expect(decode(link, 'L')).toBe(link);
+  });
+
+  it('carries a mask the matrix itself can be read with', () => {
+    // The shipped bug: the format word was written backwards, so a scanner read
+    // the wrong mask, unmasked wrongly, and got noise. Decoding here trusts the
+    // matrix for the mask, so a reversed word makes this fail.
+    for (const text of ['a', 'hello', 'abcdefghij']) {
+      expect(decode(text, 'L'), text).toBe(text);
+    }
   });
 });

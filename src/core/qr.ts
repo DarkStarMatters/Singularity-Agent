@@ -88,7 +88,20 @@ function gfMul(a: number, b: number): number {
   return EXP[LOG[a]! + LOG[b]!]!;
 }
 
-/** The generator polynomial for `degree` error-correction codewords. */
+/**
+ * The generator polynomial for `degree` error-correction codewords.
+ *
+ * Returned in **descending** order, so `poly[0]` is the leading coefficient
+ * (always 1) and `poly[degree]` is the constant term. That matters: it is built
+ * ascending — multiplying repeatedly by (x + α^i) naturally produces
+ * `poly[j] = coefficient of x^j` — and the division below indexes it the other
+ * way round.
+ *
+ * Getting that backwards is what shipped. The data codewords were perfect and
+ * every error-correction codeword was wrong, which no scanner tolerates and no
+ * test here noticed, because the divisibility check was written with the same
+ * convention and agreed with it.
+ */
 function generatorPoly(degree: number): number[] {
   let poly = [1];
   for (let i = 0; i < degree; i += 1) {
@@ -99,7 +112,7 @@ function generatorPoly(degree: number): number[] {
     }
     poly = next;
   }
-  return poly;
+  return poly.reverse();
 }
 
 /**
@@ -543,7 +556,18 @@ function applyFormat(grid: boolean[][], level: EcLevel, mask: number): void {
   const bits = formatBits(level, mask);
 
   for (let i = 0; i < 15; i += 1) {
-    const bit = ((bits >> i) & 1) === 1;
+    // Most significant bit first. The standard numbers the format word 14 down
+    // to 0 and puts bit 14 at (8,0), so walking `i` upward while reading bit
+    // `i` writes the whole word backwards.
+    //
+    // This shipped reversed, and it is the exact failure this file's header
+    // warns about: the code generates, looks like a QR, and no scanner can read
+    // it. Every structural test still passed — finders, timing, the format
+    // word's own value, the Reed-Solomon remainder — because each was correct.
+    // A decoder written with the same mistake round-trips it perfectly, which
+    // is why self-consistency proves nothing here and only a real reference
+    // found it.
+    const bit = ((bits >> (14 - i)) & 1) === 1;
 
     // Copy one: around the top-left finder.
     if (i < 6) grid[8]![i] = bit;
@@ -599,6 +623,14 @@ export interface QrOptions {
    * often will not lock on at all.
    */
   margin?: number;
+  /**
+   * Force a specific mask pattern, 0-7, instead of scoring all eight.
+   *
+   * For tests and for diffing against another encoder. Every mask produces a
+   * valid code — the format information says which was used — so pinning one
+   * changes how well it scans, never whether it decodes.
+   */
+  mask?: number;
 }
 
 /**
@@ -637,7 +669,9 @@ export function qrMatrix(text: string, options: QrOptions = {}): QrMatrix {
   let best: boolean[][] | null = null;
   let bestScore = Infinity;
 
-  for (let mask = 0; mask < 8; mask += 1) {
+  const masks = options.mask === undefined ? [0, 1, 2, 3, 4, 5, 6, 7] : [options.mask];
+
+  for (const mask of masks) {
     const candidate = base.map((row, r) =>
       row.map((cell, c) => {
         const value = cell ?? false;
