@@ -110,7 +110,36 @@ requests raised while testing (`log_0653872c…`, `log_54e72dff…`) both show
 Either normalise the two vocabularies, or have `logistics_request` emit the
 hyphenated form it expects downstream.
 
-### 2. `register_agent` still rejects every input
+### 2. The server cannot complete an MCP handshake, because it errors on notifications
+
+Claude Code refuses to connect to this server:
+
+```
+privatedao-agents: https://agents.privatedao.org/mcp (HTTP)
+  Failed to connect - HTTP 400: {"jsonrpc":"2.0","error":{"code":-32601,"message":"method not found"}}
+```
+
+The cause is `notifications/initialized`. Every MCP client sends it immediately
+after `initialize`, and the specification requires a server to accept it
+silently — it is a notification, so it carries no id and must produce no
+response at all. This server answers with an error instead:
+
+| Sent | Response |
+| --- | --- |
+| `{"jsonrpc":"2.0","method":"notifications/initialized"}` | `-32601 method not found` |
+| `{"jsonrpc":"2.0","method":"notifications/cancelled"}` | `-32601 method not found` |
+| `{"jsonrpc":"2.0","method":"resources/list"}` | `-32601 method not found` |
+| `{"jsonrpc":"2.0","method":"prompts/list"}` | `-32601 method not found` |
+
+Returning an error to a notification is what breaks the handshake, so the
+server is currently unusable from a standard MCP client even though raw
+`tools/call` requests work when sent by hand with curl.
+
+`resources/list` and `prompts/list` returning `-32601` is correct in principle
+— the server declares only `tools` — but a client that probes them during
+startup may treat a hard error differently from an empty capability.
+
+### 3. `register_agent` still rejects every input
 
 Now returning a JSON-RPC error rather than a bare object, but the message is
 unchanged and still does not depend on the argument — see the table below. Since
@@ -118,7 +147,7 @@ registration evidently succeeded by some other path, this tool appears to be
 dead code or a broken alternate entry point. It is worth either fixing or
 removing, because it is the obvious thing an agent will call first.
 
-### 3. Registered agents carry no `networks`
+### 4. Registered agents carry no `networks`
 
 Our entry lists `networks: []` while declaring eighteen chain-reading tools
 across 32 chains. Nothing in the MCP handshake conveys supported networks, so
