@@ -10,6 +10,7 @@ import type {
   UnsignedTx,
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
+import type { TokenExitReport } from '../trade/types.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import type { Finality } from '../core/finality.js';
 import type {
@@ -768,4 +769,90 @@ function rank(status: ChainLiveness['status']): number {
     down: 6,
   };
   return order[status];
+}
+
+/**
+ * An exit report, rendered worst-first.
+ *
+ * The verdict line is deliberately not a colour on its own. `canExit: true`
+ * printed in green would read as "safe to buy", which is exactly the claim this
+ * analysis cannot make — it reads the mint, not the market. So the headline
+ * states what was actually established, and the completeness note under it
+ * states what was not, in the same block, where a reader cannot take one
+ * without the other.
+ */
+export function renderExitReport(report: TokenExitReport): string {
+  const lines: string[] = [];
+
+  const blockers = report.risks.filter((risk) => risk.severity === 'blocks');
+  const controlled = report.risks.filter((risk) => risk.severity === 'discretionary');
+  const degraders = report.risks.filter((risk) => risk.severity === 'degrades');
+
+  // Two headline facts, never one. "Sellable" and "nobody can stop you" are
+  // different claims, and a single green line would merge them.
+  lines.push(
+    report.canExit
+      ? `  ${green('sellable')}      ${dim('nothing in the mint stops a sale')}`
+      : `  ${red('not sellable')}  ${bold(`${blockers.length} mechanism(s) block it outright`)}`,
+  );
+
+  lines.push(
+    report.underThirdPartyControl
+      ? `  ${yellow('controlled')}    ${bold(`${controlled.length} named part${controlled.length === 1 ? 'y' : 'ies'} can stop you at will`)}`
+      : `  ${green('uncontrolled')}  ${dim('no third party can freeze or seize it')}`,
+  );
+
+  for (const [group, mark, heading] of [
+    [blockers, red('!'), red('blocks a sale outright')],
+    [controlled, yellow('~'), yellow('can be stopped, by a named party, at any time')],
+    [degraders, dim('-'), dim('sells, on worse terms')],
+  ] as const) {
+    if (group.length === 0) continue;
+    lines.push('');
+    lines.push(`  ${heading}`);
+    for (const risk of group) {
+      lines.push(`  ${mark} ${bold(risk.mechanism)}`);
+      if (risk.holder) lines.push(`      ${dim('held by')} ${risk.holder}`);
+      lines.push(`      ${wrap(risk.note, 72, '      ')}`);
+    }
+  }
+
+  if (report.concentration) {
+    const { largestPercent, topPercent, accountsCounted, largestIsPool } = report.concentration;
+    lines.push('');
+    lines.push(`  ${dim('supply')}  largest ${largestPercent.toFixed(1)}%, top ${accountsCounted} hold ${topPercent.toFixed(1)}%`);
+    if (largestIsPool !== undefined) {
+      lines.push(
+        `          ${dim(largestIsPool ? 'largest holder is a recognised pool' : 'largest holder is not a recognised pool')}`,
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push(`  ${wrap(report.note, 72, '  ')}`);
+  lines.push('');
+  lines.push(`  ${dim(wrap(report.completeness.note, 72, '  '))}`);
+
+  if (report.explorerUrl) lines.push(`  ${dim(report.explorerUrl)}`);
+
+  return lines.join('\n');
+}
+
+/** Soft-wrap a sentence so a long warning stays readable in a terminal. */
+function wrap(text: string, width: number, indent: string): string {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+
+  for (const word of words) {
+    if (line.length + word.length + 1 > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+
+  return lines.join(`\n${indent}`);
 }

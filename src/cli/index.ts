@@ -677,6 +677,27 @@ function watchError(err: unknown): void {
 }
 
 program
+  .command('inspect')
+  .description('Before buying a Solana token: what could stop you selling it again.')
+  .argument('<mint>', 'Mint address, or an address-book alias for one.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias. Defaults to "solana".')
+  .action(async (mint: string, options: { chain?: string }) => {
+    const report = await ops.inspectExit({ mint, ...(options.chain ? { chain: options.chain } : {}) });
+
+    if (program.opts().json) {
+      console.log(toJson(report));
+    } else {
+      console.log(render.heading(`Exit analysis: ${render.dim(report.mint)}`));
+      console.log(render.renderExitReport(report));
+    }
+
+    // Non-zero when something can stop a sale, so this drops into a script
+    // that refuses to buy. Deliberately not non-zero for `degrades` findings:
+    // a transfer fee is a reason to price differently, not to abort.
+    process.exitCode = report.canExit ? 0 : 1;
+  });
+
+program
   .command('doctor')
   .description('Check whether each chain is serving current state, not just answering.')
   .option('-c, --chain <chain...>', 'Chains to check. Defaults to all of them.')

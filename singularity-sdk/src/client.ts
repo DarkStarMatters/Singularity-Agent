@@ -33,6 +33,7 @@ import type {
   PortfolioResult,
   ResolvedIdentity,
   ResponseBudget,
+  TokenExitReport,
   TokenIdentity,
   TransactionHistory,
   UnsignedTx,
@@ -180,6 +181,20 @@ export interface Singularity<S extends Signer | undefined = undefined> {
 
   // ── tokens ─────────────────────────────────────────────────────────────
   mintAudit(options: { mint: string; chain?: string }): Promise<MintAudit>;
+  /**
+   * Before buying: what could stop you selling this again.
+   *
+   * Names mechanisms rather than scoring the token — a transfer hook, a
+   * permanent delegate, a live freeze authority — and says who holds each one.
+   * Read `canExit` and `underThirdPartyControl` together: they are different
+   * questions, and a token can be freely sellable while a named party retains
+   * the power to stop you.
+   *
+   * Never cached. It is the check standing between somebody and spending
+   * money, and a stale answer about a mint whose authority just changed is the
+   * one that costs them.
+   */
+  inspectExit(options: { mint: string; chain?: string }): Promise<TokenExitReport>;
   tokenIdentity(options: { mint: string; chain?: string; fetch?: boolean }): Promise<TokenIdentity>;
   verifyBurn(options: {
     signature: string;
@@ -335,6 +350,13 @@ export function createSingularity<const C extends SingularityConfig>(
       return cache.through('current', cacheKey('mintAudit', options), () =>
         retry(() => operations.auditMint(options)),
       );
+    },
+
+    // Never cached, for the same reason `verifyBurn` is not: this is the check
+    // standing between somebody and spending money, and a mint's authorities
+    // can change between one call and the next.
+    async inspectExit(options) {
+      return retry(() => operations.inspectExit(options));
     },
 
     async tokenIdentity(options) {

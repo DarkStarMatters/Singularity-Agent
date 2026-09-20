@@ -386,6 +386,9 @@ singularity burn --mint <mint> --amount 1000 --owner <your wallet>
 # Confirm a burn happened, and that it was the mint you expected.
 singularity verify-burn <signature> --mint <mint>
 
+# Before buying: what could stop you selling this again?
+singularity inspect <mint>              # exits non-zero when the mint blocks a sale
+
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
@@ -429,6 +432,7 @@ ticks is a value it never saw. A reorg is reported rather than smoothed over.
 | `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
 | `build_burn` | Build an **unsigned** burn for the holder to sign. |
 | `verify_burn` | Confirm a burn from its signature, and check it against a claim. |
+| `inspect_exit` | Before buying a Solana token: the specific mechanisms that could stop you selling it again — transfer hook, permanent delegate, freeze authority — each naming who holds the power. Not a score. |
 
 Every tool is annotated `readOnlyHint: true`. Errors come back as structured results
 carrying a code and a hint, rather than as transport exceptions — so a model can correct

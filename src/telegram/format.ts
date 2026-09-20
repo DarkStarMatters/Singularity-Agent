@@ -26,6 +26,7 @@ import type {
   PortfolioResult,
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
+import type { TokenExitReport } from '../trade/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { SingularityError } from '../core/errors.js';
@@ -565,6 +566,67 @@ export function formatTokenIdentity(identity: TokenIdentity): string {
   if (identity.document) lines.push('', `<i>${esc(identity.document.note)}</i>`);
   lines.push(`<i>${esc(identity.note)}</i>`);
   if (identity.explorerUrl) lines.push(link(identity.explorerUrl, 'explorer'));
+
+  return lines.join('\n');
+}
+
+/**
+ * An exit report, for a chat message somebody reads on a phone before buying.
+ *
+ * Two headline lines, never one. "Sellable" and "nobody can stop you" are
+ * different claims, and a single green tick would merge them — which is how
+ * USDC came back looking like a soulbound token in the first draft.
+ */
+export function formatExitReport(report: TokenExitReport): string {
+  const lines = [`${bold('Exit analysis')} — ${code(report.mint)}`, ''];
+
+  lines.push(
+    report.canExit
+      ? '✅ <b>Sellable</b> — nothing in the mint stops a sale'
+      : '⛔ <b>Not sellable</b> — the mint itself blocks it',
+  );
+
+  lines.push(
+    report.underThirdPartyControl
+      ? '⚠️ <b>Controlled</b> — a named party can stop you whenever they choose'
+      : '✅ <b>Uncontrolled</b> — no third party can freeze or seize it',
+  );
+
+  const groups = [
+    ['blocks', '⛔', 'Blocks a sale outright'],
+    ['discretionary', '⚠️', 'Can be stopped, by a named party, at any time'],
+    ['degrades', 'ℹ️', 'Sells, on worse terms'],
+  ] as const;
+
+  for (const [severity, mark, heading] of groups) {
+    const found = report.risks.filter((risk) => risk.severity === severity);
+    if (found.length === 0) continue;
+
+    lines.push('', bold(heading));
+    for (const risk of found) {
+      lines.push(`${mark} <b>${esc(risk.mechanism)}</b>`);
+      lines.push(`  ${esc(risk.note)}`);
+      if (risk.holder) lines.push(`  held by ${code(risk.holder)}`);
+    }
+  }
+
+  if (report.concentration) {
+    const { largestPercent, topPercent, accountsCounted, largestIsPool } = report.concentration;
+    lines.push(
+      '',
+      `${bold('Supply')} — largest ${largestPercent.toFixed(1)}%, top ${accountsCounted} hold ${topPercent.toFixed(1)}%`,
+    );
+    if (largestIsPool !== undefined) {
+      lines.push(
+        `  <i>${largestIsPool ? 'largest holder is a recognised pool' : 'largest holder is not a recognised pool'}</i>`,
+      );
+    }
+  }
+
+  // The completeness note is not a footnote here. It is the sentence that stops
+  // somebody reading a clean report as permission to buy.
+  lines.push('', `<i>${esc(report.completeness.note)}</i>`);
+  if (report.explorerUrl) lines.push(link(report.explorerUrl, 'explorer'));
 
   return lines.join('\n');
 }

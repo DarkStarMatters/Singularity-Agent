@@ -75,6 +75,18 @@ export type {
 } from './pay/types.js';
 export { assessMintRisk, buildPayment, findPayment } from './adapters/solana.js';
 
+/**
+ * Pre-trade exit analysis: the mechanisms by which a position may not be
+ * sellable. Read-only, and deliberately not a score — see `trade/types.ts`.
+ */
+export { inspectTokenExit } from './adapters/solana.js';
+export type {
+  Concentration,
+  ExitMechanism,
+  ExitRisk,
+  TokenExitReport,
+} from './trade/types.js';
+
 /** The change-detection rule for a balance, shared by the CLI and the SDK. */
 export { balanceIdentity } from './tools/operations.js';
 

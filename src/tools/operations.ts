@@ -3,8 +3,10 @@ import type { TransactionHistory } from '../core/adapter.js';
 import {
   auditMint as auditSolanaMint,
   buildBurn as buildSolanaBurn,
+  inspectTokenExit,
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
+import type { TokenExitReport } from '../trade/types.js';
 import { fetchIdentityDocument, isContentAddressed } from '../core/identity.js';
 import {
   alreadyRedeemed,
@@ -1226,4 +1228,27 @@ export async function tokenIdentity(options: {
       'Identity here is the mint address. A name, a ticker and a linked account are all things anyone can copy onto a mint of their own — what cannot be copied is this address. Where the metadata is immutable and content-addressed, the accounts below are the ones published at mint time; treat anything claiming to be this project from a different address as a different project.',
     explorerUrl: audit.explorerUrl,
   } satisfies TokenIdentity;
+}
+
+/**
+ * What stands between buying a token and selling it again.
+ *
+ * Distinct from `mint_audit`, which answers "what powers exist over this
+ * mint". This answers the narrower and more actionable question a buyer has:
+ * *can I get out*. The same facts feed both, sorted differently — a live mint
+ * authority is the headline for an audit and a footnote for an exit, because
+ * dilution does not stop you selling.
+ *
+ * Read-only, and it stays that way. This builds nothing, signs nothing and
+ * routes nothing; it reads a mint account and the largest holders and names
+ * what it finds. Whether to act on it is the caller's, which is the only place
+ * that decision can honestly live.
+ */
+export async function inspectExit(options: {
+  mint: string;
+  chain?: string;
+}): Promise<TokenExitReport> {
+  const chain = solanaChain(options.chain, 'Exit analysis');
+  const mint = await toAddress(options.mint, chain);
+  return inspectTokenExit(chain, mint);
 }

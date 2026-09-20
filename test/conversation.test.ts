@@ -95,6 +95,7 @@ describe('tool catalogue', () => {
       'decode',
       'fees',
       'history',
+      'inspect_exit',
       'mint_audit',
       'portfolio',
       'read_contract',

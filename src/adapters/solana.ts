@@ -52,6 +52,8 @@ import type {
   PaymentSettlement,
   SettlementLevel,
 } from '../pay/types.js';
+import type { Concentration, ExitRisk, TokenExitReport } from '../trade/types.js';
+import { classifyExitRisks, exitVerdict, sortBySeverity } from '../trade/classify.js';
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
@@ -2395,5 +2397,157 @@ export async function findPayment(
             { height: tx.slot },
           ),
     } satisfies PaymentSettlement;
+  });
+}
+
+// ──────────────────────────────────────────────────────────── exit analysis
+
+/**
+ * Known pool and program accounts, so a large holder can be told apart from a
+ * whale.
+ *
+ * A pool holding most of the supply is what a healthy market looks like; a
+ * person holding most of the supply is the thing that empties it. Reporting
+ * them identically would make the concentration figure useless in both
+ * directions — and this list is short and incomplete, so the answer it feeds is
+ * marked absent rather than false when nothing matches.
+ */
+const POOL_OWNERS = new Set([
+  '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', // Raydium AMM v4 authority
+  'GThUX1Atko4tqhN2NaiTazWSeFWMuiUvfFnyJyUghFMJ', // Raydium authority v4
+  '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', // Serum/OpenBook
+  'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc', // Orca Whirlpools
+]);
+
+/**
+ * What stands between buying this token and selling it again.
+ *
+ * Reads the mint account and the largest holders. Deliberately *not* a score:
+ * it names mechanisms, because a mechanism can be checked and a score cannot.
+ *
+ * The limit that matters, and the reason `completeness` is never exhaustive: a
+ * mint account says nothing about liquidity. Whether the pool is locked, how
+ * deep it is, and whether a hook program is benign are all outside what this
+ * can see. `canExit: true` means no mint-level mechanism blocks a sale. It does
+ * not mean the token is safe to buy, and the note says so every time.
+ */
+export async function inspectTokenExit(
+  chain: ChainSpec,
+  mintAddress: string,
+): Promise<TokenExitReport> {
+  const mint = requirePubkey(mintAddress, 'mint address');
+  const short = shortAddress(mint.toBase58());
+
+  return withConnection(chain, 'inspectTokenExit', async (connection) => {
+    const facts = await readMintFacts(connection, mint, chain);
+
+    const delegateData = facts.extensions.get(EXT_PERMANENT_DELEGATE);
+    const hookData = facts.extensions.get(EXT_TRANSFER_HOOK);
+    const hookProgram = hookData ? readAuthority(hookData, 32) : undefined;
+
+    // Flattened into plain data, then judged by `classifyExitRisks`. The
+    // reading needs a network and is dull; the judging has opinions in it and
+    // is worth testing against every combination without one.
+    const risks = classifyExitRisks({
+      mint: mint.toBase58(),
+      ...(facts.mintAuthority ? { mintAuthority: facts.mintAuthority } : {}),
+      ...(facts.freezeAuthority ? { freezeAuthority: facts.freezeAuthority } : {}),
+      ...(delegateData ? { permanentDelegate: readAuthority(delegateData) } : {}),
+      ...(hookProgram ? { transferHookProgram: hookProgram } : {}),
+      hasTransferHookExtension: Boolean(hookData),
+      hasTransferFee: facts.extensions.has(EXT_TRANSFER_FEE_CONFIG),
+      hasDefaultAccountState: facts.extensions.has(EXT_DEFAULT_ACCOUNT_STATE),
+      nonTransferable: facts.extensions.has(EXT_NON_TRANSFERABLE),
+    });
+
+    // ── how spread the supply is ────────────────────────────────────────
+    // A failure here is a gap in the report, never a reason to fail the whole
+    // call: the mint-level findings above are the valuable half and they are
+    // already in hand.
+    let concentration: Concentration | undefined;
+    let concentrationNote = '';
+
+    try {
+      const [largest, supply] = await Promise.all([
+        connection.getTokenLargestAccounts(mint),
+        connection.getTokenSupply(mint),
+      ]);
+
+      const total = BigInt(supply.value.amount);
+      const accounts = largest.value ?? [];
+
+      if (total > 0n && accounts.length > 0) {
+        const held = accounts.map((entry) => BigInt(entry.amount));
+        const top = held.reduce((sum, value) => sum + value, 0n);
+        const biggest = held[0] ?? 0n;
+
+        // Basis points, so integer maths carries two decimals of precision.
+        const pct = (part: bigint): number => Number((part * 10_000n) / total) / 100;
+
+        const largestOwner = accounts[0]?.address?.toBase58();
+        const owner = largestOwner
+          ? await connection
+              .getParsedAccountInfo(new PublicKey(largestOwner))
+              .then((info) => {
+                const data = info.value?.data;
+                return data && 'parsed' in data
+                  ? (data.parsed as { info?: { owner?: string } }).info?.owner
+                  : undefined;
+              })
+              .catch(() => undefined)
+          : undefined;
+
+        concentration = {
+          largestPercent: pct(biggest),
+          topPercent: pct(top),
+          accountsCounted: accounts.length,
+          ...(owner ? { largestIsPool: POOL_OWNERS.has(owner) } : {}),
+        };
+
+        // A pool holding most of the supply is what a working market looks
+        // like. A person holding it is the thing that empties one. Only the
+        // second is worth warning about, and only when it is known which it is.
+        if (concentration.largestPercent >= 25 && concentration.largestIsPool === false) {
+          risks.push({
+            mechanism: 'holder-concentration',
+            severity: 'degrades',
+            ...(owner ? { holder: owner } : {}),
+            note: `One account holds ${concentration.largestPercent.toFixed(1)}% of supply and is not a recognised pool. They can exhaust the liquidity ahead of you, and your exit price is whatever is left.`,
+          });
+        }
+      }
+    } catch {
+      concentrationNote =
+        ' Holder distribution could not be read from this endpoint, so nothing here speaks to how concentrated the supply is.';
+    }
+
+    const blockers = risks.filter((risk) => risk.severity === 'blocks');
+    const controlled = risks.filter((risk) => risk.severity === 'discretionary');
+    const { canExit, underThirdPartyControl } = exitVerdict(risks);
+    const ordered = sortBySeverity(risks);
+
+    const holders = [...new Set(controlled.map((risk) => risk.holder).filter(Boolean))];
+
+    const note = !canExit
+      ? `${blockers.length} mechanism(s) in this mint stop a sale outright, with nobody having to act.${concentrationNote} Read each one before buying.`
+      : underThirdPartyControl
+        ? `Nothing stops a sale today, but ${holders.length === 1 ? `${holders[0]} can` : `${controlled.length} named parties can`} prevent one whenever they choose.${concentrationNote} Whether that is acceptable depends on who they are, which is why they are named rather than scored. This reads the mint, not the market — it says nothing about whether liquidity is locked or how deep the pool is.`
+        : `No mechanism in this mint account prevents a sale, and no third party can freeze or seize the balance.${concentrationNote} That is not the same as safe to buy: this reads the mint, not the market, so it says nothing about whether liquidity is locked, how deep the pool is, or what the token is worth.`;
+
+    return {
+      mint: mint.toBase58(),
+      chain: chain.id,
+      canExit,
+      underThirdPartyControl,
+      risks: ordered,
+      ...(concentration ? { concentration } : {}),
+      // Never exhaustive, and the note says exactly why. A report that claimed
+      // to have covered liquidity would be the most dangerous thing here.
+      completeness: completeness.curated(
+        'Covers what the mint account and its Token-2022 extensions declare, plus the largest holders the endpoint would name. It does not cover liquidity: whether the pool is locked or burned, how deep it is, or whether a transfer-hook program behaves. Those need pool-level reads this does not do.',
+      ),
+      note,
+      explorerUrl: explorerUrl(chain, 'address', mint.toBase58()),
+    } satisfies TokenExitReport;
   });
 }

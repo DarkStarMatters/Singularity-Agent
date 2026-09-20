@@ -38,6 +38,36 @@ afterwards by installing them from the registry into an empty directory and runn
 rather than from inside this repo — which is the check whose absence let the original
 claim survive a release.
 
+**`inspect_exit`, the seventeenth tool: before you buy, what could stop you selling.**
+Every token-safety tool this project looked at answers with a score, and a score is the
+wrong shape for the same reason `paid: true` is the wrong shape for a payment — it
+collapses distinct mechanisms into one figure whose derivation nobody can inspect. So
+this names mechanisms instead: a transfer hook pointing at a program that runs on your
+sale, a permanent delegate that can pull the token out of your wallet, a freeze
+authority that can lock the account it sits in. Each one says who holds the power,
+because whether you mind depends entirely on who it is.
+
+Two headline facts, not one, and the second was forced by a live run. The first version
+had two severities and reported **USDC as unsellable**, because Circle holds a freeze
+authority — technically true and practically useless, since every regulated stablecoin
+came back looking like a soulbound token. `canExit` and `underThirdPartyControl` are now
+separate: a token can be freely sellable *and* controlled by a named party, and those are
+different facts a buyer needs both of.
+
+The differentiator is what the SPL-Token-era rug checkers miss. A popular Solana trading
+bot's filters check `CHECK_IF_FREEZABLE` and `CHECK_IF_MINT_IS_RENOUNCED`; neither sees a
+Token-2022 permanent delegate or a transfer hook, and both are how a modern position
+becomes unsellable. Verified against PYUSD, which carries a permanent delegate that can
+claw the balance back.
+
+`completeness` is never `exhaustive`, and the note says why every time: this reads the
+**mint**, not the **market**. It cannot tell you whether liquidity is locked, how deep
+the pool is, or whether a hook program behaves. `canExit: true` means no mint-level
+mechanism blocks a sale — never "safe to buy", and a report that implied otherwise would
+be the most dangerous thing in the package. Judging is split from reading into
+`trade/classify.ts`, the way `liveness.classify` is, which is what makes it testable
+against every combination without a connection.
+
 **The custody seam moved without dissolving.** "No signing, ever" is still the non-goal
 below, and it is still literally true of everything this repository publishes. But an
 application that can only read is not an application, and the honest answer to that was
@@ -1345,7 +1375,13 @@ dependency, a staleness question, and a trust assumption about the price source.
 belongs to a caller that can decide which oracle it trusts.
 
 **Trade execution, bridging, swap routing.** Same custody boundary, plus MEV and slippage
-concerns that are a different product.
+concerns that are a different product. This still holds, and `inspect_exit` does not
+weaken it: analysis is not execution. It reads a mint and names what could stop you
+selling; it quotes nothing, routes nothing, builds nothing and signs nothing, and it
+takes no position on whether a trade is a good idea. The line it stays behind is the one
+where a tool starts telling you what to buy — or, worse, doing it. If a swap builder
+ever lands here it will be as an unsigned payload for a wallet to approve, the same seam
+`build_transfer` uses, and this paragraph will say so.
 
 **Being a wallet.** No key storage, no seed handling, no recovery.
 

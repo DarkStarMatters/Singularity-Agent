@@ -386,6 +386,18 @@ export const TOOLS: ToolDefinition[] = [
     },
     run: ({ chain }) => ops.checkLiveness(chain),
   }),
+
+  defineTool({
+    name: 'inspect_exit',
+    title: 'Whether a token can be sold again',
+    description:
+      'Before buying a Solana token, find out what could stop you selling it. Names the specific mechanisms rather than scoring the token: a transfer hook (issuer code runs on every transfer, including your sale, and can refuse it), a permanent delegate (an address can move the token out of your wallet without you signing), a live freeze authority (your token account can be frozen, leaving a balance you own and cannot sell), a default-frozen account state, a non-transferable mint, transfer fees, and supply concentrated in one non-pool account. Each entry says who holds the power. `canExit` is false when at least one mechanism can block a sale or seize the balance. **`canExit: true` does not mean safe to buy** — this reads the mint account and the largest holders, not the market, so it says nothing about whether liquidity is locked, how deep the pool is, or what the token is worth. Read `completeness`, which always says what was not covered. This is a read: it builds nothing, signs nothing, and routes no trade.',
+    shape: {
+      mint: z.string().describe('Mint address, or an address-book alias for one.'),
+      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+    },
+    run: (args) => ops.inspectExit(args),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

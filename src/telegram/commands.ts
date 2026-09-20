@@ -26,6 +26,7 @@ import {
   formatUnsignedTx,
   formatMintAudit,
   formatBurnClaim,
+  formatExitReport,
   formatTokenIdentity,
   bold,
   code,
@@ -385,6 +386,17 @@ const identity: Command = {
   },
 };
 
+const inspect: Command = {
+  name: 'inspect',
+  aliases: ['inspect_exit', 'exit', 'canisell'],
+  usage: '/inspect <mint>',
+  summary: 'Before buying: what could stop you selling it again',
+  async run(ctx) {
+    const mint = required(ctx, 0, 'a mint address', inspect);
+    return formatExitReport(await ops.inspectExit({ mint }));
+  },
+};
+
 const health: Command = {
   name: 'health',
   aliases: ['chain_liveness', 'liveness'],
@@ -504,6 +516,7 @@ const COMMAND_LIST: Command[] = [
   decode,
   mint,
   identity,
+  inspect,
   burn,
   verifyburn,
   redeem,
