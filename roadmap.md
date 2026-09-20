@@ -29,6 +29,15 @@ that runs for weeks, asks the same question four hundred times an hour, and even
 to write. `singularity-sdk` is that third caller, shipping at v0.0.1 alongside this
 release, in its own directory and with its own version.
 
+**Both packages are actually on npm now**, which is worth stating plainly because v0.0.9
+said so and was wrong — see the correction in that section. The bin-alias fix it describes
+was real and shipped; the publish never happened, so every `npx singularity-agent` in the
+README and the v0.0.9 post has been a promise the registry could not keep. The first real
+publish is this one: `singularity-agent@0.1.0` and `singularity-sdk@0.0.1`, both verified
+afterwards by installing them from the registry into an empty directory and running them,
+rather than from inside this repo — which is the check whose absence let the original
+claim survive a release.
+
 **The custody seam moved without dissolving.** "No signing, ever" is still the non-goal
 below, and it is still literally true of everything this repository publishes. But an
 application that can only read is not an application, and the honest answer to that was
@@ -108,7 +117,13 @@ Two things, and they are the same thing seen from either end: nobody could run t
 line, and the tool that was supposed to say whether a chain could be trusted was asking a
 question with no teeth.
 
-**`npx singularity-agent` — the package is on npm.** Every install path in the README used
+**`npx singularity-agent` — the package is ready for npm.** *(Correction, recorded at
+v0.1.0: this section originally read "the package is on npm," and it was not. The bin-alias
+bug described below was real and its fix shipped, but nothing was ever pushed to the
+registry under v0.0.9, so `npx singularity-agent@0.0.9` has never resolved and never will.
+The first actual publish is v0.1.0. The claim survived a release precisely because every
+route that was tested ran from inside this repo — the same shape of mistake the paragraph
+below is about, made one layer up.)* Every install path in the README used
 to begin with a clone and a build, which is a five-step funnel in front of a tool whose
 whole pitch is that it removes steps. The one-line form then turned out not to work:
 `npx <package>` resolves a bin named for the package, and this one declared `singularity`

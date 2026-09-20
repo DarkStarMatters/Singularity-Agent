@@ -29,7 +29,8 @@
     "dist",
     "!dist/**/*.map",
     "templates",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20.10.0"

@@ -16,6 +16,16 @@ npm install singularity-sdk singularity-agent
 npx singularity-sdk new my-app --template reader
 ```
 
+**A correction, since it affects anything you tried before today.** The v0.0.9 notes said
+"the package is on npm." It was not. The bin-alias fix that release describes was real and
+shipped, but nothing was ever pushed to the registry, so `npx singularity-agent` has been a
+promise the registry could not keep — and `npx singularity-agent@0.0.9` never will resolve,
+because that version does not exist there.
+
+v0.1.0 is the first actual publish. Both packages were verified after pushing by installing
+them from the registry into an empty directory and running them, rather than from inside the
+repo — which is exactly the check whose absence let the original claim survive a release.
+
 ---
 
 ## The part we thought hardest about: it still cannot sign
