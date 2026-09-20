@@ -169,12 +169,33 @@ export function qrPng(matrix: QrMatrix, options: PngOptions = {}): Uint8Array {
     }
   }
 
+  return encodePng(raw, size, size, 0);
+}
+
+/**
+ * Wrap filtered scanlines in the PNG container.
+ *
+ * Exported because the artwork rasteriser in `art/raster.ts` needs the same
+ * container in colour, and a second copy of the CRC table is a second place to
+ * be wrong — the first draft of that file duplicated this and mistyped the
+ * polynomial as 0xeddb8832. One implementation, two callers.
+ *
+ * `colourType` is PNG's: 0 is greyscale, 2 is truecolour RGB. `raw` must
+ * already carry its per-row filter byte, which both callers set to 0 because
+ * flat colour gives a predictor nothing to work with.
+ */
+export function encodePng(
+  raw: Uint8Array,
+  width: number,
+  height: number,
+  colourType: 0 | 2,
+): Uint8Array {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
-  view.setUint32(0, size);
-  view.setUint32(4, size);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
   header[8] = 8; // bit depth
-  header[9] = 0; // colour type: greyscale
+  header[9] = colourType;
   header[10] = 0; // deflate
   header[11] = 0; // adaptive filtering
   header[12] = 0; // no interlace

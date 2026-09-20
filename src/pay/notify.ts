@@ -21,7 +21,7 @@
 
 import { TelegramApi } from '../telegram/api.js';
 import { qrMatrix } from '../core/qr.js';
-import { qrPng } from '../core/qr-render.js';
+import { qrArtPng } from '../art/raster.js';
 import type { CreatedIntent } from './operations.js';
 
 /** What happened when we tried to put this in front of a phone. */
@@ -118,8 +118,10 @@ export async function notifyPayment(
   }
 
   try {
-    // The same matrix the terminal renders. One intent, one URL, one code.
-    const png = qrPng(qrMatrix(created.url), { scale: 8 });
+    // The same matrix *and* the same artwork the terminal renders. One intent,
+    // one URL, one code — the reference seeds the style, so a payer comparing
+    // the picture in the chat against the one on screen sees the same thing.
+    const png = qrArtPng(qrMatrix(created.url), created.intent.reference, { scale: 8 });
 
     const message = await new TelegramApi(token).sendPhoto({
       chatId,

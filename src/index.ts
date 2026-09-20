@@ -100,8 +100,35 @@ export type {
  */
 export { qrMatrix } from './core/qr.js';
 export type { EcLevel, QrMatrix, QrOptions } from './core/qr.js';
-export { qrUnicode, qrSvg, qrPng, qrDataUrl } from './core/qr-render.js';
+export { qrUnicode, qrSvg, qrPng, qrDataUrl, encodePng } from './core/qr-render.js';
 export type { PngOptions, SvgOptions } from './core/qr-render.js';
+
+/**
+ * The same codes, as artwork seeded by one payment.
+ *
+ * Deterministic from the reference, so the picture is a fingerprint of a
+ * specific payment rather than decoration, and re-derivable by anyone holding
+ * that reference. `receiptMetadata` turns a settled payment into the JSON an
+ * NFT marketplace reads; `verifyReceiptImage` is how a holder checks that the
+ * image a host served is the one the payment actually generates.
+ */
+export { renderQrArt, styleFor } from './art/qr-art.js';
+export type { ArtOptions, ArtStyle, FinderStyle, ModuleShape } from './art/qr-art.js';
+export { qrArtPng, qrArtDataUrl } from './art/raster.js';
+export type { RasterOptions } from './art/raster.js';
+export { paletteFor, contrastRatio, hsl } from './art/palette.js';
+export type { Palette } from './art/palette.js';
+export { SeedStream } from './art/seed.js';
+export {
+  receiptFacts,
+  receiptImage,
+  receiptMetadata,
+  receiptName,
+  verifyReceiptImage,
+  uriFits,
+  METAPLEX_URI_LIMIT,
+} from './art/receipt.js';
+export type { ReceiptFacts, ReceiptMetadataOptions } from './art/receipt.js';
 
 /** The change-detection rule for a balance, shared by the CLI and the SDK. */
 export { balanceIdentity } from './tools/operations.js';

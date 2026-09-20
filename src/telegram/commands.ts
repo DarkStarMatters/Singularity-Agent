@@ -8,7 +8,7 @@
 import * as ops from '../tools/operations.js';
 import { burnLink } from '../pay/transaction-request.js';
 import { qrMatrix } from '../core/qr.js';
-import { qrPng } from '../core/qr-render.js';
+import { qrArtPng } from '../art/raster.js';
 import { FileIntentStore, allowedRecipients } from '../pay/file-store.js';
 import { createIntent as createPayIntent, settleIntent as settlePayIntent } from '../pay/operations.js';
 import { payCaption } from '../pay/notify.js';
@@ -415,8 +415,11 @@ const pay: Command = {
       senderNote = await describeSender(sender, created.intent.chain, to, amount, mint);
     }
 
+    // Seeded by the reference, so this payment's code is this payment's code
+    // and no other's. The matrix is identical either way — the art decides how
+    // a module is drawn and never which modules there are.
     return {
-      photo: qrPng(qrMatrix(created.url), { scale: 8 }),
+      photo: qrArtPng(qrMatrix(created.url), created.intent.reference, { scale: 8 }),
       filename: `payment-${created.intent.id.slice(0, 8)}.png`,
       caption: payCaption(created) + senderNote,
     };
@@ -571,7 +574,7 @@ const burn: Command = {
       ].join('\n');
 
       return {
-        photo: qrPng(qrMatrix(link), { scale: 8 }),
+        photo: qrArtPng(qrMatrix(link), link, { scale: 8 }),
         filename: `burn-${amount}.png`,
         caption,
       };
@@ -687,7 +690,7 @@ A <code>solana:</code> link from /burn is the usual one — paste it here and sc
     const matrix = qrMatrix(text);
 
     return {
-      photo: qrPng(matrix, { scale: 8 }),
+      photo: qrArtPng(matrix, text, { scale: 8 }),
       filename: 'singularity-qr.png',
       caption:
         text.startsWith('solana:')
