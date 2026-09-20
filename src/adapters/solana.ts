@@ -45,6 +45,13 @@ import {
 } from '../core/format.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { checkImpersonation } from '../core/impersonation.js';
+import { finality } from '../core/finality.js';
+import type {
+  MintRisk,
+  PaymentClaim,
+  PaymentSettlement,
+  SettlementLevel,
+} from '../pay/types.js';
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
@@ -1957,5 +1964,436 @@ export async function verifyBurn(chain: ChainSpec, rawSignature: string): Promis
         'This proves a burn happened: that mint, that owner, that amount, final. It proves nothing about whoever handed you the signature — signatures are public the moment they land, so anyone can quote somebody else\u2019s burn. Bind a burn to a claimant by what the burner wrote into it, which they signed, not by who repeats it.',
       explorerUrl: explorerUrl(chain, `tx`, signature),
     } satisfies BurnReceipt;
+  });
+}
+
+// ───────────────────────────────────────────────────────────────── payments
+
+/**
+ * What accepting this mint exposes a merchant to after the money arrives.
+ *
+ * The distinction this makes, and that `mint_audit` does not, is between
+ * *dilution* and *custody*. A live mint authority means the supply can grow,
+ * which is a pricing problem. A live freeze authority or a permanent delegate
+ * means the balance you were just paid is held at somebody else's discretion,
+ * which is a different category: you can ship the goods and then lose the
+ * money, with nothing on chain to appeal to.
+ *
+ * `custodyIsYours` turns only on the second kind. It is the one bit a merchant
+ * actually has to decide on, and it is deliberately not a score.
+ */
+export async function assessMintRisk(chain: ChainSpec, mintAddress: string): Promise<MintRisk> {
+  const mint = requirePubkey(mintAddress, 'mint address');
+  const short = shortAddress(mint.toBase58());
+
+  return withConnection(chain, 'assessMintRisk', async (connection) => {
+    const facts = await readMintFacts(connection, mint, chain);
+
+    const delegateData = facts.extensions.get(EXT_PERMANENT_DELEGATE);
+    const permanentDelegate = delegateData ? readAuthority(delegateData) : undefined;
+
+    const hookData = facts.extensions.get(EXT_TRANSFER_HOOK);
+    const transferHook = hookData ? readAuthority(hookData, 32) : undefined;
+
+    const warnings: string[] = [];
+
+    if (facts.freezeAuthority) {
+      warnings.push(
+        `${facts.freezeAuthority} can freeze token accounts for mint ${short}, including the one you are paid into. A frozen balance is still yours and cannot be moved, for as long as they choose.`,
+      );
+    }
+
+    if (permanentDelegate) {
+      warnings.push(
+        `Mint ${short} has a permanent delegate (${permanentDelegate}) that can transfer or burn these tokens out of any wallet without the holder signing. Being paid in this token is not the same as keeping it.`,
+      );
+    }
+
+    if (hookData) {
+      warnings.push(
+        transferHook
+          ? `Every transfer of mint ${short} calls program ${transferHook}, which can make your outgoing payments fail on conditions the issuer controls.`
+          : `Mint ${short} has a transfer hook extension with no program set. Whoever holds the hook authority can set one at any time, and ordinary transfers start failing when they do.`,
+      );
+    }
+
+    if (facts.extensions.has(EXT_TRANSFER_FEE_CONFIG)) {
+      warnings.push(
+        `Mint ${short} charges a transfer fee, so you receive less than the amount sent. Price accordingly, or the payment will look short when it is not.`,
+      );
+    }
+
+    if (facts.extensions.has(EXT_DEFAULT_ACCOUNT_STATE)) {
+      warnings.push(
+        `Mint ${short} sets a default account state, which can make newly created token accounts frozen on arrival. A first payment into a fresh account may be unusable immediately.`,
+      );
+    }
+
+    if (facts.extensions.has(EXT_NON_TRANSFERABLE)) {
+      warnings.push(
+        `Mint ${short} is non-transferable. Whatever arrives cannot be sent anywhere afterwards.`,
+      );
+    }
+
+    if (facts.mintAuthority) {
+      // Deliberately not a custody warning. Supply growth is a reason to price
+      // differently, not a reason to distrust the balance in hand.
+      warnings.push(
+        `Mint ${short} can still issue more supply (mint authority ${facts.mintAuthority}). That dilutes the token without affecting your claim on what you hold.`,
+      );
+    }
+
+    const seizable = Boolean(facts.freezeAuthority || permanentDelegate);
+    const nonTransferable = facts.extensions.has(EXT_NON_TRANSFERABLE);
+
+    return {
+      mint: mint.toBase58(),
+      ...(facts.freezeAuthority ? { freezeAuthority: facts.freezeAuthority } : {}),
+      ...(facts.mintAuthority ? { mintAuthority: facts.mintAuthority } : {}),
+      ...(permanentDelegate ? { permanentDelegate } : {}),
+      ...(transferHook ? { transferHook } : {}),
+      custodyIsYours: !seizable && !nonTransferable,
+      warnings,
+    } satisfies MintRisk;
+  });
+}
+
+/**
+ * A payment built for one specific order.
+ *
+ * Structurally a transfer, with one addition that changes what it is for: the
+ * `references` are attached to the transfer instruction as read-only,
+ * non-signer accounts. They do nothing on chain — no program reads them, no
+ * balance touches them — and that is the point. They make the transaction
+ * discoverable by a key only the merchant knew in advance, which is how a
+ * payment is matched to an order without asking the payer to quote an id,
+ * paste a memo, or be trusted about either.
+ *
+ * Built for the account the wallet sends, so nobody types their own address.
+ */
+export async function buildPayment(
+  chain: ChainSpec,
+  params: {
+    payer: string;
+    to: string;
+    amount: string;
+    mint?: string;
+    memo?: string;
+    references?: string[];
+  },
+): Promise<UnsignedTx> {
+  const payer = requirePubkey(params.payer, 'payer address');
+  const to = requirePubkey(params.to, 'recipient address');
+  const references = (params.references ?? []).map((key) => requirePubkey(key, 'reference'));
+
+  return withConnection(chain, 'buildPayment', async (connection) => {
+    const transaction = new Transaction();
+    const warnings = ['This transaction is unsigned. Review every field before signing.'];
+    let summary: string;
+
+    if (params.mint) {
+      const mint = requirePubkey(params.mint, 'mint address');
+      const facts = await readMintFacts(connection, mint, chain);
+      const value = parseUnits(params.amount, facts.decimals);
+
+      if (value === 0n) {
+        throw new SingularityError(
+          'PAYMENT_AMOUNT_ZERO',
+          `${params.amount} rounds to zero at ${facts.decimals} decimals, so this payment would move nothing.`,
+          'Pass an amount of at least one base unit.',
+        );
+      }
+
+      const source = deriveAta(payer, mint, facts.programId);
+      const destination = deriveAta(to, mint, facts.programId);
+
+      const held = await connection.getAccountInfo(source).catch(() => null);
+      if (!held?.data || held.data.length < TOKEN_ACCOUNT_AMOUNT_OFFSET + 8) {
+        throw new SingularityError(
+          'NO_TOKEN_ACCOUNT',
+          `${shortAddress(payer.toBase58())} holds no token account for mint ${shortAddress(mint.toBase58())}, so it cannot pay in this token.`,
+          `The associated token account would be ${source.toBase58()}, and it does not exist.`,
+        );
+      }
+
+      const balance = Buffer.from(held.data).readBigUInt64LE(TOKEN_ACCOUNT_AMOUNT_OFFSET);
+      if (balance < value) {
+        throw new SingularityError(
+          'INSUFFICIENT_BALANCE',
+          `That account holds ${formatUnits(balance, facts.decimals)} and this payment asks for ${params.amount}.`,
+          'The transaction would fail on submission. Amounts here are whole tokens, never base units.',
+        );
+      }
+
+      const destinationExists = await connection.getAccountInfo(destination).catch(() => null);
+      if (!destinationExists) {
+        warnings.push(
+          `The recipient has no token account for this mint yet (${destination.toBase58()}). This transfer fails unless that account is created first, which costs ~0.002 SOL of rent.`,
+        );
+      }
+
+      warnings.push(...transferExtensionWarnings(facts, mint, chain));
+
+      const instruction = transferCheckedInstruction({
+        source,
+        mint,
+        destination,
+        owner: payer,
+        value,
+        decimals: facts.decimals,
+        programId: facts.programId,
+      });
+
+      // Appended after the program's own accounts, which is where the Solana
+      // Pay spec puts them and where a parser expects to find them.
+      for (const reference of references) {
+        instruction.keys.push({ pubkey: reference, isSigner: false, isWritable: false });
+      }
+
+      transaction.add(instruction);
+      summary = `Pay ${params.amount} of mint ${shortAddress(mint.toBase58())} from ${shortAddress(payer.toBase58())} to ${shortAddress(to.toBase58())} on ${chain.name}.`;
+    } else {
+      const lamports = parseUnits(params.amount, chain.nativeCurrency.decimals);
+
+      if (lamports === 0n) {
+        throw new SingularityError(
+          'PAYMENT_AMOUNT_ZERO',
+          `${params.amount} rounds to zero lamports, so this payment would move nothing.`,
+          'Pass an amount of at least one lamport.',
+        );
+      }
+
+      const instruction = SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: to,
+        lamports: Number(lamports),
+      });
+
+      for (const reference of references) {
+        instruction.keys.push({ pubkey: reference, isSigner: false, isWritable: false });
+      }
+
+      transaction.add(instruction);
+      summary = `Pay ${params.amount} SOL from ${shortAddress(payer.toBase58())} to ${shortAddress(to.toBase58())} on ${chain.name}.`;
+    }
+
+    if (params.memo !== undefined) {
+      const memo = params.memo.trim();
+      if (memo && Buffer.byteLength(memo, 'utf8') > MAX_MEMO_LENGTH) {
+        throw new SingularityError(
+          'MEMO_TOO_LONG',
+          `That memo is ${Buffer.byteLength(memo, 'utf8')} bytes, and the limit here is ${MAX_MEMO_LENGTH}.`,
+          'A memo carries a reference, not a document.',
+        );
+      }
+      if (memo) transaction.add(memoInstruction(memo, payer));
+    }
+
+    if (chain.testnet) {
+      warnings.push(`${chain.name} is a test network — these tokens have no value.`);
+    }
+
+    transaction.feePayer = payer;
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+
+    return {
+      chain: chain.id,
+      family: 'svm',
+      summary,
+      payload: {
+        transaction: transaction
+          .serialize({ requireAllSignatures: false, verifySignatures: false })
+          .toString('base64'),
+        encoding: 'base64',
+        feePayer: payer.toBase58(),
+        recentBlockhash: blockhash,
+        lastValidBlockHeight,
+        references: references.map((key) => key.toBase58()),
+      },
+      signingHint:
+        'Base64 wire-format transaction. Deserialize with Transaction.from(Buffer.from(tx, "base64")), sign, then sendRawTransaction. The blockhash expires in ~60 seconds — rebuild if it lapses.',
+      warnings,
+    } satisfies UnsignedTx;
+  });
+}
+
+/**
+ * Find the payment that satisfies a claim, and say how settled it is.
+ *
+ * The reference is the index: `getSignaturesForAddress` returns every
+ * transaction that touched it, and a reference generated per order is touched
+ * by exactly one — the payment for that order. Nothing has to be quoted by the
+ * payer and nothing has to be trusted from them.
+ *
+ * Read in two passes on purpose. The signature list comes back at the caller's
+ * commitment, so it can see a transaction that is confirmed but not yet
+ * finalized; the transaction itself is then fetched and matched against the
+ * claim. That ordering is what lets this report `probabilistic` honestly rather
+ * than either lying about finality or pretending nothing is there yet.
+ */
+export async function findPayment(
+  chain: ChainSpec,
+  claim: PaymentClaim,
+): Promise<PaymentSettlement> {
+  const reference = requirePubkey(claim.reference, 'reference');
+  const recipient = requirePubkey(claim.to, 'recipient address');
+
+  return withConnection(chain, 'findPayment', async (connection) => {
+    const signatures = await connection.getSignaturesForAddress(reference, { limit: 10 });
+
+    if (signatures.length === 0) {
+      return {
+        level: 'unpaid',
+        mismatches: [],
+        note: `No transaction on ${chain.name} has touched reference ${shortAddress(reference.toBase58())}. That means this payment has not been made, has not propagated to this endpoint yet, or is old enough to have been pruned from it — the three are indistinguishable from here.`,
+      } satisfies PaymentSettlement;
+    }
+
+    // Newest first is what the RPC returns; a reference is meant to be used
+    // once, so anything beyond the first is either a retry or someone reusing
+    // a reference they should not have.
+    const candidate = signatures.find((entry) => entry.err == null);
+
+    if (!candidate) {
+      return {
+        level: 'unpaid',
+        signature: signatures[0]?.signature,
+        mismatches: [],
+        note: `Every transaction touching reference ${shortAddress(reference.toBase58())} failed, so no money moved. A failed transaction changes no balances.`,
+      } satisfies PaymentSettlement;
+    }
+
+    const finalized = candidate.confirmationStatus === 'finalized';
+
+    const tx = await connection.getParsedTransaction(candidate.signature, {
+      maxSupportedTransactionVersion: MAX_TX_VERSION,
+      commitment: finalized ? 'finalized' : 'confirmed',
+    });
+
+    if (!tx) {
+      return {
+        level: 'pending',
+        signature: candidate.signature,
+        mismatches: [],
+        note: `Transaction ${shortAddress(candidate.signature, 10, 8)} is known to this endpoint but its contents are not retrievable yet. It has not settled.`,
+      } satisfies PaymentSettlement;
+    }
+
+    const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+    const mismatches: string[] = [];
+
+    let paidRaw = 0n;
+    let decimals = chain.nativeCurrency.decimals;
+    let symbol = chain.nativeCurrency.symbol;
+    let paidMint: string | undefined;
+
+    if (claim.mint) {
+      // Token balances are reported in the metadata rather than the
+      // instruction, which is what makes the destination resolvable to an
+      // owner at all. The destination is matched by *owner*, not by token
+      // account, because the account address depends on the token program and
+      // a merchant should not have to know which one a mint uses.
+      const wanted = requirePubkey(claim.mint, 'mint address').toBase58();
+
+      const before = new Map<number, bigint>();
+      for (const entry of tx.meta?.preTokenBalances ?? []) {
+        before.set(entry.accountIndex, BigInt(entry.uiTokenAmount.amount));
+      }
+
+      for (const entry of tx.meta?.postTokenBalances ?? []) {
+        if (entry.owner !== recipient.toBase58()) continue;
+        const gained = BigInt(entry.uiTokenAmount.amount) - (before.get(entry.accountIndex) ?? 0n);
+        if (gained <= 0n) continue;
+
+        paidMint = entry.mint;
+        decimals = entry.uiTokenAmount.decimals;
+        if (entry.mint === wanted) paidRaw += gained;
+      }
+
+      if (paidMint && paidMint !== wanted) {
+        // The failure this exists to catch: a ticker is not an identity, and a
+        // payment in a mint that calls itself USDC lands exactly as cleanly as
+        // one in the real thing.
+        mismatches.push(
+          `paid in mint ${paidMint}, but this order asked for ${wanted}. A token that shares a name with the one you asked for is a different token.`,
+        );
+      } else if (!paidMint) {
+        mismatches.push(
+          `no token balance of ${recipient.toBase58()} increased in this transaction, so it did not pay this recipient.`,
+        );
+      }
+
+      symbol = '';
+    } else {
+      const index = keys.indexOf(recipient.toBase58());
+      const pre = tx.meta?.preBalances?.[index];
+      const post = tx.meta?.postBalances?.[index];
+
+      if (index < 0 || pre === undefined || post === undefined) {
+        mismatches.push(
+          `${recipient.toBase58()} does not appear in this transaction, so it was not paid by it.`,
+        );
+      } else {
+        paidRaw = BigInt(post) - BigInt(pre);
+        if (paidRaw <= 0n) {
+          mismatches.push(`the balance of ${recipient.toBase58()} did not increase in this transaction.`);
+          paidRaw = 0n;
+        }
+      }
+    }
+
+    const expected = parseUnits(claim.amount, decimals);
+    if (mismatches.length === 0 && paidRaw < expected) {
+      mismatches.push(
+        `paid ${formatUnits(paidRaw, decimals)} but the order asked for ${claim.amount}. A short payment is not a payment.`,
+      );
+    }
+
+    let memo: UntrustedText | undefined;
+    const instructions: ParsedIx[] = [
+      ...(tx.transaction.message.instructions as ParsedIx[]),
+      ...(tx.meta?.innerInstructions ?? []).flatMap((inner) => inner.instructions as ParsedIx[]),
+    ];
+    for (const instruction of instructions) {
+      if (instruction.program === 'spl-memo' && typeof instruction.parsed === 'string') {
+        memo = untrustedText(instruction.parsed, 'the payer, who wrote it into the transaction');
+        break;
+      }
+    }
+
+    if (claim.memo && !(memo?.text ?? '').includes(claim.memo)) {
+      mismatches.push(
+        `the memo does not contain ${JSON.stringify(claim.memo)}, which this order required.`,
+      );
+    }
+
+    const level: SettlementLevel = finalized ? 'final' : 'probabilistic';
+    const at = candidate.blockTime ? new Date(candidate.blockTime * 1000).toISOString() : undefined;
+
+    const note =
+      mismatches.length > 0
+        ? `A transaction touched this reference but does not satisfy the order. Do not fulfil it: ${mismatches.length} check(s) failed.`
+        : level === 'final'
+          ? 'Paid in full, to the right account, in the right token, and finalized. This is irreversible.'
+          : 'Paid in full and confirmed, but not finalized. A confirmed transaction can still be dropped, so this is not yet safe to ship against.';
+
+    return {
+      level,
+      signature: candidate.signature,
+      paid: amount(paidRaw, decimals, symbol),
+      ...(keys[0] ? { from: keys[0] } : {}),
+      ...(at ? { at } : {}),
+      ...(memo ? { memo } : {}),
+      mismatches,
+      note,
+      finality: finalized
+        ? finality.final('Finalized by the cluster, which does not roll back.', { height: tx.slot })
+        : finality.probabilistic(
+            1,
+            'Confirmed but not finalized. It can still be dropped.',
+            { height: tx.slot },
+          ),
+    } satisfies PaymentSettlement;
   });
 }

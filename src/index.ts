@@ -41,6 +41,40 @@ export type { Change, Handler, PollOptions, Subscription, WatchOptions } from '.
 export type { Finality, FinalityKind } from './core/finality.js';
 export { finality } from './core/finality.js';
 
+/**
+ * Singularity Pay.
+ *
+ * Solana-only, and structurally so: it is built on Solana Pay's
+ * transaction-request protocol, which is the one payment standard whose shape
+ * already matches this project's custody boundary — the merchant builds, the
+ * customer's wallet signs, and nothing in between holds a key.
+ */
+export {
+  createIntent,
+  resolveIntent,
+  describeIntent,
+  buildIntentPayment,
+  settleIntent,
+} from './pay/operations.js';
+export type { CreatedIntent, SettlementResult } from './pay/operations.js';
+export {
+  InMemoryIntentStore,
+  intentLink,
+  isExpired,
+  newIntentId,
+  newReference,
+  prepareIntent,
+} from './pay/intent.js';
+export type { CreateIntentParams, IntentStore, StoredIntent } from './pay/intent.js';
+export { meetsSettlement, SETTLEMENT_ORDER } from './pay/types.js';
+export type {
+  MintRisk,
+  PaymentClaim,
+  PaymentSettlement,
+  SettlementLevel,
+} from './pay/types.js';
+export { assessMintRisk, buildPayment, findPayment } from './adapters/solana.js';
+
 /** The change-detection rule for a balance, shared by the CLI and the SDK. */
 export { balanceIdentity } from './tools/operations.js';
 

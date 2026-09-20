@@ -55,6 +55,19 @@ export type {
   ToolSelection,
 } from './tools.js';
 
+export { createPay } from './pay.js';
+export type {
+  CreateIntentParams,
+  CreatedIntent,
+  IntentStore,
+  PayApi,
+  PayConfig,
+  PayResponse,
+  SettlementLevel,
+  SettlementResult,
+  StoredIntent,
+} from './pay.js';
+
 export { ReadCache, DEFAULT_TTL, DEFAULT_RETRY, cacheKey, isTransient, withRetry } from './cache.js';
 export type { CacheClass, CacheStats, CacheTtl, RetryPolicy } from './cache.js';
 
@@ -85,6 +98,9 @@ export {
   adapterFor,
   adapterForFamily,
   completeness,
+  InMemoryIntentStore,
+  meetsSettlement,
+  assessMintRisk,
   operations,
   shapeToJsonSchema,
   VERSION as AGENT_VERSION,
