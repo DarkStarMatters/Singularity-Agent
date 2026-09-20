@@ -27,6 +27,7 @@ import type {
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
 import type { TokenExitReport } from '../trade/types.js';
+import type { SettlementResult } from '../pay/operations.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { SingularityError } from '../core/errors.js';
@@ -627,6 +628,50 @@ export function formatExitReport(report: TokenExitReport): string {
   // somebody reading a clean report as permission to buy.
   lines.push('', `<i>${esc(report.completeness.note)}</i>`);
   if (report.explorerUrl) lines.push(link(report.explorerUrl, 'explorer'));
+
+  return lines.join('\n');
+}
+
+/**
+ * A settlement verdict, for somebody deciding whether to ship.
+ *
+ * Two lines before any detail, because they answer different questions and a
+ * merchant needs both: how settled the payment is, and whether *this* call is
+ * the one that should act on it. The second is not derivable from the first —
+ * `final` stays true on every later check, and a bot polling in a loop would
+ * ship the same order each time.
+ */
+export function formatSettlement(result: SettlementResult): string {
+  const level =
+    result.level === 'final'
+      ? '✅ <b>Final</b> — irreversible'
+      : result.level === 'probabilistic'
+        ? '⏳ <b>Confirmed, not final</b> — can still be dropped'
+        : result.level === 'pending'
+          ? '⏳ <b>Pending</b>'
+          : '⬜ <b>Unpaid</b>';
+
+  const lines = [
+    `${bold('Payment')} — ${code(result.intent.id)}`,
+    '',
+    level,
+    result.fulfil
+      ? '✅ <b>Fulfil now</b> — this is the one check that should release the order'
+      : result.alreadyFulfilled
+        ? `☑️ Already fulfilled at ${esc(result.alreadyFulfilled.at)}`
+        : '⛔ <b>Do not fulfil</b>',
+  ];
+
+  if (result.mismatches.length > 0) {
+    lines.push('', bold('This is not your payment'));
+    for (const mismatch of result.mismatches) lines.push(`⛔ ${esc(mismatch)}`);
+  }
+
+  if (result.paid) lines.push('', `paid ${bold(result.paid.formatted)}`);
+  if (result.from) lines.push(`from ${code(result.from)}`);
+  if (result.signature) lines.push(`sig ${code(result.signature)}`);
+
+  lines.push('', `<i>${esc(result.note)}</i>`);
 
   return lines.join('\n');
 }

@@ -11,7 +11,10 @@ import type {
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import type { TokenExitReport } from '../trade/types.js';
+import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
+import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
+import { shortAddress } from '../core/format.js';
 import type { Finality } from '../core/finality.js';
 import type {
   BalanceResult,
@@ -855,4 +858,114 @@ function wrap(text: string, width: number, indent: string): string {
   if (line) lines.push(line);
 
   return lines.join(`\n${indent}`);
+}
+
+// ───────────────────────────────────────────────────────────────── payments
+
+/**
+ * A freshly created payment request.
+ *
+ * The risk block is the part that matters and it is printed before the id, not
+ * after: a merchant reading this is deciding whether to accept the token at
+ * all, and that decision is worth more than the reference they will copy.
+ */
+export function renderIntent(created: CreatedIntent): string {
+  const { intent, risk } = created;
+  const lines: string[] = [];
+
+  lines.push(`  ${dim('id')}         ${intent.id}`);
+  lines.push(`  ${dim('amount')}     ${bold(intent.amount)} ${intent.mint ? dim(intent.mint) : 'SOL'}`);
+  lines.push(`  ${dim('to')}         ${intent.to}`);
+  if (intent.memo) lines.push(`  ${dim('memo')}       ${intent.memo}`);
+  if (intent.orderId) lines.push(`  ${dim('order')}      ${intent.orderId}`);
+  lines.push(`  ${dim('expires')}    ${intent.expiresAt}`);
+
+  if (risk) {
+    lines.push('');
+    lines.push(
+      risk.custodyIsYours
+        ? `  ${green('custody is yours')}  ${dim('no third party can freeze or seize what you are paid')}`
+        : `  ${yellow('custody is shared')} ${bold('a named party can freeze or take this after you are paid')}`,
+    );
+
+    for (const warning of risk.warnings) {
+      lines.push(`  ${dim('-')} ${wrap(warning, 70, '    ')}`);
+    }
+  }
+
+  lines.push('');
+  lines.push(
+    `  ${dim('Scan it, or open the link on the same device. The wallet builds and shows the')}`,
+  );
+  lines.push(`  ${dim('transaction; Singularity holds no keys and cannot sign it.')}`);
+  lines.push('');
+  lines.push(`  ${dim('Check it with')}  singularity pay status ${intent.id}`);
+
+  return lines.join('\n');
+}
+
+/** One settlement, in full. */
+export function renderSettlement(result: SettlementResult): string {
+  const lines: string[] = [];
+
+  lines.push(render(result));
+
+  if (result.mismatches.length > 0) {
+    lines.push('');
+    lines.push(`  ${red('this is not your payment')}`);
+    for (const mismatch of result.mismatches) {
+      lines.push(`  ${red('!')} ${wrap(mismatch, 70, '    ')}`);
+    }
+  }
+
+  if (result.paid) lines.push(`\n  ${dim('paid')}       ${result.paid.formatted}`);
+  if (result.from) lines.push(`  ${dim('from')}       ${result.from}`);
+  if (result.signature) lines.push(`  ${dim('signature')}  ${result.signature}`);
+  if (result.at) lines.push(`  ${dim('at')}         ${result.at}`);
+
+  lines.push('');
+  lines.push(`  ${wrap(result.note, 70, '  ')}`);
+
+  return lines.join('\n');
+
+  function render(value: SettlementResult): string {
+    // Two facts, because "settled" and "act on it" are different questions and
+    // a merchant polling in a loop needs the second one.
+    const level =
+      value.level === 'final'
+        ? green('final')
+        : value.level === 'probabilistic'
+          ? yellow('confirmed, not final')
+          : value.level === 'pending'
+            ? yellow('pending')
+            : dim('unpaid');
+
+    const action = value.fulfil
+      ? `  ${green('FULFIL NOW')}  ${bold('this is the one call that should ship the order')}`
+      : value.alreadyFulfilled
+        ? `  ${dim('already fulfilled')}  ${dim(value.alreadyFulfilled.at)}`
+        : `  ${dim('do not fulfil')}`;
+
+    return `  ${dim('settlement')} ${level}\n${action}`;
+  }
+}
+
+/** One line per change, for `pay status --watch`. */
+export function renderSettlementLine(result: SettlementResult): string {
+  if (result.fulfil) return `${green('paid')}  ${bold('fulfil now')}  ${result.signature ?? ''}`;
+  if (result.mismatches.length > 0) return `${red('mismatch')}  ${result.mismatches[0]}`;
+  return `${dim(result.level)}  ${dim(result.note.slice(0, 80))}`;
+}
+
+/** A table of requests, worst-news-first within each row. */
+export function renderIntentList(intents: StoredIntent[]): string {
+  const rows = intents.map((intent) => [
+    intent.settledAt ? green('paid') : new Date(intent.expiresAt) < new Date() ? dim('expired') : yellow('open'),
+    intent.id.slice(0, 12),
+    `${intent.amount} ${intent.mint ? shortAddress(intent.mint) : 'SOL'}`,
+    shortAddress(intent.to),
+    intent.orderId ?? dim('—'),
+  ]);
+
+  return table(rows, ['', 'id', 'amount', 'to', 'order']);
 }

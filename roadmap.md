@@ -68,6 +68,32 @@ be the most dangerous thing in the package. Judging is split from reading into
 `trade/classify.ts`, the way `liveness.classify` is, which is what makes it testable
 against every combination without a connection.
 
+**Singularity Pay reaches a phone.** A payment request printed in a terminal is
+only useful to whoever is sitting at it, and the person who has to approve is holding
+a phone — often a different person entirely. So one intent produces one URL, that URL
+produces one QR matrix, and every surface renders that *same* matrix: half-blocks in a
+terminal, a PNG in Telegram. Nothing re-derives it, because a code on the screen and a
+code on the phone that could differ would be two chances to be wrong with no way to tell
+which.
+
+`singularity pay new|status|list` creates a request and pushes the QR to Telegram;
+`/pay`, `/paid` and `/qr` do it from the phone; `/burn` now answers with a scannable code
+rather than a link somebody has to open on the device already reading it. The QR encoder
+is hand-rolled in `core/qr.ts` — byte mode, versions 1-10, four renderings — so neither
+package gained a dependency: PNG needs only `node:zlib`, and the agent still declares six.
+
+**The recipient never comes from the message.** Anyone in a group could type
+`/pay 50 <their own address>` and receive an official-looking QR under the bot's name,
+which the next person to scan has every reason to trust. `SINGULARITY_PAY_RECIPIENTS`
+names the destinations and the chat names only the amount — the same guard `allowedMints`
+puts on burns, for a sharper reason, since here the attacker chooses who gets paid. Unset
+means refuse rather than default.
+
+Intents persist in `~/.singularity/intents.json`, with `burn-ledger.ts`'s caveat repeated
+because it is the same one: not a distributed store, fine for one process, and "fulfil
+exactly once" is the guarantee somebody ships goods on. `IntentStore` is an interface so a
+deployment that needs a real database can bring one.
+
 **The custody seam moved without dissolving.** "No signing, ever" is still the non-goal
 below, and it is still literally true of everything this repository publishes. But an
 application that can only read is not an application, and the honest answer to that was

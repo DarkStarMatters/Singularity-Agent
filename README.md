@@ -164,10 +164,13 @@ that mapping so the three cannot drift:
 | `/block` | fetch a block | `/forget` | drop this chat's history |
 | `/mint` | what a mint can do to you | `/identity` | is this the real token |
 | `/burn` | build an **unsigned** burn | `/verifyburn` | confirm a burn happened |
-| `/redeem` | spend a burn, once | | |
+| `/redeem` | spend a burn, once | `/inspect` | can you sell it again |
+| `/pay` | a QR somebody can scan to pay you | `/paid` | did it settle, safe to ship |
+| `/qr` | render any link as a scannable code | | |
 
-`/burn` posts a `solana:` link when `SINGULARITY_PAY_ENDPOINT` names a deployed
-`/api/burn` — tap it, approve in your wallet, done. Your wallet supplies the address, and
+`/burn` answers with a **scannable QR** when `SINGULARITY_PAY_ENDPOINT` names a deployed
+`/api/burn` — scan it from another phone, or tap the link in the caption on the device
+already reading it. Your wallet supplies the address, and
 the memo that makes the burn redeemable is already inside what you approve. Without that
 variable set it falls back to handing you an unsigned payload to sign yourself.
 
@@ -389,6 +392,11 @@ singularity verify-burn <signature> --mint <mint>
 # Before buying: what could stop you selling this again?
 singularity inspect <mint>              # exits non-zero when the mint blocks a sale
 
+# Take a payment. Prints a QR, and sends the same one to Telegram.
+singularity pay new 25 --to <address> --token <mint> --label "Order 7"
+singularity pay status <id> --watch     # exits 0 once it is actually paid
+singularity pay list
+
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
@@ -486,6 +494,43 @@ await readOnly.write.transfer({ to: 'vitalik.eth', amount: '0.1' });
 ```
 
 Full documentation: **[singularity-sdk/README.md](singularity-sdk/README.md)**.
+
+---
+
+## Singularity Pay
+
+Solana only, and structurally so: it is built on Solana Pay's transaction-request
+protocol, which is the one payment standard whose shape already matches the custody
+boundary — the merchant builds, the customer's wallet signs, nothing in between holds a
+key. Pay needs no `Signer` and works on a read-only client.
+
+```bash
+singularity pay new 25 --to <address> --token <mint> --label "Order 7"
+```
+
+You get a QR in the terminal and the **same** QR in Telegram. From the phone, `/pay`
+creates one and `/paid <id>` asks whether it settled.
+
+Three things it does that a rail returning `paid: true` cannot:
+
+- **Settlement is graded.** `final` is the default bar, because a confirmed transaction
+  can still be dropped and the point of the check is to stand between you and shipping
+  against something reversible.
+- **The payment is checked against the claim** — recipient, amount, and mint *by address*.
+  A ticker is not an identity: a payment in a token calling itself USDC lands exactly as
+  cleanly as the real thing. Every failure is named, and any one of them refuses
+  fulfilment however final the transaction.
+- **The mint is read before the link is published.** A live freeze authority can freeze
+  the account you are paid into, and a Token-2022 permanent delegate can pull the balance
+  back out without you signing. Being paid is not the same as keeping it.
+
+`fulfil` is true exactly once per intent, which is distinct from `level === 'final'` —
+that stays true forever, and a merchant polling in a loop would otherwise ship the same
+order every time.
+
+**Set `SINGULARITY_PAY_RECIPIENTS`.** The destination never comes from the message: a
+command that builds a payment request to whatever address it is handed is a way to get a
+stranger paid under your name. Unset means it refuses.
 
 ---
 

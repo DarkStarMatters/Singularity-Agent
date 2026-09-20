@@ -10,6 +10,12 @@ import * as render from './render.js';
 import { parseBudget, type ResponseBudget } from '../core/budget.js';
 import { pollLoop } from '../core/watch.js';
 import { balanceIdentity } from '../tools/operations.js';
+import { FileIntentStore, requireAllowedRecipient } from '../pay/file-store.js';
+import { createIntent as createPayIntent, settleIntent } from '../pay/operations.js';
+import { notifyPayment } from '../pay/notify.js';
+import { qrMatrix } from '../core/qr.js';
+import { qrUnicode } from '../core/qr-render.js';
+import type { SettlementLevel } from '../pay/types.js';
 
 /**
  * Read `--budget` off the command line.
@@ -695,6 +701,211 @@ program
     // that refuses to buy. Deliberately not non-zero for `degrades` findings:
     // a transfer fee is a reason to price differently, not to abort.
     process.exitCode = report.canExit ? 0 : 1;
+  });
+
+/**
+ * `pay` — create a payment request somebody can scan.
+ *
+ * The whole loop from a terminal: name an amount and a recipient, get a QR in
+ * the scrollback, let somebody point a phone at it, then ask whether it landed.
+ * Nothing here signs, and nothing here can: the QR is a link, the wallet builds
+ * and shows the transaction, and the person holding the phone decides.
+ *
+ * Recipients are checked against `SINGULARITY_PAY_RECIPIENTS` for the reason in
+ * `pay/file-store.ts` — a command that builds a payment request to whatever
+ * address it is handed is a way to get somebody else paid under your name.
+ */
+const payCommand = program
+  .command('pay')
+  .description('Create a payment request, and check whether it was paid.')
+  .addHelpText(
+    'after',
+    `
+  Solana only. The request is a Solana Pay transaction request: the wallet
+  fetches it, builds the transaction, and shows the payer what they are
+  approving. Singularity holds no keys and never signs.
+
+  Set SINGULARITY_PAY_ENDPOINT to the public URL of your /i/ endpoint, and
+  SINGULARITY_PAY_RECIPIENTS to the addresses you will accept payment at.
+
+  Examples:
+    singularity pay new 25 --to <address> --token <mint> --label "Order 7"
+    singularity pay status <intent-id>
+    singularity pay list`,
+  );
+
+/** The store every `pay` subcommand shares. */
+function payStore(): FileIntentStore {
+  return new FileIntentStore();
+}
+
+/** The endpoint links are built against, refusing rather than guessing. */
+function payEndpoint(): string {
+  const endpoint = process.env.SINGULARITY_PAY_ENDPOINT?.trim();
+
+  if (!endpoint) {
+    throw new SingularityError(
+      'NO_PAY_ENDPOINT',
+      'SINGULARITY_PAY_ENDPOINT is not set, so there is nowhere for a wallet to fetch the request from.',
+      'Set it to the public URL of your transaction-request endpoint, e.g. https://pay.example.com/i — the intent id is appended to it, and that URL is what goes inside the QR.',
+    );
+  }
+
+  return endpoint;
+}
+
+payCommand
+  .command('new')
+  .description('Create a payment request and print it as a QR code.')
+  .argument('<amount>', 'Whole tokens as a decimal string, never base units.')
+  .requiredOption('--to <address>', 'Who gets paid. Must be a configured recipient.')
+  .option('--token <mint>', 'Mint address. Omit for native SOL. Never a ticker.')
+  .option('--label <text>', 'What the wallet shows as the payee.')
+  .option('--memo <text>', 'Text the payment must carry, bound at creation.')
+  .option('--order <id>', 'Your own order id, carried through settlement.')
+  .option('--expires <seconds>', 'How long the request stays presentable. Default 900.')
+  .option('--no-telegram', 'Do not send the QR to Telegram, even if a chat is configured.')
+  .action(
+    async (
+      amount: string,
+      options: {
+        to: string;
+        token?: string;
+        label?: string;
+        memo?: string;
+        order?: string;
+        expires?: string;
+        telegram: boolean;
+      },
+    ) => {
+      requireAllowedRecipient(options.to);
+
+      const created = await createPayIntent(payStore(), payEndpoint(), {
+        to: options.to,
+        amount,
+        ...(options.token ? { mint: options.token } : {}),
+        ...(options.label ? { label: options.label } : {}),
+        ...(options.memo ? { memo: options.memo } : {}),
+        ...(options.order ? { orderId: options.order } : {}),
+        ...(options.expires ? { expiresIn: Number(options.expires) } : {}),
+      });
+
+      // The same code goes to the phone. Not a regenerated one: one intent,
+      // one URL, one matrix, rendered twice. A terminal QR and a Telegram QR
+      // that could differ would be two chances to be wrong and no way to tell
+      // which. Off with --no-telegram, and silent about it when no chat is
+      // configured, because that is the ordinary case rather than a fault.
+      const notified = options.telegram ? await notifyPayment(created) : undefined;
+
+      if (program.opts().json) {
+        console.log(toJson({ ...created, telegram: notified }));
+        return;
+      }
+
+      console.log(render.heading(`Payment request — ${created.intent.label}`));
+      console.log('');
+      console.log(qrUnicode(qrMatrix(created.url, { margin: 2 })));
+      console.log(`  ${created.url}`);
+      console.log('');
+      console.log(render.renderIntent(created));
+
+      if (notified?.sent) {
+        // Naming the bot, not just the chat: a stale TELEGRAM_BOT_TOKEN in the
+        // environment sends successfully from the wrong bot, and that failure
+        // is otherwise completely silent.
+        console.log(
+          `
+  ${render.green('sent to Telegram')}  ${render.dim(
+            `chat ${notified.chatId}${notified.sentAs ? ` as @${notified.sentAs}` : ''}`,
+          )}`,
+        );
+      } else if (notified?.reason && process.env.TELEGRAM_BOT_TOKEN) {
+        // Only worth saying when a bot exists and it still did not arrive. A
+        // deployment with no bot configured is not failing at anything.
+        console.log(`
+  ${render.yellow('not sent to Telegram')}  ${render.dim(notified.reason)}`);
+      }
+    },
+  );
+
+payCommand
+  .command('status')
+  .description('Ask whether a payment request has been paid, and how settled it is.')
+  .argument('<id>', 'The intent id, as `pay new` printed it.')
+  .option('--require <level>', 'Settlement bar: pending, probabilistic, or final. Default final.')
+  .option('--watch', 'Poll until it settles, then stop.')
+  .option('-i, --interval <seconds>', 'Seconds between polls when watching. Default 10.')
+  .action(async (id: string, options: { require?: string; watch?: boolean; interval?: string }) => {
+    const store = payStore();
+    const require_ = options.require as SettlementLevel | undefined;
+
+    if (!options.watch) {
+      const result = await settleIntent(store, id, require_ ? { require: require_ } : {});
+      if (program.opts().json) console.log(toJson(result));
+      else console.log(render.renderSettlement(result));
+
+      // Non-zero until it is actually paid, so this drops into a script that
+      // waits before shipping.
+      process.exitCode = result.fulfil || result.alreadyFulfilled ? 0 : 1;
+      return;
+    }
+
+    let settled = false;
+
+    if (!program.opts().json) {
+      console.log(render.heading(`Watching payment ${id}`));
+      console.log(render.dim('  Polling. Ctrl-C to stop.\n'));
+    }
+
+    const subscription = pollLoop(
+      async () => {
+        const result = await settleIntent(store, id, require_ ? { require: require_ } : {});
+        if (result.fulfil || result.alreadyFulfilled) settled = true;
+        return result;
+      },
+      (result) => `${result.level}|${result.fulfil}|${result.mismatches.length}`,
+      ({ value, at }) => {
+        emitChange('payment', at, { id, level: value.level, fulfil: value.fulfil }, () =>
+          render.renderSettlementLine(value),
+        );
+      },
+      {
+        intervalMs: intervalMs(options.interval, 10),
+        until: () => settled,
+        onError: watchError,
+        label: 'singularity pay status',
+      },
+    );
+
+    await runWatch(subscription);
+    process.exitCode = settled ? 0 : 1;
+  });
+
+payCommand
+  .command('list')
+  .description('Every payment request this machine has created, newest first.')
+  .option('-n, --limit <count>', 'How many to show. Default 20.')
+  .action(async (options: { limit?: string }) => {
+    const all = await payStore().all();
+    const limit = options.limit ? Number(options.limit) : 20;
+    const shown = all.slice(0, limit);
+
+    if (program.opts().json) {
+      console.log(toJson(shown));
+      return;
+    }
+
+    if (shown.length === 0) {
+      console.log(render.dim('\n  No payment requests yet. `singularity pay new` makes one.\n'));
+      return;
+    }
+
+    console.log(render.heading('Payment requests'));
+    console.log(render.renderIntentList(shown));
+
+    if (all.length > shown.length) {
+      console.log(render.dim(`\n  ${all.length - shown.length} older, not shown.`));
+    }
   });
 
 program

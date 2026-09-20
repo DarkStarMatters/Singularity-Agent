@@ -9,6 +9,9 @@ import * as ops from '../tools/operations.js';
 import { burnLink } from '../pay/transaction-request.js';
 import { qrMatrix } from '../core/qr.js';
 import { qrPng } from '../core/qr-render.js';
+import { FileIntentStore, allowedRecipients } from '../pay/file-store.js';
+import { createIntent as createPayIntent, settleIntent as settlePayIntent } from '../pay/operations.js';
+import { payCaption } from '../pay/notify.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
@@ -29,6 +32,7 @@ import {
   formatMintAudit,
   formatBurnClaim,
   formatExitReport,
+  formatSettlement,
   formatTokenIdentity,
   bold,
   code,
@@ -278,6 +282,83 @@ function burnClaim(chatId: number): string {
   return `sngl:${chatId}`;
 }
 
+/** Binds a payment to this chat, the way burnClaim binds a burn. */
+function payClaim(chatId: number): string {
+  return `sngl-pay:${chatId}`;
+}
+
+/** One store per process; the file is the shared state, not this object. */
+let sharedPayStore: FileIntentStore | undefined;
+function payStore(): FileIntentStore {
+  sharedPayStore ??= new FileIntentStore();
+  return sharedPayStore;
+}
+
+const pay: Command = {
+  name: 'pay',
+  aliases: ['request', 'invoice'],
+  usage: '/pay <amount> [token mint] [order id]',
+  summary: 'Create a payment request — a QR somebody can scan to pay you',
+  async run(ctx) {
+    const amount = required(ctx, 0, 'an amount', pay);
+    const mint = ctx.args[1];
+    const orderId = ctx.args[2];
+
+    const endpoint = process.env.SINGULARITY_PAY_ENDPOINT?.trim();
+    if (!endpoint) {
+      throw new SingularityError(
+        'NO_PAY_ENDPOINT',
+        'No payment endpoint is configured, so a wallet would have nowhere to fetch the request from.',
+        'Set SINGULARITY_PAY_ENDPOINT to the public URL of your /i/ endpoint.',
+      );
+    }
+
+    // The recipient is never taken from the message. Anyone in a group could
+    // otherwise type `/pay 50 <their own address>` and get an official-looking
+    // QR under this bot's name, which the next person to scan has every reason
+    // to trust. The operator names the destinations; the chat only names the
+    // amount.
+    const recipients = allowedRecipients();
+    if (recipients.length === 0) {
+      throw new SingularityError(
+        'NO_PAY_RECIPIENTS',
+        'This bot has no configured payment recipients, so it will not build a payment request.',
+        'Set SINGULARITY_PAY_RECIPIENTS to the address you want to be paid at. It is deliberately not taken from the message: a bot that builds a payment request to whatever address it is handed is a way to get a stranger paid under your name.',
+      );
+    }
+
+    const created = await createPayIntent(payStore(), endpoint, {
+      to: recipients[0]!,
+      amount,
+      ...(mint ? { mint } : {}),
+      ...(orderId ? { orderId } : {}),
+      label: orderId ? `Payment ${orderId}` : `Payment of ${amount}`,
+      // Binds the payment to this chat, the way /burn binds a claim, so a
+      // settlement can be credited to whoever asked rather than to whoever
+      // quotes the reference first.
+      memo: payClaim(ctx.chatId),
+    });
+
+    return {
+      photo: qrPng(qrMatrix(created.url, { level: 'M' }), { scale: 8 }),
+      filename: `payment-${created.intent.id.slice(0, 8)}.png`,
+      caption: payCaption(created),
+    };
+  },
+};
+
+const paid: Command = {
+  name: 'paid',
+  aliases: ['settled', 'pay_status'],
+  usage: '/paid <intent id>',
+  summary: 'Has a payment request been paid, and is it safe to act on?',
+  async run(ctx) {
+    const id = required(ctx, 0, 'a payment request id', paid);
+    const result = await settlePayIntent(payStore(), id);
+    return formatSettlement(result);
+  },
+};
+
 const burn: Command = {
   name: 'burn',
   aliases: ['build_burn'],
@@ -300,23 +381,33 @@ const burn: Command = {
     if (endpoint && !owner) {
       const link = burnLink(endpoint, { mint, amount, memo: claim, chain: ctx.args[3] });
 
-      return [
-        `${bold('Burn')} ${esc(amount)} — tap to approve in your wallet`,
+      // A link in a chat message is tappable on the device reading it and
+      // useless to anyone holding a different phone — which is the usual case,
+      // since the wallet is rarely on the machine that asked. The QR carries
+      // the same link, so one message serves both.
+      //
+      // The caption keeps the memo explanation rather than trimming to fit:
+      // the memo is what decides who can claim the burn, and losing it to a
+      // character limit would be losing the point of the message.
+      const caption = [
+        `${bold('Burn')} ${esc(amount)} — scan it, or tap the link`,
         '',
         link,
         '',
-        `Your wallet supplies the address, so there is nothing to type and nothing to paste. ` +
-          `It will show you the burn and the memo ${code(claim)} before you approve, and ` +
-          `nothing happens until you do.`,
+        `Your wallet supplies the address, so there is nothing to type. It shows you the burn and the memo ${code(claim)} before you approve, and nothing happens until you do.`,
         '',
         `<i>${esc(
-          `The memo is what credits this burn to ${whose} when you /redeem the signature your wallet gives back. Burn without one and anyone who sees the signature can claim it first.`,
+          `The memo credits this burn to ${whose} when you /redeem the signature your wallet gives back. Burn without one and anyone who sees the signature can claim it first.`,
         )}</i>`,
         '',
-        `<i>${esc(
-          'Singularity holds no keys and cannot sign. The link asks your wallet to build and show you a transaction; approving it is entirely yours.',
-        )}</i>`,
+        `<i>${esc('Singularity holds no keys and cannot sign.')}</i>`,
       ].join('\n');
+
+      return {
+        photo: qrPng(qrMatrix(link, { level: 'M' }), { scale: 8 }),
+        filename: `burn-${amount}.png`,
+        caption,
+      };
     }
 
     // Naming a wallet explicitly still produces the raw payload, for anyone
@@ -560,6 +651,8 @@ const COMMAND_LIST: Command[] = [
   identity,
   inspect,
   qr,
+  pay,
+  paid,
   burn,
   verifyburn,
   redeem,

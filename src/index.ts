@@ -66,6 +66,9 @@ export {
   prepareIntent,
 } from './pay/intent.js';
 export type { CreateIntentParams, IntentStore, StoredIntent } from './pay/intent.js';
+export { FileIntentStore, intentsPath, allowedRecipients, requireAllowedRecipient } from './pay/file-store.js';
+export { notifyPayment, payCaption, payChatId } from './pay/notify.js';
+export type { NotifyResult } from './pay/notify.js';
 export { meetsSettlement, SETTLEMENT_ORDER } from './pay/types.js';
 export type {
   MintRisk,
