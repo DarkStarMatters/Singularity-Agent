@@ -99,6 +99,7 @@ describe('tool catalogue', () => {
       'mint_audit',
       'portfolio',
       'read_contract',
+      'receipt_art',
       'resolve',
       'token_identity',
       'transaction',

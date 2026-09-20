@@ -5,6 +5,8 @@ import {
   receiptImage,
   receiptMetadata,
   receiptName,
+  receiptUri,
+  referenceFromUri,
   uriFits,
   verifyReceiptImage,
 } from '../src/art/receipt.js';
@@ -151,6 +153,51 @@ describe('the metadata a marketplace reads', () => {
       value: string;
     }>;
     expect(withOrder.find((a) => a.trait_type === 'Order')?.value).toBe('ord-7');
+  });
+});
+
+describe('carrying the reference on chain, in the uri', () => {
+  const facts = receiptFacts(intent, settled);
+
+  it('round-trips the reference through the uri', () => {
+    // The link that makes a token carry its own evidence: the uri is on chain
+    // and a host cannot rewrite it, so the reference it names is as durable as
+    // the mint account itself.
+    const uri = receiptUri('https://receipts.example.test', facts);
+    expect(referenceFromUri(uri)).toBe(REFERENCE);
+  });
+
+  it('tolerates a trailing slash on the base', () => {
+    expect(receiptUri('https://x.test/', facts)).toBe(receiptUri('https://x.test', facts));
+  });
+
+  it('still fits the on-chain field', () => {
+    expect(uriFits(receiptUri('https://receipts.example.test', facts))).toBe(true);
+  });
+
+  it('refuses a base too long to leave room for the reference', () => {
+    // Failing here beats failing after the mint account has been paid for.
+    expect(() => receiptUri(`https://${'a'.repeat(200)}.test`, facts)).toThrow(/200/);
+  });
+
+  it('returns null rather than guessing when the convention was not followed', () => {
+    // Not an error. It means a verifier must fall back to the off-chain JSON,
+    // and therefore to trusting whoever serves it.
+    expect(referenceFromUri('https://x.test/receipts/7.json')).toBeNull();
+    expect(referenceFromUri('https://x.test/r.json')).toBeNull();
+    expect(referenceFromUri('ipfs://QmSomethingElseEntirely')).toBeNull();
+  });
+
+  it('reads the reference back through a query string or fragment', () => {
+    const uri = receiptUri('https://x.test', facts);
+    expect(referenceFromUri(`${uri}?v=2`)).toBe(REFERENCE);
+    expect(referenceFromUri(`${uri}#top`)).toBe(REFERENCE);
+  });
+
+  it('does not mistake a base58 address elsewhere in the path for the reference', () => {
+    // A recipient address in the path would otherwise read as the reference
+    // and send a verifier off to re-derive the wrong picture.
+    expect(referenceFromUri(`https://x.test/${RECIPIENT}/index.html`)).toBeNull();
   });
 });
 

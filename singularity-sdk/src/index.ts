@@ -117,6 +117,8 @@ export {
   receiptFacts,
   receiptImage,
   receiptMetadata,
+  receiptUri,
+  referenceFromUri,
   verifyReceiptImage,
   uriFits,
   buildReceiptMint,

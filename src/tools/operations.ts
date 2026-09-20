@@ -1,4 +1,8 @@
 import { adapterFor } from '../adapters/index.js';
+import { styleFor, renderQrArt } from '../art/qr-art.js';
+import { contrastRatio } from '../art/palette.js';
+import { referenceFromUri } from '../art/receipt.js';
+import { qrMatrix } from '../core/qr.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import {
   auditMint as auditSolanaMint,
@@ -1251,4 +1255,104 @@ export async function inspectExit(options: {
   const chain = solanaChain(options.chain, 'Exit analysis');
   const mint = await toAddress(options.mint, chain);
   return inspectTokenExit(chain, mint);
+}
+
+/**
+ * What one payment's receipt artwork looks like, and whether an image is it.
+ *
+ * Pure: it reads no chain and fetches nothing. The whole point of seeding the
+ * art from the reference is that the picture is a function of a value already
+ * on chain, so describing or checking it needs no network at all.
+ *
+ * Two questions, and the second is the one worth having. *What does this
+ * payment look like* is useful for a preview. *Is this image the one this
+ * reference generates* is how a holder finds out whether the picture a
+ * marketplace is showing them is evidence of their payment or a picture
+ * somebody swapped in — a receipt's metadata JSON is served by a host, and a
+ * host can change its mind.
+ *
+ * A false `matches` is not proof of fraud. It means the image is not evidence,
+ * which is a different and more useful thing to say.
+ */
+export async function receiptArt(options: {
+  reference?: string;
+  uri?: string;
+  link?: string;
+  image?: string;
+}): Promise<{
+  reference: string;
+  source: 'reference' | 'uri';
+  traits: { palette: string; modules: string; finders: string; fill: number };
+  contrast: { inkOnPaper: number; accentOnPaper: number };
+  svg?: string;
+  matches?: boolean;
+  note: string;
+}> {
+  const fromUri = options.uri ? referenceFromUri(options.uri) : null;
+  const reference = options.reference ?? fromUri;
+
+  if (!reference) {
+    throw new SingularityError(
+      'BAD_INPUT',
+      options.uri
+        ? 'That uri does not carry a reference, so the artwork cannot be derived from it. ' +
+            'A Singularity receipt serves its JSON at <base>/<reference>.json; anything else means the ' +
+            'reference is only in the off-chain JSON, which whoever serves it can change.'
+        : 'Pass a reference, or a receipt uri that contains one.',
+    );
+  }
+
+  const style = styleFor(reference);
+  const traits = {
+    palette: style.palette.name,
+    modules: style.shape,
+    finders: style.finder,
+    fill: Math.round(style.fill * 100) / 100,
+  };
+
+  const contrast = {
+    inkOnPaper: Math.round(contrastRatio(style.palette.ink, style.palette.paper) * 10) / 10,
+    accentOnPaper: Math.round(contrastRatio(style.palette.accent, style.palette.paper) * 10) / 10,
+  };
+
+  // Rendering needs the link, because the art styles a matrix and the matrix is
+  // the payment link. Without one the traits still answer "what does it look
+  // like" — they are derived from the reference alone.
+  const svg = options.link ? renderQrArt(qrMatrix(options.link), reference, { scale: 8 }) : undefined;
+
+  if (options.image !== undefined) {
+    if (!svg) {
+      throw new SingularityError(
+        'BAD_INPUT',
+        'Checking an image needs the payment link too: the artwork styles the link\'s QR matrix, ' +
+          'so without the link there is nothing to compare against.',
+      );
+    }
+
+    const matches = svg === options.image;
+    return {
+      reference,
+      source: options.reference ? 'reference' : 'uri',
+      traits,
+      contrast,
+      svg,
+      matches,
+      note: matches
+        ? 'This image is exactly what the reference generates, so it is evidence of that payment.'
+        : 'This image is not what the reference generates. That does not prove the payment is bad — it means the image is not evidence of it, and whoever served it may have changed it.',
+    };
+  }
+
+  return {
+    reference,
+    source: options.reference ? 'reference' : 'uri',
+    traits,
+    contrast,
+    ...(svg ? { svg } : {}),
+    note:
+      'Derived from the reference alone, so anyone holding it gets this same answer without trusting a server. ' +
+      (svg
+        ? 'Pass `image` to check a served picture against it.'
+        : 'Pass `link` to render the code, and `image` to check one.'),
+  };
 }

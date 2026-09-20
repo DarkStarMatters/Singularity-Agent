@@ -24,6 +24,27 @@
  *
  * This project ships a tool that warns holders about mutable metadata. Minting
  * one that could not be checked would be poor form.
+ *
+ * ## What the token alone proves, and what it does not
+ *
+ * Worth stating precisely, because the arrangement above is easy to overstate.
+ * Re-derivation answers "is this image the one this reference generates". It
+ * does not, by itself, answer "which reference does this token belong to" —
+ * and the attributes that name the reference live in the off-chain JSON, which
+ * is the part a host can rewrite.
+ *
+ * The on-chain fields are the fix, and they are small: `name` holds 32 bytes,
+ * which is not enough for "Receipt " plus a 43-character base58 reference. The
+ * `uri` holds 200, which is plenty. So {@link receiptUri} puts the reference in
+ * the URL itself and {@link referenceFromUri} reads it back, which makes the
+ * whole chain checkable from the mint account: the uri names the reference, the
+ * reference generates the image, and the reference is an account key on the
+ * payment transaction that anyone can look up.
+ *
+ * Using some other URL shape is allowed and weakens exactly that link. It is a
+ * convention rather than an enforcement because the metadata program has no
+ * opinion about URLs, and pretending otherwise would be a check that looks like
+ * a guarantee.
  */
 
 import { qrMatrix } from '../core/qr.js';
@@ -217,6 +238,41 @@ export function receiptMetadata(
  */
 export function receiptName(facts: ReceiptFacts): string {
   return `Receipt ${facts.reference.slice(0, 8)}`.slice(0, 32);
+}
+
+/**
+ * Where to serve a receipt's JSON, with the reference in the path.
+ *
+ * The reference is what ties the token to a payment and to its picture, and
+ * the on-chain `name` field is too small to hold one. Putting it in the uri
+ * puts it on chain, where a host cannot change it — which is the difference
+ * between a token that carries its own evidence and one that points at a
+ * server and asks you to trust it.
+ */
+export function receiptUri(base: string, facts: ReceiptFacts): string {
+  const uri = `${base.replace(/\/$/, '')}/${facts.reference}.json`;
+
+  if (!uriFits(uri)) {
+    throw new Error(
+      `A receipt uri built on "${base}" is ${Buffer.byteLength(uri, 'utf8')} bytes and the on-chain field holds 200. Use a shorter base URL.`,
+    );
+  }
+
+  return uri;
+}
+
+/**
+ * Read a reference back out of a receipt's uri.
+ *
+ * Returns null when the uri does not follow the convention, which is not an
+ * error — it means the token's reference cannot be recovered from the chain
+ * alone and a verifier has to fall back to the off-chain JSON, with everything
+ * that implies about who it is trusting.
+ */
+export function referenceFromUri(uri: string): string | null {
+  // Base58 excludes 0, O, I and l, and a Solana pubkey is 43 or 44 characters.
+  const match = /\/([1-9A-HJ-NP-Za-km-z]{43,44})\.json(?:$|[?#])/.exec(uri);
+  return match?.[1] ?? null;
 }
 
 /**

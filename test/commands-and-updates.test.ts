@@ -41,6 +41,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   token_identity: 'identity',
   chain_liveness: 'health',
   inspect_exit: 'inspect',
+  receipt_art: 'receipt',
 };
 
 describe('telegram command surface', () => {

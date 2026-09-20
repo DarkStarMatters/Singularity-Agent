@@ -398,6 +398,31 @@ export const TOOLS: ToolDefinition[] = [
     },
     run: (args) => ops.inspectExit(args),
   }),
+  defineTool({
+    name: 'receipt_art',
+    title: 'What a payment receipt looks like, and whether an image is it',
+    description:
+      "Every Singularity payment QR is artwork derived from the payment's `reference` — the pubkey attached to the transfer that makes it findable on chain. Because it is derived rather than stored, the picture is a fingerprint of one payment: two payments can never render alike, and anyone holding the reference can re-derive it. Pass a `reference` (or a receipt `uri` of the form <base>/<reference>.json, which is how the reference reaches the chain) to get the style traits a marketplace would list. Pass `link` as well to render the code. Pass `image` to ask the question that matters: **is this picture the one this reference generates?** A receipt NFT's metadata is served by a host that can change it, and this is how a holder checks the image they are being shown is evidence of their payment rather than something swapped in. `matches: false` is not proof of fraud — it means the image is not evidence. This is pure: it reads no chain, fetches nothing, and signs nothing.",
+    shape: {
+      reference: z
+        .string()
+        .optional()
+        .describe('The payment reference the art is derived from.'),
+      uri: z
+        .string()
+        .optional()
+        .describe('A receipt metadata uri to read the reference out of, when you do not have it directly.'),
+      link: z
+        .string()
+        .optional()
+        .describe('The solana: payment link, needed to render or compare a picture.'),
+      image: z
+        .string()
+        .optional()
+        .describe('An SVG to check against what the reference generates. Requires `link`.'),
+    },
+    run: (args) => ops.receiptArt(args),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

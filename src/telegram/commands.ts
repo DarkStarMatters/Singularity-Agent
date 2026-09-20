@@ -668,6 +668,53 @@ const inspect: Command = {
   },
 };
 
+/**
+ * Is the picture on my receipt the one my payment generates?
+ *
+ * The check a holder cannot do by eye. A receipt NFT's image is served by a
+ * host, and a host can change what it serves; the artwork is derived from the
+ * reference, so it can be re-derived here and compared. Everything this needs
+ * is already in the payment link, so it reads no chain and fetches nothing.
+ */
+const receipt: Command = {
+  name: 'receipt',
+  aliases: ['receipt_art', 'art'],
+  usage: '/receipt <reference or receipt uri> [solana: link]',
+  summary: 'What a payment receipt looks like, and whether an image is genuine',
+  async run(ctx) {
+    const subject = required(ctx, 0, 'a payment reference or a receipt uri', receipt);
+    const link = ctx.args[1];
+
+    const result = await ops.receiptArt({
+      ...(subject.includes('://') ? { uri: subject } : { reference: subject }),
+      ...(link ? { link } : {}),
+    });
+
+    const lines = [
+      `<b>Receipt ${esc(result.reference.slice(0, 8))}</b>`,
+      '',
+      `Palette   <code>${esc(result.traits.palette)}</code>`,
+      `Modules   <code>${esc(result.traits.modules)}</code>`,
+      `Finders   <code>${esc(result.traits.finders)}</code>`,
+      `Contrast  <code>${result.contrast.inkOnPaper}:1</code> ink, <code>${result.contrast.accentOnPaper}:1</code> accent`,
+      '',
+      `<i>${esc(result.note)}</i>`,
+    ].join('\n');
+
+    // With the link in hand the code itself is the better answer: the picture
+    // is the thing being asked about.
+    if (link) {
+      return {
+        photo: qrArtPng(qrMatrix(link), result.reference, { scale: 8 }),
+        filename: `receipt-${result.reference.slice(0, 8)}.png`,
+        caption: lines,
+      };
+    }
+
+    return lines;
+  },
+};
+
 const qr: Command = {
   name: 'qr',
   aliases: ['scan'],
@@ -820,6 +867,7 @@ const COMMAND_LIST: Command[] = [
   mint,
   identity,
   inspect,
+  receipt,
   qr,
   pay,
   paid,

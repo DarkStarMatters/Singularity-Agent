@@ -124,6 +124,8 @@ export {
   receiptImage,
   receiptMetadata,
   receiptName,
+  receiptUri,
+  referenceFromUri,
   verifyReceiptImage,
   uriFits,
   METAPLEX_URI_LIMIT,
