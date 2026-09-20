@@ -1117,7 +1117,28 @@
         runs the same commands you would and reads the actual, current answer off the chain.
       </p>
 
-      <h3>The quickest way</h3>
+      <h3>The quickest way — nothing to install</h3>
+      <p>
+        The tools run on our server, so your machine needs no clone, no build and no
+        Node.js. One URL is the whole setup.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">claude mcp add --transport http singularity https://mcp-singularity.cicada71.net/mcp</code>
+          <button class="copy" type="button" data-copy="claude mcp add --transport http singularity https://mcp-singularity.cicada71.net/mcp">Copy</button>
+        </div>
+        <pre><code><span class="ok">✓</span> Added HTTP MCP server singularity
+
+<span class="dim">Eighteen tools. Read-only. No account, no key, no credentials.</span></code></pre>
+      </figure>
+      <figcaption class="sample">
+        The one thing to weigh: your questions travel to our server rather than staying on
+        your machine. Nothing is stored, and no key is involved either way — but if that
+        matters to you, the local option below is identical in every other respect.
+      </figcaption>
+
+      <h3>Or run it on your own machine</h3>
       <p>
         One command, run from anywhere. Use the full path to wherever you cloned the repo,
         and make sure you've run <code>npm run build</code> first.

@@ -72,9 +72,40 @@ Verify with `claude plugin list`. To update after a rebuild, bump `version` in b
 `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then
 `claude plugin update singularity-agent`.
 
-### As a plain MCP server
+### As a hosted MCP server, over HTTP
 
-The quickest route — no clone, no marketplace, no plugin:
+Nothing to install. The tools run on our infrastructure and the client only needs a URL:
+
+```bash
+claude mcp add --transport http singularity https://mcp-singularity.cicada71.net/mcp
+```
+
+Or by hand, in any MCP client that speaks streamable HTTP:
+
+```json
+{
+  "mcpServers": {
+    "singularity": {
+      "type": "http",
+      "url": "https://mcp-singularity.cicada71.net/mcp"
+    }
+  }
+}
+```
+
+The `type` field matters: a `url` without one is skipped silently by some clients.
+
+This serves the same eighteen tools as the local server, from the same catalogue, with
+full input schemas. It is read-only, holds no keys, and needs no credentials — so the
+trade is the obvious one: your queries reach our endpoint rather than staying on your
+machine. If that matters, use the local route below; it is identical in every other way.
+
+A `GET` on the endpoint returns its name, version and tool count, which is the polite
+thing to hand a health check.
+
+### As a plain MCP server, locally
+
+The quickest local route — no clone, no marketplace, no plugin:
 
 ```bash
 claude mcp add singularity -- npx -y -p singularity-agent singularity-mcp

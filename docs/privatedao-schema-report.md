@@ -76,7 +76,7 @@ success with an unexpected body.
 
 **SingularityAgent is registered and healthy.** The registry now returns it with
 `status: connected`, `transport: streamable-http`, and all eighteen tools
-introspected from `https://singularity-agent.cicada71.net/api/mcp` with their
+introspected from `https://mcp-singularity.cicada71.net/mcp` with their
 full input schemas. `agent_match` finds it. Whatever route that registration
 took, it worked.
 
@@ -166,8 +166,8 @@ including URLs that are syntactically valid and live:
 | `{}` | `Invalid URL` |
 | `{"url":"not-a-url"}` | `Invalid URL` |
 | `{"url":"https://example.invalid/mcp"}` | `Invalid URL` |
-| `{"url":"https://singularity-agent.cicada71.net/mcp"}` | `Invalid URL` |
-| `{"url":"https://singularity-agent.cicada71.net"}` | `Invalid URL` |
+| `{"url":"https://mcp-singularity.cicada71.net/mcp"}` | `Invalid URL` |
+| `{"url":"https://mcp-singularity.cicada71.net"}` | `Invalid URL` |
 | `{"endpoint":…}`, `{"agent_url":…}`, `{"mcp_url":…}`, `{"agentUrl":…}`, `{"uri":…}` | `Invalid URL` |
 | `{"agent":{"url":…,"name":…}}` | `Invalid URL` |
 | with `name`, `description`, `protocol`, `capability` added | `Invalid URL` |
@@ -188,7 +188,7 @@ The practical effect: **no agent can be registered.** `search_agents` returns
 The endpoint we would register is live and serves MCP with full schemas:
 
 ```bash
-curl -s -X POST https://singularity-agent.cicada71.net/mcp   -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+curl -s -X POST https://mcp-singularity.cicada71.net/mcp   -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 Happy to retry registration as soon as the tool accepts input.
