@@ -34,6 +34,11 @@ import {
   resolveIntent,
   settleIntent,
   pollLoop,
+  qrMatrix,
+  qrDataUrl,
+  qrPng,
+  qrSvg,
+  qrUnicode,
 } from 'singularity-agent';
 import type {
   CreateIntentParams,
@@ -85,6 +90,27 @@ export interface PayResponse {
   headers: Record<string, string>;
 }
 
+/**
+ * A payment link, in every shape somebody might need to show it.
+ *
+ * A customer cannot pay a URL. They can scan a QR on a screen, tap a link on
+ * the same device, or — at a terminal — look at half-block characters. Handing
+ * back only the `solana:` string and leaving rendering as an exercise is what
+ * makes a payment integration take an afternoon instead of a minute.
+ */
+export interface RenderedLink {
+  /** The raw `solana:` URL, for an anchor tag or a deep link. */
+  url: string;
+  /** An `<img src>`-ready PNG. The usual choice for a web checkout. */
+  dataUrl: string;
+  /** Scalable, for print or a page that zooms. */
+  svg: string;
+  /** PNG bytes, for a file, an email attachment, or Telegram's sendPhoto. */
+  png: Uint8Array;
+  /** Half-block characters, for a terminal or a monospaced chat message. */
+  unicode: string;
+}
+
 export interface PayApi {
   /**
    * Create a payment request, reading the mint's risk before publishing it.
@@ -99,6 +125,16 @@ export interface PayApi {
 
   /** Fetch an intent, refusing expired and already-paid ones. */
   resolve(id: string): Promise<StoredIntent>;
+
+  /**
+   * Render a link as something a customer can actually act on.
+   *
+   * Takes the `solana:` URL from {@link PayApi.createIntent} — or any other
+   * link — and returns it as a QR in four forms. Nothing here touches the
+   * network or the store; it is pure rendering, so it is safe to call on a
+   * request path.
+   */
+  qr(url: string, options?: { scale?: number; margin?: number }): RenderedLink;
 
   /**
    * Has this been paid, and is this the call that should act on it?
@@ -168,6 +204,25 @@ export function createPay(config: PayConfig): PayApi {
 
     resolve(id) {
       return resolveIntent(config.store, id);
+    },
+
+    qr(url, options = {}) {
+      const matrix = qrMatrix(url, {
+        // Level M: a payment code is read off a screen at arm's length, not a
+        // scuffed printed label, so ~15% recovery is plenty and the smaller
+        // module count scans better on a phone.
+        level: 'M',
+        ...(options.margin !== undefined ? { margin: options.margin } : {}),
+      });
+      const scale = options.scale ?? 8;
+
+      return {
+        url,
+        dataUrl: qrDataUrl(matrix, { scale }),
+        svg: qrSvg(matrix, { scale }),
+        png: qrPng(matrix, { scale }),
+        unicode: qrUnicode(matrix),
+      };
     },
 
     settle(id, options = {}) {

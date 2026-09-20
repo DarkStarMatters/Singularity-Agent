@@ -431,6 +431,20 @@ export class SingularityBot {
       result = formatError(err);
     }
 
+    // A photo goes out as a photo. Telegram has no way to put an image inside
+    // a text message, and a QR is the one reply here that has to be looked at
+    // through a camera rather than read.
+    if (typeof result === 'object' && 'photo' in result) {
+      await this.api.sendPhoto({
+        chatId: message.chat.id,
+        photo: result.photo,
+        replyToMessageId: message.message_id,
+        ...(result.caption ? { caption: result.caption } : {}),
+        ...(result.filename ? { filename: result.filename } : {}),
+      });
+      return;
+    }
+
     const { text, keyboard } = typeof result === 'string' ? { text: result, keyboard: undefined } : result;
     await this.reply(message, text, keyboard);
   }

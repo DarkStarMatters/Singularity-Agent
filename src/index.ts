@@ -87,6 +87,19 @@ export type {
   TokenExitReport,
 } from './trade/types.js';
 
+/**
+ * QR codes, hand-rolled so neither package gains a dependency for them.
+ *
+ * Here rather than in the SDK because both need it: the SDK hands a merchant a
+ * `solana:` link, and the Telegram bot has to put that link in front of
+ * somebody holding a phone. A URL in a chat message is not something you can
+ * scan.
+ */
+export { qrMatrix } from './core/qr.js';
+export type { EcLevel, QrMatrix, QrOptions } from './core/qr.js';
+export { qrUnicode, qrSvg, qrPng, qrDataUrl } from './core/qr-render.js';
+export type { PngOptions, SvgOptions } from './core/qr-render.js';
+
 /** The change-detection rule for a balance, shared by the CLI and the SDK. */
 export { balanceIdentity } from './tools/operations.js';
 

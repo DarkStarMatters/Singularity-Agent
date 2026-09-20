@@ -7,6 +7,8 @@
  */
 import * as ops from '../tools/operations.js';
 import { burnLink } from '../pay/transaction-request.js';
+import { qrMatrix } from '../core/qr.js';
+import { qrPng } from '../core/qr-render.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
@@ -63,7 +65,15 @@ export interface CommandContext {
  * returns buttons with it, because a list of ids to retype is a worse
  * interface than a tap for exactly the action you already decided on.
  */
-export type CommandResult = string | { text: string; keyboard?: InlineKeyboard };
+export type CommandResult =
+  | string
+  | { text: string; keyboard?: InlineKeyboard }
+  /**
+   * An image, for the one thing a chat message cannot carry: something to
+   * point a phone at. A `solana:` link is not scannable as text, so an
+   * approval that expects a wallet has to arrive as a picture.
+   */
+  | { photo: Uint8Array; caption?: string; filename?: string };
 
 export interface Command {
   name: string;
@@ -397,6 +407,38 @@ const inspect: Command = {
   },
 };
 
+const qr: Command = {
+  name: 'qr',
+  aliases: ['scan'],
+  usage: '/qr <solana: link or text>',
+  summary: 'Turn a link into something you can scan with your phone',
+  async run(ctx) {
+    const text = ctx.args.join(' ').trim();
+
+    if (!text) {
+      return `Give me something to encode.
+
+<code>${qr.usage}</code>
+
+A <code>solana:</code> link from /burn is the usual one — paste it here and scan the result in Phantom.`;
+    }
+
+    // Level M at eight pixels a module: large enough to scan off a phone
+    // screen held at arm's length, small enough that Telegram does not
+    // recompress it into mush.
+    const matrix = qrMatrix(text, { level: 'M' });
+
+    return {
+      photo: qrPng(matrix, { scale: 8 }),
+      filename: 'singularity-qr.png',
+      caption:
+        text.startsWith('solana:')
+          ? 'Scan with Phantom or any Solana wallet. Check what the approval screen says before you sign — this code is only a link, and the wallet decides what it shows you.'
+          : `<code>${esc(text.slice(0, 200))}</code>`,
+    };
+  },
+};
+
 const health: Command = {
   name: 'health',
   aliases: ['chain_liveness', 'liveness'],
@@ -517,6 +559,7 @@ const COMMAND_LIST: Command[] = [
   mint,
   identity,
   inspect,
+  qr,
   burn,
   verifyburn,
   redeem,

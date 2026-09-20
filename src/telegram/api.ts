@@ -219,6 +219,79 @@ export class TelegramApi {
     });
   }
 
+
+  /**
+   * Send an image, with an optional caption.
+   *
+   * The one call here that is not JSON. Telegram takes an uploaded file as
+   * multipart/form-data, so this builds a `FormData` rather than going through
+   * `call` — which is why the error handling is repeated rather than shared:
+   * the shapes genuinely differ, and threading a body type through `call` to
+   * save eight lines would make every other call site read worse.
+   *
+   * It exists for QR codes. A `solana:` link in a chat message is not something
+   * anybody can point a phone at, and Telegram renders no SVG, so a scannable
+   * approval has to arrive as a photograph does.
+   */
+  async sendPhoto(options: {
+    chatId: number;
+    photo: Uint8Array;
+    filename?: string;
+    caption?: string;
+    replyToMessageId?: number;
+  }): Promise<TelegramMessage> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+
+    const form = new FormData();
+    form.set('chat_id', String(options.chatId));
+    form.set(
+      'photo',
+      // Copied into a fresh ArrayBuffer: a Uint8Array view may be a window
+      // onto a larger buffer, and Blob would take the whole thing.
+      new Blob([options.photo.slice().buffer as ArrayBuffer], { type: 'image/png' }),
+      options.filename ?? 'qr.png',
+    );
+
+    if (options.caption) {
+      form.set('caption', truncateForTelegram(options.caption, 1024));
+      form.set('parse_mode', 'HTML');
+    }
+
+    if (options.replyToMessageId) {
+      form.set(
+        'reply_parameters',
+        JSON.stringify({ message_id: options.replyToMessageId, allow_sending_without_reply: true }),
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_ROOT}/bot${this.token}/sendPhoto`, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const reason = (err as Error).name === 'AbortError' ? 'timed out' : (err as Error).message;
+      throw new TelegramApiError('sendPhoto', 0, reason);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as ApiResponse<TelegramMessage>;
+
+    if (!payload.ok) {
+      throw new TelegramApiError(
+        'sendPhoto',
+        payload.error_code ?? response.status,
+        payload.description ?? 'no description',
+      );
+    }
+
+    return payload.result!;
+  }
+
   /**
    * Rewrites a message in place — used to turn an approval card into its
    * outcome, so the chat shows what was decided rather than a row of buttons
