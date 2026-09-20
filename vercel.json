@@ -5,6 +5,12 @@
   "buildCommand": "echo \"No build step - the site is static HTML and the API is compiled by Vercel.\"",
   "outputDirectory": "web",
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    }
+  ],
   "trailingSlash": false,
   "headers": [
     {
