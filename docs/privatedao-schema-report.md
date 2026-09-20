@@ -72,6 +72,44 @@ rather than as a JSON-RPC error object, or as an MCP tool result with
 spec, or `result.isError` per MCP, sees neither and may read the failure as a
 success with an unexpected body.
 
+## Blocking issue: `register_agent` rejects every input with "Invalid URL"
+
+Unlike the schema problem above, this one cannot be worked around by probing.
+`register_agent` returns the same error for **every** argument shape tried,
+including URLs that are syntactically valid and live:
+
+| Arguments sent | Response |
+| --- | --- |
+| `{}` | `Invalid URL` |
+| `{"url":"not-a-url"}` | `Invalid URL` |
+| `{"url":"https://example.invalid/mcp"}` | `Invalid URL` |
+| `{"url":"https://singularity-agent.cicada71.net/mcp"}` | `Invalid URL` |
+| `{"url":"https://singularity-agent.cicada71.net"}` | `Invalid URL` |
+| `{"endpoint":…}`, `{"agent_url":…}`, `{"mcp_url":…}`, `{"agentUrl":…}`, `{"uri":…}` | `Invalid URL` |
+| `{"agent":{"url":…,"name":…}}` | `Invalid URL` |
+| with `name`, `description`, `protocol`, `capability` added | `Invalid URL` |
+
+The response does not vary with the input, which suggests the failure happens
+before the arguments are read — a `new URL(...)` over a server-side value that
+is undefined, rather than over anything the caller sent.
+
+Two things rule out a caller mistake. A syntactically valid URL and an invalid
+string produce the identical error, so nothing is being parsed from the request.
+And `logistics_request` accepts `{"capability":"blockchain.read"}` and returns a
+created record, so the server is not failing wholesale — this tool is.
+
+The practical effect: **no agent can be registered.** `search_agents` returns
+`{"agents":[]}` and stays empty, and `logistics_request` accordingly matches
+`candidates: []`, so the exchange cannot broker work to anyone.
+
+The endpoint we would register is live and serves MCP with full schemas:
+
+```bash
+curl -s -X POST https://singularity-agent.cicada71.net/mcp   -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Happy to retry registration as soon as the tool accepts input.
+
 ## Suggested fix
 
 Publish real schemas in `tools/list`. For example:
