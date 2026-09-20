@@ -39,6 +39,14 @@ import {
   qrPng,
   qrSvg,
   qrUnicode,
+  qrArtPng,
+  qrArtDataUrl,
+  renderQrArt,
+  styleFor,
+  receiptFacts,
+  receiptImage,
+  receiptMetadata,
+  buildReceiptMint,
 } from 'singularity-agent';
 import type {
   CreateIntentParams,
@@ -50,6 +58,9 @@ import type {
   Subscription,
   WatchOptions,
   Handler,
+  ArtStyle,
+  ReceiptFacts,
+  ReceiptMint,
 } from 'singularity-agent';
 import { SdkError } from './errors.js';
 
@@ -109,6 +120,39 @@ export interface RenderedLink {
   png: Uint8Array;
   /** Half-block characters, for a terminal or a monospaced chat message. */
   unicode: string;
+  /**
+   * The style this code was drawn in, or `undefined` when `plain` was asked
+   * for.
+   *
+   * Useful for showing a customer what their receipt will look like before
+   * they pay, and for a marketplace listing's traits afterwards. It is derived
+   * from the reference, so it is the same style the receipt NFT will carry.
+   */
+  style?: ArtStyle;
+}
+
+/**
+ * Everything needed to mint one receipt.
+ *
+ * Deliberately separate from {@link SettlementResult}: settling a payment and
+ * minting a token for it are different decisions, and plenty of applications
+ * will want the first without the second.
+ */
+export interface ReceiptBundle {
+  /** The verified facts, which refuse to exist for an unsettled payment. */
+  facts: ReceiptFacts;
+  /** The artwork, as SVG. Re-derivable by anyone holding the reference. */
+  image: string;
+  /** The off-chain JSON a marketplace reads. Host it and pass the URL back. */
+  metadata: Record<string, unknown>;
+  /**
+   * The unsigned mint, present only once a `uri` and a `payer` are supplied.
+   *
+   * Absent otherwise, because the metadata has to be hosted somewhere before a
+   * transaction can point at it, and that is a round trip this cannot make for
+   * you.
+   */
+  mint?: ReceiptMint;
 }
 
 export interface PayApi {
@@ -134,7 +178,30 @@ export interface PayApi {
    * network or the store; it is pure rendering, so it is safe to call on a
    * request path.
    */
-  qr(url: string, options?: { scale?: number; margin?: number }): RenderedLink;
+  qr(
+    url: string,
+    options?: { scale?: number; margin?: number; plain?: boolean; seed?: string },
+  ): RenderedLink;
+
+  /**
+   * Turn a settled payment into a receipt NFT.
+   *
+   * Refuses anything that is not finalized and matching — a token asserting a
+   * payment that can still be dropped outlives the transaction it describes,
+   * and one asserting a payment that landed in the wrong mint is a forgery
+   * with good intentions. Both throw rather than returning a flag, because
+   * neither is a case to branch on.
+   *
+   * Call it in two steps. Without `uri` you get the facts, the artwork and the
+   * metadata JSON — host that JSON, then call again with its URL and the
+   * payer's address to get the unsigned mint. The SDK signs nothing; the one
+   * key involved is a throwaway the mint account needs for its own creation,
+   * and it comes back in `mint.mintKeypair` for the caller to use and drop.
+   */
+  receipt(
+    settlement: SettlementResult,
+    options?: { uri?: string; payer?: string; mintRent?: number; blockhash?: string; symbol?: string },
+  ): ReceiptBundle;
 
   /**
    * Has this been paid, and is this the call that should act on it?
@@ -169,6 +236,23 @@ export interface PayApi {
    *   POST -> { transaction, message } built for the account it sends
    */
   respond(method: string, id: string, body?: { account?: string }): Promise<PayResponse>;
+}
+
+/**
+ * The seed a link implies.
+ *
+ * A Solana Pay transfer request carries its reference as a query parameter, so
+ * the artwork can be derived from the link alone — no store lookup, no extra
+ * argument, and the same answer wherever the link travels. Links without one
+ * (a burn payload, a plain URL) fall back to hashing the whole string, which
+ * is still stable and still unique to that link.
+ */
+function seedFromLink(url: string): string {
+  const query = url.indexOf('?');
+  if (query === -1) return url;
+
+  const reference = new URLSearchParams(url.slice(query + 1)).get('reference');
+  return reference ?? url;
 }
 
 export function createPay(config: PayConfig): PayApi {
@@ -216,12 +300,60 @@ export function createPay(config: PayConfig): PayApi {
       });
       const scale = options.scale ?? 8;
 
+      if (options.plain) {
+        return {
+          url,
+          dataUrl: qrDataUrl(matrix, { scale }),
+          svg: qrSvg(matrix, { scale }),
+          png: qrPng(matrix, { scale }),
+          unicode: qrUnicode(matrix),
+        };
+      }
+
+      // Art by default, and seeded from the link itself so this stays pure.
+      // The reference is already in the URL — it has to be, since that is how
+      // a wallet attaches it — which means the same payment renders the same
+      // way here, in the Telegram bot, and on the receipt, without any of them
+      // having to agree on anything but the link.
+      const seed = options.seed ?? seedFromLink(url);
+
       return {
         url,
-        dataUrl: qrDataUrl(matrix, { scale }),
-        svg: qrSvg(matrix, { scale }),
-        png: qrPng(matrix, { scale }),
+        dataUrl: qrArtDataUrl(matrix, seed, { scale }),
+        svg: renderQrArt(matrix, seed, { scale }),
+        png: qrArtPng(matrix, seed, { scale }),
+        // Unicode has two colours and no geometry, so there is no art to do:
+        // half-blocks in a terminal are the matrix and nothing else.
         unicode: qrUnicode(matrix),
+        style: styleFor(seed),
+      };
+    },
+
+    receipt(settlement, options = {}) {
+      const facts = receiptFacts(settlement.intent, settlement);
+      const image = receiptImage(facts);
+
+      const metadata = receiptMetadata(facts, {
+        image: options.uri ?? `data:image/svg+xml;base64,${Buffer.from(image).toString('base64')}`,
+        ...(options.symbol ? { symbol: options.symbol } : {}),
+      });
+
+      if (!options.uri || !options.payer) return { facts, image, metadata };
+
+      return {
+        facts,
+        image,
+        metadata,
+        mint: buildReceiptMint(facts, {
+          payer: options.payer,
+          uri: options.uri,
+          // A rent-exempt 82-byte mint at the rate that has held since 2021.
+          // Passing the live value is better and the caller can; defaulting
+          // lets a test or a preview run without an RPC round trip.
+          mintRent: options.mintRent ?? 1_066_800,
+          ...(options.blockhash ? { blockhash: options.blockhash } : {}),
+          ...(options.symbol ? { symbol: options.symbol } : {}),
+        }),
       };
     },
 

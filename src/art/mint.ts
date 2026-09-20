@@ -261,8 +261,15 @@ function createMasterEditionV3(
 }
 
 export interface ReceiptMintParams {
-  /** The wallet that will sign, pay the rent, and hold the receipt. */
-  payer: PublicKey;
+  /**
+   * The wallet that will sign, pay the rent, and hold the receipt.
+   *
+   * A base58 address is accepted as well as a `PublicKey`, so a caller that
+   * has one as a string — which is every caller reading it off a request, a
+   * chat message or a database — does not have to depend on web3.js just to
+   * wrap it.
+   */
+  payer: PublicKey | string;
   /** Where the metadata JSON is served. Must fit the 200-byte on-chain field. */
   uri: string;
   /** Lamports for a rent-exempt 82-byte mint, read from the chain by the caller. */
@@ -314,26 +321,27 @@ export function buildReceiptMint(facts: ReceiptFacts, params: ReceiptMintParams)
     );
   }
 
+  const payer = typeof params.payer === 'string' ? new PublicKey(params.payer) : params.payer;
   const mintKeypair = Keypair.generate();
   const mint = mintKeypair.publicKey;
-  const tokenAccount = associatedTokenAddress(mint, params.payer);
+  const tokenAccount = associatedTokenAddress(mint, payer);
 
   const transaction = new Transaction().add(
     SystemProgram.createAccount({
-      fromPubkey: params.payer,
+      fromPubkey: payer,
       newAccountPubkey: mint,
       lamports: params.mintRent,
       space: MINT_ACCOUNT_SIZE,
       programId: TOKEN_PROGRAM_ID,
     }),
-    initializeMint2(mint, params.payer),
-    createAssociatedTokenAccount(params.payer, params.payer, mint),
-    mintTo(mint, tokenAccount, params.payer),
-    createMetadataAccountV3(mint, params.payer, params.payer, name, symbol, params.uri),
-    createMasterEditionV3(mint, params.payer, params.payer),
+    initializeMint2(mint, payer),
+    createAssociatedTokenAccount(payer, payer, mint),
+    mintTo(mint, tokenAccount, payer),
+    createMetadataAccountV3(mint, payer, payer, name, symbol, params.uri),
+    createMasterEditionV3(mint, payer, payer),
   );
 
-  transaction.feePayer = params.payer;
+  transaction.feePayer = payer;
   if (params.blockhash) transaction.recentBlockhash = params.blockhash;
 
   return { transaction, mint, mintKeypair, tokenAccount };

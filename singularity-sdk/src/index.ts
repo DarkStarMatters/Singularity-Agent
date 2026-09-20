@@ -63,6 +63,7 @@ export type {
   PayApi,
   PayConfig,
   PayResponse,
+  ReceiptBundle,
   RenderedLink,
   SettlementLevel,
   SettlementResult,
@@ -106,10 +107,48 @@ export {
   qrSvg,
   qrPng,
   qrDataUrl,
+  renderQrArt,
+  qrArtPng,
+  qrArtDataUrl,
+  styleFor,
+  paletteFor,
+  contrastRatio,
+  SeedStream,
+  receiptFacts,
+  receiptImage,
+  receiptMetadata,
+  verifyReceiptImage,
+  uriFits,
+  buildReceiptMint,
+  metadataAddress,
+  masterEditionAddress,
+  associatedTokenAddress,
   assessMintRisk,
   operations,
   shapeToJsonSchema,
   VERSION as AGENT_VERSION,
+} from 'singularity-agent';
+
+/**
+ * The artwork and receipt types, re-exported so an application has one import.
+ *
+ * Every QR this SDK renders is artwork seeded by the payment's reference, and
+ * every settled payment can become a receipt NFT of that same picture. The
+ * agent renders identically from the same seed, which is the point: a customer
+ * comparing the code in a Telegram message against the one in a checkout page
+ * sees the same thing, and neither side had to be told the style.
+ */
+export type {
+  ArtStyle,
+  ArtOptions,
+  ModuleShape,
+  FinderStyle,
+  Palette,
+  RasterOptions,
+  ReceiptFacts,
+  ReceiptMetadataOptions,
+  ReceiptMint,
+  ReceiptMintParams,
 } from 'singularity-agent';
 
 export * from './types.js';
