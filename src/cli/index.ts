@@ -767,6 +767,7 @@ payCommand
   .option('--memo <text>', 'Text the payment must carry, bound at creation.')
   .option('--order <id>', 'Your own order id, carried through settlement.')
   .option('--expires <seconds>', 'How long the request stays presentable. Default 900.')
+  .option('--sender <address>', 'Check this wallet can actually pay before publishing the request.')
   .option('--no-telegram', 'Do not send the QR to Telegram, even if a chat is configured.')
   .action(
     async (
@@ -778,6 +779,7 @@ payCommand
         memo?: string;
         order?: string;
         expires?: string;
+        sender?: string;
         telegram: boolean;
       },
     ) => {
@@ -811,6 +813,40 @@ payCommand
       console.log(`  ${created.url}`);
       console.log('');
       console.log(render.renderIntent(created));
+
+      // A transfer request has no sender field — the payer is whoever scans it
+      // — so a named one is only worth anything as a check. Reading the balance
+      // is the check that matters: building the transfer catches a missing
+      // token account but constructs a native SOL transfer without ever looking
+      // at what the wallet holds.
+      if (options.sender) {
+        const held = await ops
+          .getBalance({
+            address: options.sender,
+            chain: created.intent.chain,
+            includeTokens: Boolean(options.token),
+            ...(options.token ? { tokens: [options.token] } : {}),
+          })
+          .catch(() => null);
+
+        const balance = held
+          ? options.token
+            ? held.tokens.find((entry) => entry.token?.address === options.token)?.amount
+            : held.native.amount
+          : undefined;
+
+        console.log('');
+        if (!balance) {
+          console.log(`  ${render.yellow('sender')}  ${render.dim(`${options.sender} — balance unreadable, or no account for this token`)}`);
+        } else if (Number(balance.formatted) < Number(amount)) {
+          console.log(
+            `  ${render.red('sender cannot pay')}  holds ${balance.formatted} ${balance.symbol}, needs ${amount}`,
+          );
+          process.exitCode = 1;
+        } else {
+          console.log(`  ${render.green('sender can pay')}  holds ${balance.formatted} ${balance.symbol}`);
+        }
+      }
 
       if (notified?.sent) {
         // Naming the bot, not just the chat: a stale TELEGRAM_BOT_TOKEN in the

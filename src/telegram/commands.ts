@@ -297,60 +297,197 @@ function payStore(): FileIntentStore {
   return sharedPayStore;
 }
 
+/**
+ * `--flag value` out of a whitespace-split command line.
+ *
+ * Deliberately tiny and deliberately not a parser library. Every value this
+ * takes is an address, an amount or an id — none contain spaces — so the only
+ * thing worth handling is a flag whose value is missing, which reads as the
+ * next flag rather than as an argument.
+ */
+export function flags(args: string[]): { positional: string[]; flag: (name: string) => string | undefined } {
+  const named = new Map<string, string>();
+  const positional: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]!;
+    if (!arg.startsWith('--')) {
+      positional.push(arg);
+      continue;
+    }
+
+    const next = args[i + 1];
+    // `--to --sender x` means `--to` was given nothing. Treating the following
+    // flag as its value is how an address ends up being "--sender".
+    if (next === undefined || next.startsWith('--')) continue;
+
+    named.set(arg.slice(2).toLowerCase(), next);
+    i += 1;
+  }
+
+  return { positional, flag: (name) => named.get(name.toLowerCase()) };
+}
+
 const pay: Command = {
   name: 'pay',
   aliases: ['request', 'invoice'],
-  usage: '/pay <amount> [token mint] [order id]',
+  usage: '/pay <amount> [--to <recipient>] [--sender <wallet>] [--token <mint>] [--order <id>]',
   summary: 'Create a payment request — a QR somebody can scan to pay you',
   async run(ctx) {
-    const amount = required(ctx, 0, 'an amount', pay);
-    const mint = ctx.args[1];
-    const orderId = ctx.args[2];
+    const { positional, flag } = flags(ctx.args);
+    const amount = positional[0];
 
-    // Not SINGULARITY_PAY_ENDPOINT, which names the burn route and predates
-    // this one. Two routes, two variables.
-    const endpoint = process.env.SINGULARITY_PAYMENT_ENDPOINT?.trim();
-    if (!endpoint) {
-      throw new SingularityError(
-        'NO_PAY_ENDPOINT',
-        'No payment endpoint is configured, so a wallet would have nowhere to fetch the request from.',
-        'Set SINGULARITY_PAYMENT_ENDPOINT to the public URL of your deployed /api/pay route.',
-      );
+    if (!amount) {
+      throw new SingularityError('MISSING_ARGUMENT', '/pay needs an amount.', `Usage: ${pay.usage}`);
     }
 
-    // The recipient is never taken from the message. Anyone in a group could
-    // otherwise type `/pay 50 <their own address>` and get an official-looking
-    // QR under this bot's name, which the next person to scan has every reason
-    // to trust. The operator names the destinations; the chat only names the
-    // amount.
+    const mint = flag('token') ?? flag('mint') ?? positional[1];
+    const orderId = flag('order') ?? positional[2];
+    const sender = flag('sender') ?? flag('from');
+
     const recipients = allowedRecipients();
-    if (recipients.length === 0) {
+    const asked = flag('to');
+
+    /**
+     * Where the money goes, and who is allowed to decide.
+     *
+     * A recipient named in a message is the thing the allowlist was added to
+     * prevent: anyone in a group could type `/pay 50 <their own address>` and
+     * receive an official-looking QR under this bot's name, which the next
+     * person to scan has every reason to trust.
+     *
+     * So it depends on who is asking. In a DM or the control chat the operator
+     * is driving and may name any recipient — the same reasoning that lets
+     * `/redeem` exist there and nowhere else. In a group the allowlist still
+     * decides, and `--to` may only pick among addresses already configured.
+     */
+    const operatorDriving = ctx.chatType === 'private' || ctx.isControlChat === true;
+
+    let to: string;
+    if (asked) {
+      if (!operatorDriving && !recipients.includes(asked)) {
+        throw new SingularityError(
+          'RECIPIENT_NOT_ALLOWED',
+          `This chat cannot send payments to ${asked}.`,
+          recipients.length > 0
+            ? `In a group, --to may only name an address from SINGULARITY_PAY_RECIPIENTS: ${recipients.join(', ')}. A bot that builds a payment request to whatever address it is handed is a way to get a stranger paid under your name. In a DM or the control chat, any recipient is allowed.`
+            : 'Set SINGULARITY_PAY_RECIPIENTS, or run this in a DM or the control chat where you are the one driving.',
+        );
+      }
+      to = asked;
+    } else if (recipients.length > 0) {
+      to = recipients[0]!;
+    } else {
       throw new SingularityError(
         'NO_PAY_RECIPIENTS',
-        'This bot has no configured payment recipients, so it will not build a payment request.',
-        'Set SINGULARITY_PAY_RECIPIENTS to the address you want to be paid at. It is deliberately not taken from the message: a bot that builds a payment request to whatever address it is handed is a way to get a stranger paid under your name.',
+        'No recipient given and none configured.',
+        'Pass --to <address>, or set SINGULARITY_PAY_RECIPIENTS to the address you want to be paid at.',
       );
     }
 
-    const created = await createPayIntent(payStore(), endpoint, {
-      to: recipients[0]!,
+    const created = await createPayIntent(payStore(), process.env.SINGULARITY_PAYMENT_ENDPOINT ?? '', {
+      to,
       amount,
       ...(mint ? { mint } : {}),
       ...(orderId ? { orderId } : {}),
       label: orderId ? `Payment ${orderId}` : `Payment of ${amount}`,
       // Binds the payment to this chat, the way /burn binds a claim, so a
-      // settlement can be credited to whoever asked rather than to whoever
-      // quotes the reference first.
+      // settlement is credited to whoever asked rather than to whoever quotes
+      // the reference first.
       memo: payClaim(ctx.chatId),
     });
+
+    /**
+     * What a named sender buys.
+     *
+     * A transfer request has no sender field — the payer is whoever scans it,
+     * and the spec has nowhere to put one. So `--sender` does the thing that is
+     * actually useful with that knowledge: it builds the transfer for that
+     * wallet now, which reads the chain and fails *here* rather than on the
+     * customer's approval screen. A missing token account or a balance short of
+     * the amount is the common way a payment dies, and it is worth learning
+     * before the QR is in front of anybody.
+     *
+     * The QR is unchanged either way — it stays scannable by any wallet.
+     */
+    let senderNote = '';
+    if (sender) {
+      senderNote = await describeSender(sender, created.intent.chain, to, amount, mint);
+    }
 
     return {
       photo: qrPng(qrMatrix(created.url), { scale: 8 }),
       filename: `payment-${created.intent.id.slice(0, 8)}.png`,
-      caption: payCaption(created),
+      caption: payCaption(created) + senderNote,
     };
   },
 };
+
+/**
+ * Whether a named wallet can actually complete this payment.
+ *
+ * The point of `--sender`. A transfer request has no sender field — the payer
+ * is whoever scans it — so knowing one in advance is only worth anything if it
+ * is used to check, and the check has to be the balance rather than the build.
+ *
+ * That distinction cost a round of testing. Building the transfer reads the
+ * chain and catches a missing token account, but for native SOL it constructs a
+ * `SystemProgram.transfer` without looking at what the wallet holds, so an
+ * empty account came back clean. A flag that says "checked" while checking
+ * nothing is worse than no flag.
+ */
+async function describeSender(
+  sender: string,
+  chain: string,
+  to: string,
+  amount: string,
+  mint: string | undefined,
+): Promise<string> {
+  try {
+    const balance = await ops.getBalance({
+      address: sender,
+      chain,
+      includeTokens: Boolean(mint),
+      ...(mint ? { tokens: [mint] } : {}),
+    });
+
+    const held = mint
+      ? balance.tokens.find((entry) => entry.token?.address === mint)?.amount
+      : balance.native.amount;
+
+    const lines = ['', `${bold('Sender')} ${code(sender)}`];
+
+    if (!held) {
+      // Absent is not zero. For a token it means no account for this mint at
+      // all, which fails differently and is worth saying differently.
+      lines.push(
+        mint
+          ? `⚠️ Holds no account for this mint, so it cannot pay in it yet. The first transfer in has to create one, which costs about 0.002 SOL of rent.`
+          : `⚠️ Balance could not be read, so nothing here says whether this wallet can pay.`,
+      );
+      return lines.join('\n');
+    }
+
+    const short = Number(held.formatted) < Number(amount);
+    lines.push(
+      short
+        ? `⚠️ Holds ${bold(held.formatted)} ${esc(held.symbol)} and this asks for ${bold(amount)} — short by ${esc(String(Number(amount) - Number(held.formatted)))}.`
+        : `Holds ${bold(held.formatted)} ${esc(held.symbol)}, enough for ${esc(amount)}.`,
+    );
+
+    if (!mint && !short) {
+      // Fees come out of the same balance, and a wallet holding exactly the
+      // amount cannot pay it.
+      lines.push(`<i>Network fees come out of this too, so an exact balance will not cover it.</i>`);
+    }
+
+    return lines.join('\n');
+  } catch (err) {
+    // Failing to read is an answer, and a different one from failing to afford.
+    const message = err instanceof SingularityError ? err.message : String(err);
+    return ['', `${bold('Sender')} ${code(sender)}`, `⚠️ ${esc(message)}`].join('\n');
+  }
+}
 
 const paid: Command = {
   name: 'paid',

@@ -168,6 +168,21 @@ that mapping so the three cannot drift:
 | `/pay` | a QR somebody can scan to pay you | `/paid` | did it settle, safe to ship |
 | `/payments` | what this chat is owed | `/qr` | render any link as a scannable code |
 
+```
+/pay <amount> [--to <recipient>] [--sender <wallet>] [--token <mint>] [--order <id>]
+```
+
+`--to` names the recipient. In a DM or the control chat you may name any address — you
+are the operator. **In a group it must be one of `SINGULARITY_PAY_RECIPIENTS`**, because
+a bot that builds a payment request to whatever address it is handed is a way to get a
+stranger paid under your name, and the next person to scan has every reason to trust it.
+
+`--sender` checks that a wallet can actually pay before the QR goes in front of anyone.
+It reads the balance rather than building the transfer — building catches a missing token
+account but constructs a native SOL transfer without ever looking at what the wallet
+holds, so an empty account came back clean. The payer is still whoever scans; a transfer
+request has no sender field.
+
 `/pay` is a system rather than a command. It creates a request, replies with a QR, and
 then the bot **watches for the payment and announces it in the chat that asked** — no
 polling by hand, no remembering to check. The chat comes from the payment itself: `/pay`
