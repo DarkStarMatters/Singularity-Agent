@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Singularity Agent</title>
-<meta name="description" content="Agentic blockchain, made practical. One command-line tool for Ethereum, Solana, Bitcoin and Cosmos — read-only, and it never holds your keys.">
+<meta name="description" content="Agentic blockchain, made practical. One command-line tool for Ethereum, Solana, Bitcoin and Cosmos — read-only, it never holds your keys, and you can run it live in this page before installing anything.">
 <meta property="og:title" content="Singularity Agent">
-<meta property="og:description" content="Agentic blockchain, made practical. One tool for Ethereum, Solana, Bitcoin and Cosmos. Read-only, and it never holds your keys.">
+<meta property="og:description" content="One tool for Ethereum, Solana, Bitcoin and Cosmos. Read-only, never holds your keys — and the terminal on the page really runs, live, against all 32 chains.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -746,6 +746,417 @@
     .stage .halo { width: 460px; height: 460px; margin: -230px 0 0 -230px; }
     .glossary > div { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
   }
+
+  /* =====================================================================
+     THE LIVE PIECES
+     ---------------------------------------------------------------------
+     Everything below belongs to a part of the page that asks the real
+     endpoint a real question. That is possible here because /mcp is
+     read-only, keyless and same-origin: the worst a visitor can do with it
+     is look something up. A documentation page is allowed to be the
+     product when the product cannot do any harm.
+
+     Each live block has three visible states — resting, asking, answered —
+     and a beginner has to be able to tell which one they are looking at
+     without reading any prose. So: a dot, a verb, and never a spinner
+     without a sentence beside it.
+     ===================================================================== */
+
+  /* ------------------------------------------------- live status marker */
+  .live-dot {
+    width: .5rem;
+    height: .5rem;
+    border-radius: 999px;
+    background: var(--ink-3);
+    flex: none;
+    display: inline-block;
+  }
+  .live-dot[data-state="asking"] { background: var(--warn); animation: sa-pulse 1.1s ease-in-out infinite; }
+  .live-dot[data-state="ok"]     { background: var(--ok); }
+  .live-dot[data-state="bad"]    { background: var(--crit); }
+
+  @keyframes sa-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .live-dot[data-state="asking"] { animation: none; opacity: .6; }
+  }
+
+  /* --------------------------------------------------------- hero pulse */
+  .pulse {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+    max-width: var(--measure);
+  }
+  .pulse-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .55rem .85rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+    font-size: .8125rem;
+    color: var(--ink-2);
+  }
+  .pulse-head .what { font-weight: 500; color: var(--ink); }
+  .pulse-head .when { margin-left: auto; font-family: var(--mono); font-size: .75rem; color: var(--ink-3); }
+  .pulse-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)); gap: 1px; background: var(--line); }
+  .pulse-cell {
+    background: var(--surface);
+    padding: .7rem .85rem;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-width: 0;
+  }
+  .pulse-cell .chain {
+    font-size: .7rem;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    font-family: var(--display);
+    font-weight: 600;
+  }
+  .pulse-cell .height {
+    font-family: var(--mono);
+    font-size: 1rem;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pulse-cell[data-state="asking"] .height { color: var(--ink-3); }
+  .pulse-cell[data-state="bad"] .height { color: var(--crit); font-size: .8125rem; white-space: normal; }
+  .pulse-cell .age { font-size: .75rem; color: var(--ink-3); font-family: var(--mono); }
+  .pulse-foot { padding: .6rem .85rem; border-top: 1px solid var(--line); font-size: .8125rem; color: var(--ink-3); }
+
+  /* ------------------------------------------------- the identify panel */
+  .probe {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .probe-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .9rem 1rem;
+    border-bottom: 1px solid var(--line);
+    align-items: center;
+  }
+  .probe-input {
+    flex: 1 1 22ch;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: .875rem;
+    padding: .5rem .7rem;
+    border: 1px solid var(--line-2);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .probe-input::placeholder { color: var(--ink-3); }
+  .probe-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .probe-go {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .875rem;
+    padding: .5rem 1rem;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: var(--on-accent);
+    cursor: pointer;
+    flex: none;
+  }
+  .probe-go:hover { background: var(--accent-deep); }
+  .probe-go[disabled] { opacity: .55; cursor: progress; }
+
+  .probe-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    align-items: center;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--line);
+    font-size: .8125rem;
+    color: var(--ink-3);
+  }
+  .probe-out { padding: 1rem; display: flex; flex-direction: column; gap: .85rem; }
+
+  .verdict { display: flex; flex-direction: column; gap: .6rem; }
+  .verdict-line { display: flex; align-items: baseline; gap: .55rem; font-size: 1rem; color: var(--ink-2); }
+  .verdict-line strong { color: var(--ink); font-weight: 600; }
+  .verdict-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: .5rem; }
+  .fact {
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--surface-2);
+    padding: .5rem .65rem;
+    min-width: 0;
+  }
+  .fact .k {
+    display: block;
+    font-size: .6875rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-family: var(--display);
+    font-weight: 600;
+  }
+  .fact .v {
+    display: block;
+    font-family: var(--mono);
+    font-size: .8125rem;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+    margin-top: .12rem;
+  }
+  .verdict-note { font-size: .875rem; color: var(--ink-3); margin: 0; }
+
+  .next { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+  .next .label { font-size: .8125rem; color: var(--ink-3); }
+  .act {
+    font-family: var(--sans);
+    font-size: .8125rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    padding: .3rem .8rem;
+    cursor: pointer;
+  }
+  .act:hover { border-color: var(--accent); color: var(--accent); }
+  .act[disabled] { opacity: .5; cursor: progress; }
+
+  /* A friendly answer: the number large, where it came from small, and the
+     untouched JSON behind a door for anyone who wants to check the claim. */
+  .answer-card {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--surface-2);
+    padding: .85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+  }
+  .answer-card.bad { border-left-color: var(--crit); }
+  .answer-card > h4 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: .9375rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .answer-card p { margin: 0; font-size: .9375rem; color: var(--ink-2); }
+  .answer-card .why { font-size: .8125rem; color: var(--ink-3); }
+
+  .holdings { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .3rem; }
+  .holdings li { display: flex; gap: .6rem; align-items: baseline; margin: 0; font-size: .9375rem; flex-wrap: wrap; }
+  .holdings .amt {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    min-width: 10ch;
+    text-align: right;
+  }
+  .holdings .sym { font-weight: 600; color: var(--ink); }
+  .holdings .meta { font-family: var(--mono); font-size: .75rem; color: var(--ink-3); }
+  .holdings .is-native .sym { color: var(--accent); }
+
+  .raw { font-size: .8125rem; }
+  .raw summary { cursor: pointer; color: var(--ink-3); }
+  .raw summary:hover { color: var(--ink-2); }
+  .raw pre {
+    margin: .5rem 0 0;
+    background: var(--term-bg);
+    color: var(--term-ink);
+    border: 1px solid var(--term-line);
+    border-radius: 7px;
+    padding: .7rem .8rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: .75rem;
+    line-height: 1.55;
+    max-height: 22rem;
+    overflow-y: auto;
+  }
+
+  /* ------------------------------------------------------- route picker */
+  .routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: .7rem; }
+  .route {
+    text-align: left;
+    font: inherit;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .85rem .95rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .route:hover { border-color: var(--line-2); }
+  .route[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .route .rt { font-family: var(--display); font-weight: 600; font-size: .9375rem; color: var(--ink); }
+  .route .rd { font-size: .8125rem; color: var(--ink-2); }
+  .route .rm { font-size: .75rem; color: var(--ink-3); font-family: var(--mono); }
+
+  .route-plan {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--surface);
+    padding: .8rem 1rem;
+    font-size: .9375rem;
+    color: var(--ink-2);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    max-width: var(--measure);
+  }
+  .route-plan ol { margin: 0; padding-left: 1.35rem; display: flex; flex-direction: column; gap: .25rem; }
+  .route-plan .drop { align-self: flex-start; font: inherit; font-size: .75rem; color: var(--ink-3); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+  .route-plan .drop:hover { color: var(--ink); }
+  /* Sections outside the chosen route stay reachable but stop competing. */
+  .sidenav a[data-route="off"] { opacity: .4; }
+
+  /* ---------------------------------------------------- step checkboxes */
+  .steps > li[data-done="1"] > .step-body > h3 {
+    color: var(--ink-3);
+    text-decoration: line-through;
+    text-decoration-color: var(--line-2);
+  }
+  .tick {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .8125rem;
+    color: var(--ink-3);
+    cursor: pointer;
+    user-select: none;
+    align-self: flex-start;
+  }
+  .tick input { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
+  .tick:hover { color: var(--ink-2); }
+
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: .6rem .85rem;
+    font-size: .875rem;
+    color: var(--ink-2);
+    max-width: var(--measure);
+  }
+  .progress .bar {
+    flex: 1 1 auto;
+    height: .4rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    min-width: 3.5rem;
+  }
+  .progress .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .28s ease; }
+  .progress .count { font-family: var(--mono); font-size: .8125rem; color: var(--ink); flex: none; font-variant-numeric: tabular-nums; }
+  .progress .reset { flex: none; font: inherit; font-size: .75rem; color: var(--ink-3); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+  .progress .reset:hover { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress .bar i { transition: none; }
+  }
+
+  /* -----------------------------------------------------------------------
+     Jargon definitions. Named `jargon` rather than `term`, which this
+     stylesheet already spends on the terminal figures — two meanings of one
+     word in one stylesheet is a bug waiting for whoever edits it next.
+     ----------------------------------------------------------------------- */
+  .jargon {
+    display: inline;
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    border-bottom: 1px dashed var(--ink-3);
+    padding: 0;
+    cursor: help;
+    text-align: inherit;
+  }
+  .jargon:hover { border-bottom-color: var(--accent); color: var(--accent); }
+
+  .jargon-pop {
+    position: absolute;
+    z-index: 60;
+    max-width: 32ch;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .18);
+    padding: .6rem .75rem;
+    font-size: .8125rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+  .jargon-pop b { display: block; color: var(--ink); margin-bottom: .18rem; }
+  .jargon-pop code { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: .05em .3em; }
+
+  /* ---------------------------------------------- terminal mode switch */
+  .term-bar .modes {
+    display: flex;
+    gap: 1px;
+    flex: none;
+    background: var(--term-line);
+    border: 1px solid var(--term-line);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .term-bar .mode {
+    font-family: var(--sans);
+    font-size: .6875rem;
+    letter-spacing: .02em;
+    color: var(--term-dim);
+    background: transparent;
+    border: 0;
+    padding: .22rem .62rem;
+    cursor: pointer;
+  }
+  .term-bar .mode[aria-pressed="true"] { background: var(--term-accent); color: #08130a; }
+  .term-bar .mode:not([aria-pressed="true"]):hover { color: var(--term-ink); }
+
+  .sim-note {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .8125rem;
+    color: var(--ink-3);
+    margin-top: .55rem;
+  }
+
+  @media (max-width: 640px) {
+    .term-bar { flex-wrap: wrap; }
+    .term-bar .cmd { order: 3; flex-basis: 100%; }
+    .pulse-cell .height { font-size: .9375rem; }
+  }
+
+  /* The demo chips are pills; the chain chips in the families grid are
+     tags. They shared a class name, so the tag rules were silently
+     winning over the pill rules declared above them. */
+  .sim-chips .chip {
+    border-radius: 999px;
+    background: var(--surface);
+    border-color: var(--line-2);
+    padding: .28rem .7rem;
+    line-height: 1.4;
+  }
+  .sim-chips .chip:hover { color: var(--ink); border-color: var(--ink-3); }
 </style>
 </head>
 <body>
@@ -772,6 +1183,7 @@
   <nav class="sidenav" aria-label="Page sections">
     <p class="eyebrow">On this page</p>
     <ol>
+      <li><a href="#start">Start here</a></li>
       <li><a href="#what">What it does</a></li>
       <li><a href="#safety">Your keys</a></li>
       <li><a href="#install">Install</a></li>
@@ -813,7 +1225,7 @@
           <rect x="3" y="11" width="18" height="10" rx="2"></rect>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
-        <span><strong>It never asks for your keys.</strong> Singularity can read the blockchain
+        <span><strong>It never asks for your <button class="jargon" type="button" data-term="private key">private keys</button>.</strong> Singularity can read the blockchain
         and prepare a payment for you, but it cannot sign or send one. There is no code in it
         that can move your money.</span>
       </div>
@@ -822,7 +1234,127 @@
         <a class="btn btn-primary" href="#install">Install it</a>
         <a class="btn btn-ghost" href="#do">See what it can do</a>
       </div>
+
+      <!-- The pulse asks four chains for their newest block on page load. It
+           sits above the fold because the claim "it reads any blockchain" is
+           cheaper to demonstrate than to argue, and because a visitor who
+           watches four numbers arrive has already seen the whole product. -->
+      <figure class="pulse" id="pulse">
+        <figcaption class="pulse-head">
+          <span class="live-dot" id="pulse-dot" data-state="asking" aria-hidden="true"></span>
+          <span class="what">Live, right now</span>
+          <span class="when" id="pulse-when">asking…</span>
+        </figcaption>
+        <div class="pulse-grid" id="pulse-grid">
+          <div class="pulse-cell"><span class="chain">Ethereum</span><span class="height">—</span><span class="age">waiting</span></div>
+          <div class="pulse-cell"><span class="chain">Base</span><span class="height">—</span><span class="age">waiting</span></div>
+          <div class="pulse-cell"><span class="chain">Solana</span><span class="height">—</span><span class="age">waiting</span></div>
+          <div class="pulse-cell"><span class="chain">Bitcoin</span><span class="height">—</span><span class="age">waiting</span></div>
+        </div>
+        <noscript>
+          <div class="pulse-foot">
+            These four numbers are fetched by script, so with JavaScript off they stay blank.
+            Everything else on this page works without it — including every command and every
+            explanation. Install the tool and you get the same answers from your own machine.
+          </div>
+        </noscript>
+        <div class="pulse-foot" id="pulse-foot">
+          The newest <button class="jargon" type="button" data-term="block">block</button> each of these
+          chains has produced. Nothing is installed and nothing is cached — your browser just asked
+          them, through the same read-only endpoint the tool uses.
+        </div>
+      </figure>
     </div>
+
+    <!-- ================================================= paste anything -->
+    <section id="start">
+      <p class="eyebrow">Start here</p>
+      <h2>Paste anything. Find out what it is.</h2>
+      <p>
+        A beginner's first problem is not installing a tool. It is that somebody sent them
+        <code>0xd8dA…96045</code> and they have no idea whether that is a wallet, a receipt, a
+        token or a typo — or which of thirty-two chains it belongs to.
+      </p>
+      <p>
+        So start with that. Paste it in. This box is the real tool, running for real, right now:
+        it asks the same read-only service the command line asks, and it cannot ask for your keys
+        because it has nowhere to put them.
+      </p>
+
+      <div class="probe" id="probe">
+        <form class="probe-form" id="probe-form" autocomplete="off">
+          <label class="sr-only" for="probe-input">An address, a name or a transaction hash</label>
+          <input
+            class="probe-input"
+            id="probe-input"
+            name="value"
+            type="text"
+            placeholder="an address, a name like vitalik.eth, or a transaction hash"
+            spellcheck="false"
+            autocapitalize="off"
+            autocorrect="off">
+          <button class="probe-go" id="probe-go" type="submit">Identify it</button>
+        </form>
+
+        <div class="probe-examples" id="probe-examples">
+          <span>Nothing to hand? Try:</span>
+        </div>
+
+        <div class="probe-out" id="probe-out" role="region" aria-live="polite" aria-label="What the endpoint answered">
+          <noscript>
+            <p class="verdict-note">
+              This box asks the endpoint for you, which needs JavaScript. Without it, the same
+              question is <code>singularity resolve &lt;whatever you have&gt;</code> once the tool
+              is installed — see <a href="#install">Install</a>.
+            </p>
+          </noscript>
+        </div>
+      </div>
+
+      <p class="verdict-note">
+        Every number above arrives from a chain while you wait, so it will not match this page
+        tomorrow — that is the point. If the endpoint is having a bad day it says so rather than
+        showing you a stale answer.
+      </p>
+
+      <div class="callout">
+        <strong>Why it is safe to let a web page do this</strong>
+        <span>
+          The service behind this box can read chains and prepare
+          <button class="jargon" type="button" data-term="unsigned transaction">unsigned transactions</button>.
+          That is all it can do. It has no signing code and no key storage, so a page that can
+          reach it still cannot move anybody's money — yours or anyone else's.
+        </span>
+      </div>
+
+      <h3 id="routes-heading">Now pick a route</h3>
+      <p>
+        The rest of this page covers three different jobs, and you almost certainly want one of
+        them. Choose one and the sidebar will dim the sections you can skip.
+      </p>
+
+      <div class="routes" role="group" aria-labelledby="routes-heading">
+        <button class="route" type="button" data-route="look" aria-pressed="false">
+          <span class="rt">I just want to look things up</span>
+          <span class="rd">Check a balance, read a transaction, see what fees cost. Type commands yourself.</span>
+          <span class="rm">4 sections · ~8 min</span>
+        </button>
+        <button class="route" type="button" data-route="ask" aria-pressed="false">
+          <span class="rt">I want to just ask in English</span>
+          <span class="rd">Wire it into Claude and describe what you want instead of learning commands.</span>
+          <span class="rm">3 sections · ~6 min</span>
+        </button>
+        <button class="route" type="button" data-route="build" aria-pressed="false">
+          <span class="rt">I am building software on it</span>
+          <span class="rd">Put it inside your own app, with types, streams and no keys anywhere.</span>
+          <span class="rm">5 sections · ~12 min</span>
+        </button>
+      </div>
+
+      <div class="route-plan" id="route-plan" hidden></div>
+    </section>
+
+    <hr class="rule">
 
     <!-- ================================================== what it does -->
     <section id="what">
@@ -1037,11 +1569,18 @@
         </table>
       </div>
 
+      <p>
+        The answer has names in it too: the <button class="jargon" type="button" data-term="native token">native token</button> that pays Ethereum's fees, the
+        <button class="jargon" type="button" data-term="token">token</button> balances underneath it, and the <button class="jargon" type="button" data-term="base units">base units</button> the amounts were scaled
+        from. Any word underlined like those is one you can hover or tap for a one-line
+        definition, anywhere on this page — no need to scroll away and lose your place.
+      </p>
+
       <div class="callout">
         <strong>Notice what it told you</strong>
         <span>
           The grey note at the bottom is deliberate. On Ethereum there is no way to list every
-          token a wallet holds without a paid indexing service, so the tool checks a curated list
+          token a wallet holds without a paid <button class="jargon" type="button" data-term="indexer">indexer</button>, so the tool checks a curated list
           of major ones and says so. It would rather tell you the shape of the answer than let
           you assume it found everything.
         </span>
@@ -1056,9 +1595,16 @@
       <p class="eyebrow">Try it here</p>
       <h2>Run it without installing it</h2>
       <p>
-        A working terminal, with the real answers. Every response below was captured from an
-        actual run against live networks — nothing here is mocked up to look good, including
-        the two that refuse to answer.
+        This is not a video of a terminal. In <strong>Live</strong> mode every command you type
+        really runs — any address, any of the thirty-two chains — through the same read-only
+        service the installed tool uses. Type something wrong and it will tell you what it needed,
+        the way the real thing does.
+      </p>
+      <p>
+        <strong>Replay</strong> mode exists for when a free public node is having a bad day, or you
+        are reading this on a train. It shows answers recorded from earlier real runs, and labels
+        them as recorded, because a stale number that looks current is the one failure this whole
+        project is arranged against.
       </p>
 
       <figure class="sim">
@@ -1087,8 +1633,9 @@
       <div class="sim-chips" id="sim-chips"></div>
 
       <figcaption class="sample">
-        Arrow keys walk back through what you have typed. <code>help</code> lists everything the
-        demo knows; <code>clear</code> wipes the screen.
+        Arrow keys walk back through what you have typed. <code>help</code> lists every command
+        that really runs; <code>clear</code> wipes the screen. Try <code>tx</code> with any
+        transaction hash and watch it work out which chain the thing is on.
       </figcaption>
 
       <div class="callout">
@@ -1498,7 +2045,7 @@ base
 
       <div class="split">
         <div>
-          <h3>How settled is it?</h3>
+          <h3>How settled is it? <span class="sr-only">— finality</span></h3>
           <p>
             Four answers, not two. <strong>Confirmed</strong> and <strong>finalized</strong>
             are different claims on Solana, and only one of them cannot be reversed. A tool
@@ -1784,7 +2331,11 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
     <section id="words">
       <p class="eyebrow">Plain English</p>
       <h2>Words you'll see</h2>
-      <p>Crypto has a lot of jargon. Here is the subset you actually need to use this tool.</p>
+      <p>
+        Crypto has a lot of jargon. Here is the subset you actually need to use this tool — and
+        this list is also where every underlined word on this page gets its definition, so the
+        two can never drift apart.
+      </p>
 
       <dl class="glossary">
         <div>
@@ -1793,7 +2344,8 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
         </div>
         <div>
           <dt>Private key</dt>
-          <dd>The secret that controls an address. Never share it, never type it into anything. Singularity never asks for one.</dd>
+          <dd>The secret that controls an address. Never share it, never type it into anything.
+          Singularity never asks for one.</dd>
         </div>
         <div>
           <dt>Transaction hash <span class="alt">txid · signature</span></dt>
@@ -1814,6 +2366,29 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
         <div>
           <dt>Gas / fee <span class="alt">gwei · sat/vB</span></dt>
           <dd>What you pay the network to process your transaction. It fluctuates with demand, which is why <code>fees</code> exists.</dd>
+        </div>
+        <div>
+          <dt>Block</dt>
+          <dd>A batch of transactions, numbered in order. Chains add one every few seconds to
+          minutes, and the newest block is the chain's "right now" — which is why the four numbers
+          at the top of this page keep moving.</dd>
+        </div>
+        <div>
+          <dt>Finality <span class="alt">confirmations · reorg</span></dt>
+          <dd>Whether something can still be undone. A brand-new block can be discarded and
+          rebuilt without it; after enough blocks on top, it cannot. Singularity always says which
+          of the two you are looking at rather than reporting both as "done".</dd>
+        </div>
+        <div>
+          <dt>Indexer</dt>
+          <dd>A separate service that keeps a searchable copy of a chain's past. Ethereum nodes
+          cannot answer "what has this address done", so history there needs one — and without a
+          key, Singularity says it has no answer instead of returning an empty list.</dd>
+        </div>
+        <div>
+          <dt>Mint <span class="alt">mint address</span></dt>
+          <dd>On Solana, the address that <em>is</em> a token's identity. A name and a ticker can
+          be copied onto any token by anyone; the mint address cannot be.</dd>
         </div>
         <div>
           <dt>RPC endpoint</dt>
@@ -2315,6 +2890,10 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
     button.type = 'button';
     button.className = 'chip';
     button.textContent = entry.chip;
+    // The label is abbreviated for width; the live layer needs the real
+    // command, so it travels separately rather than being re-parsed out of
+    // a string with an ellipsis in the middle of an address.
+    button.setAttribute('data-live', entry.cmd);
     button.addEventListener('click', function () {
       input.value = entry.cmd;
       input.focus();
@@ -2392,7 +2971,10 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
     });
 
     /* -------------------------------------------------- copy buttons */
-    document.querySelectorAll(".copy").forEach(function (button) {
+    // Scoped to buttons that actually carry something to copy: the demo
+    // terminal's Reset button shares the class for its chrome, and was being
+    // relabelled "Copied" every time somebody cleared the screen.
+    document.querySelectorAll(".copy[data-copy]").forEach(function (button) {
       button.addEventListener("click", function () {
         var text = button.getAttribute("data-copy") || "";
 
@@ -2446,6 +3028,1455 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       sections.forEach(function (section) { observer.observe(section); });
     }
   })();
+</script>
+
+<script>
+
+/* =========================================================================
+   THE LIVE LAYER
+
+   This page can answer questions about thirty-two chains because the MCP
+   endpoint it documents is served from the same origin (/mcp rewrites to
+   api/mcp), speaks plain JSON-RPC over POST, and is read-only with no key
+   material anywhere in it. So the documentation and the product are the same
+   thing: a visitor who has not installed anything is still using it.
+
+   Three rules hold everything below together.
+
+   1. Never invent an answer. If a call fails, the failure is the output.
+      The tool itself refuses to turn "I could not ask" into "nothing found",
+      and a web page that undid that would be worse than no page.
+   2. Say what happened before showing what it means. Every result names the
+      tool that produced it, so a beginner can go and run the same thing.
+   3. Degrade in public. When live calls cannot be made at all, the terminal
+      falls back to the recorded transcripts and says out loud that it did.
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------- client */
+
+  // Same-origin when this page is served by the deployment that owns the
+  // endpoint. Opened from a file:// path — which is how anyone editing this
+  // file will see it — there is no same-origin anything, so fall back to the
+  // published host. CORS there is open, deliberately: read-only and keyless.
+  var PUBLISHED = "https://mcp-singularity.cicada71.net/mcp";
+  var ENDPOINT = /^https?:$/.test(window.location.protocol) ? "/mcp" : PUBLISHED;
+  var fellBack = ENDPOINT === PUBLISHED;
+  var id = 0;
+
+  function post(url, payload, ms) {
+    // A missing fetch has to arrive as a rejected promise, not a thrown
+    // TypeError. Thrown, it escapes the promise chain and kills whatever ran
+    // after it — which is how a browser too old for fetch also lost the
+    // install checklist and the definitions, neither of which needs a network.
+    if (!window.fetch) {
+      return Promise.reject(new Error("This browser cannot make the request (no fetch)."));
+    }
+
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = controller ? window.setTimeout(function () { controller.abort(); }, ms || 30000) : null;
+
+    return window
+      .fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller ? controller.signal : undefined
+      })
+      .then(function (res) {
+        if (timer) window.clearTimeout(timer);
+        if (!res.ok) throw new Error("The endpoint answered " + res.status + ".");
+        return res.json();
+      })
+      .catch(function (err) {
+        if (timer) window.clearTimeout(timer);
+        throw err;
+      });
+  }
+
+  /**
+   * Call one tool and hand back its parsed payload.
+   *
+   * The endpoint reports tool-level problems as a *successful* JSON-RPC
+   * result carrying isError — a deliberate choice there, so a caller can read
+   * and correct the problem instead of staring at a dead socket. That shape
+   * is preserved here: `ok` says whether the tool was happy, `data` is what
+   * it said either way, and callers are expected to render both.
+   */
+  function call(tool, args, ms) {
+    id += 1;
+    var body = { jsonrpc: "2.0", id: id, method: "tools/call", params: { name: tool, arguments: args || {} } };
+
+    function send(url) {
+      return post(url, body, ms).then(function (envelope) {
+        if (envelope && envelope.error) throw new Error(envelope.error.message || "The endpoint refused the call.");
+
+        var content = envelope && envelope.result && envelope.result.content;
+        var text = content && content[0] && content[0].text;
+        var parsed;
+
+        try { parsed = JSON.parse(text); } catch (e) { parsed = { raw: text }; }
+
+        return { ok: !(envelope.result && envelope.result.isError), data: parsed, tool: tool, args: args || {} };
+      });
+    }
+
+    // One retry against the published host covers the case where this file is
+    // being served by something that does not carry the /mcp rewrite.
+    return send(ENDPOINT).catch(function (err) {
+      if (fellBack || ENDPOINT === PUBLISHED) throw err;
+      return send(PUBLISHED).then(function (result) {
+        ENDPOINT = PUBLISHED;
+        fellBack = true;
+        return result;
+      }, function () { throw err; });
+    });
+  }
+
+  /* ------------------------------------------------------------- helpers */
+
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /**
+   * Run one feature, and let it fail alone.
+   *
+   * These blocks are independent — the checklist does not need the network,
+   * the definitions do not need the checklist — so a fault in one is reported
+   * and stepped over rather than being allowed to end the script.
+   */
+  function safely(name, fn) {
+    try {
+      fn();
+    } catch (err) {
+      if (window.console && window.console.warn) window.console.warn("Singularity: " + name + " did not start.", err);
+    }
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function esc(value) {
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /** Groups of three, without dragging in a formatter that mangles bigints. */
+  function commas(value) {
+    return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  function shorten(value, head, tail) {
+    var text = String(value || "");
+    if (text.length <= head + tail + 1) return text;
+    return text.slice(0, head) + "…" + text.slice(-tail);
+  }
+
+  /** "12s ago" reads as fresher than a timestamp, which is the whole claim. */
+  function ago(iso) {
+    var then = Date.parse(iso);
+    if (isNaN(then)) return "";
+    var secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (secs < 60) return secs + "s ago";
+    if (secs < 3600) return Math.round(secs / 60) + "m ago";
+    if (secs < 86400) return Math.round(secs / 3600) + "h ago";
+    return Math.round(secs / 86400) + "d ago";
+  }
+
+  function fact(key, value) {
+    var box = el("div", "fact");
+    box.appendChild(el("span", "k", key));
+    box.appendChild(el("span", "v", value));
+    return box;
+  }
+
+  /** The untouched JSON, behind a door. A claim you cannot check is a slogan. */
+  function rawBlock(label, payload) {
+    var wrap = el("details", "raw");
+    wrap.appendChild(el("summary", null, label));
+    var pre = el("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    wrap.appendChild(pre);
+    return wrap;
+  }
+
+  function problemCard(title, message, hint) {
+    var card = el("div", "answer-card bad");
+    card.appendChild(el("h4", null, title));
+    card.appendChild(el("p", null, message));
+    if (hint) card.appendChild(el("p", "why", hint));
+    return card;
+  }
+
+  /** What went wrong at the transport level, said plainly rather than logged. */
+  function transportMessage(err) {
+    var text = err && err.message ? err.message : String(err);
+    if (/abort/i.test(text)) return "The chain took longer than 30 seconds to answer, so the request was dropped.";
+    if (/failed to fetch|networkerror|load failed/i.test(text)) {
+      return "Your browser could not reach the endpoint. That is usually a network or extension blocking it, not a chain being down.";
+    }
+    return text;
+  }
+
+  /* The terminal layer below shares this client. Exported before any feature
+     runs, so a fault in one of them cannot leave the terminal without it. */
+  window.SA = { call: call, transportMessage: transportMessage, commas: commas, shorten: shorten, ago: ago, esc: esc };
+
+  /* ==================================================================
+     1. The hero pulse — four chains, asked once, on load.
+     ================================================================== */
+  safely("pulse", function pulse() {
+    var grid = document.getElementById("pulse-grid");
+    var dot = document.getElementById("pulse-dot");
+    var when = document.getElementById("pulse-when");
+    if (!grid || !dot || !when) return;
+
+    var CHAINS = [
+      { id: "ethereum", label: "Ethereum" },
+      { id: "base", label: "Base" },
+      { id: "solana", label: "Solana" },
+      { id: "bitcoin", label: "Bitcoin" }
+    ];
+
+    var cells = [];
+
+    grid.textContent = "";
+    CHAINS.forEach(function (chain) {
+      var cell = el("div", "pulse-cell");
+      cell.setAttribute("data-state", "asking");
+      cell.appendChild(el("span", "chain", chain.label));
+      var height = el("span", "height", "asking…");
+      var age = el("span", "age", " ");
+      cell.appendChild(height);
+      cell.appendChild(age);
+      grid.appendChild(cell);
+      cells.push({ chain: chain, cell: cell, height: height, age: age });
+    });
+
+    var settled = 0;
+    var answered = 0;
+
+    function finish() {
+      settled += 1;
+      if (settled < cells.length) return;
+
+      dot.setAttribute("data-state", answered ? "ok" : "bad");
+      if (!answered) {
+        when.textContent = "no answer";
+        return;
+      }
+      when.textContent = answered === cells.length ? "all four answering" : answered + " of 4 answering";
+    }
+
+    cells.forEach(function (entry) {
+      call("block", { chain: entry.chain.id }, 20000).then(
+        function (result) {
+          if (!result.ok) {
+            entry.cell.setAttribute("data-state", "bad");
+            entry.height.textContent = "no answer";
+            entry.age.textContent = "public node declined";
+            finish();
+            return;
+          }
+
+          answered += 1;
+          entry.cell.setAttribute("data-state", "ok");
+          entry.height.textContent = "#" + commas(result.data.number);
+
+          var age = ago(result.data.timestamp);
+          var count = result.data.txCount;
+          entry.age.textContent = age + (typeof count === "number" ? " · " + commas(count) + " tx" : "");
+          finish();
+        },
+        function () {
+          entry.cell.setAttribute("data-state", "bad");
+          entry.height.textContent = "unreachable";
+          entry.age.textContent = "free node, no promises";
+          finish();
+        }
+      );
+    });
+  });
+
+  /* ==================================================================
+     2. The identify panel — resolve first, then whatever follows from it.
+     ================================================================== */
+  safely("probe", function probe() {
+    var form = document.getElementById("probe-form");
+    var input = document.getElementById("probe-input");
+    var go = document.getElementById("probe-go");
+    var out = document.getElementById("probe-out");
+    var examples = document.getElementById("probe-examples");
+    if (!form || !input || !go || !out || !examples) return;
+
+    var SAMPLES = [
+      { label: "vitalik.eth", value: "vitalik.eth", why: "a name, not an address" },
+      { label: "a Bitcoin wallet", value: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", why: "the oldest one there is" },
+      { label: "a Solana token", value: "5pTy48gtfzaR8NPUVZTbybVUGpQvFT4JsNHzwQE8pump", why: "this project's own" },
+      { label: "a Cosmos wallet", value: "cosmos1vvln3gz58r3nexrm76msfp9rhr3dzclctuck9h", why: "a staker" }
+    ];
+
+    SAMPLES.forEach(function (sample) {
+      var button = el("button", "chip", sample.label);
+      button.type = "button";
+      button.title = sample.why;
+      button.addEventListener("click", function () {
+        input.value = sample.value;
+        identify(sample.value);
+      });
+      examples.appendChild(button);
+    });
+
+    // A live transaction hash cannot be hard-coded into a page: chains prune,
+    // and a dead example is worse than no example. So this one goes and finds
+    // a real recent transaction first, which also shows the chaining the tool
+    // is for — one answer becoming the next question.
+    var freshTx = el("button", "chip", "a transaction from today");
+    freshTx.type = "button";
+    freshTx.title = "fetched live, because a pasted hash goes stale";
+    freshTx.addEventListener("click", function () {
+      freshTx.disabled = true;
+      freshTx.textContent = "finding one…";
+      call("history", { address: "cosmos1vvln3gz58r3nexrm76msfp9rhr3dzclctuck9h", chain: "cosmoshub", limit: 1 }, 25000)
+        .then(function (result) {
+          var entry = result.ok && result.data.entries && result.data.entries[0];
+          if (!entry) throw new Error("No recent transaction came back.");
+          input.value = entry.hash;
+          identify(entry.hash);
+        })
+        .catch(function (err) {
+          out.textContent = "";
+          out.appendChild(problemCard("Could not fetch a fresh example", transportMessage(err),
+            "Paste any transaction hash instead — it does not have to be from this chain."));
+        })
+        .then(function () {
+          freshTx.disabled = false;
+          freshTx.textContent = "a transaction from today";
+        });
+    });
+    examples.appendChild(freshTx);
+
+    function asking(message) {
+      out.textContent = "";
+      var line = el("div", "verdict-line");
+      var dot = el("span", "live-dot");
+      dot.setAttribute("data-state", "asking");
+      line.appendChild(dot);
+      line.appendChild(el("span", null, message));
+      out.appendChild(line);
+    }
+
+    function identify(value) {
+      var text = String(value || "").trim();
+      if (!text) { input.focus(); return; }
+
+      go.disabled = true;
+      asking("Asking the endpoint what " + shorten(text, 10, 6) + " is…");
+
+      call("resolve", { input: text }, 25000)
+        .then(function (result) {
+          out.textContent = "";
+          if (!result.ok) {
+            out.appendChild(problemCard(
+              "That is not something it recognises",
+              result.data.message || "The string did not match any address, name or hash format it knows.",
+              result.data.hint || "Addresses, ENS names and transaction hashes all work. Ordinary words do not."
+            ));
+            out.appendChild(rawBlock("Show what it actually said", result.data));
+            return;
+          }
+          render(result.data, text);
+        })
+        .catch(function (err) {
+          out.textContent = "";
+          out.appendChild(problemCard("The lookup did not get through", transportMessage(err),
+            "Nothing was guessed in its place. Try again, or install the tool and run it locally."));
+        })
+        .then(function () { go.disabled = false; });
+    }
+
+    var PLAIN = {
+      address: "a wallet address",
+      name: "a human-readable name",
+      tx: "a transaction hash — a receipt number",
+      unknown: "something it cannot place"
+    };
+
+    /**
+     * What `kind` means in words, once the family is known.
+     *
+     * `resolve` reports a Solana mint as an address, and it is right to: the
+     * string genuinely does not say whether it is a wallet or a token. Calling
+     * it a wallet anyway would be the page inventing a certainty the chain
+     * never offered, so the ambiguity is stated instead.
+     */
+    function plainly(data) {
+      if (data.kind === "address" && data.family === "svm") {
+        return "an address on Solana — which is either a wallet or a token; the string does not say which";
+      }
+      if (data.kind === "address" && data.family === "evm") return "a wallet address, valid on every EVM chain";
+      return PLAIN[data.kind] || PLAIN.unknown;
+    }
+
+    var FAMILY = {
+      evm: "Ethereum and the chains that copy it",
+      svm: "Solana",
+      utxo: "Bitcoin and its relatives",
+      cosmos: "the Cosmos chains"
+    };
+
+    function render(data, typed) {
+      var verdict = el("div", "verdict");
+
+      var line = el("div", "verdict-line");
+      var dot = el("span", "live-dot");
+      dot.setAttribute("data-state", "ok");
+      line.appendChild(dot);
+
+      var say = el("span");
+      var what = plainly(data);
+      var family = FAMILY[data.family];
+      var place = family && what.indexOf(" on ") === -1 ? " on " + esc(family) : "";
+      say.innerHTML = "That is <strong>" + esc(what) + "</strong>" + place + ".";
+      line.appendChild(say);
+      verdict.appendChild(line);
+
+      var facts = el("div", "verdict-facts");
+      facts.appendChild(fact("Kind", data.kind));
+      if (data.family) facts.appendChild(fact("Family", data.family));
+
+      if (data.chains && data.chains.length) {
+        facts.appendChild(fact(
+          data.chains.length === 1 ? "Chain" : "Could be on",
+          data.chains.length > 4
+            ? data.chains.length + " chains — same format on all of them"
+            : data.chains.join(", ")
+        ));
+      }
+      if (data.address && data.address !== typed) facts.appendChild(fact("Which means", shorten(data.address, 12, 8)));
+      verdict.appendChild(facts);
+
+      if (data.note) verdict.appendChild(el("p", "verdict-note", data.note));
+      out.appendChild(verdict);
+
+      var next = el("div", "next");
+      next.appendChild(el("span", "label", "Now ask it something:"));
+
+      var target = data.address || typed;
+      var chain = (data.chains && data.chains[0]) || null;
+
+      if (data.kind === "tx") {
+        addAction(next, "What did it do?", function () {
+          return run("transaction", { hash: target }, describeTransaction);
+        });
+      } else if (data.kind === "address" || data.kind === "name") {
+        if (chain) {
+          addAction(next, "What does it hold?", function () {
+            return run("balance", { address: target, chain: chain }, describeBalance);
+          });
+          addAction(next, "What has it been doing?", function () {
+            return run("history", { address: target, chain: chain, limit: 5 }, describeHistory);
+          });
+        }
+        if (data.family === "evm") {
+          addAction(next, "Check every EVM chain at once", function () {
+            return run("portfolio", { address: target, includeTokens: false }, describePortfolio);
+          });
+        }
+        if (data.family === "svm") {
+          addAction(next, "Is this token what it claims?", function () {
+            return run("token_identity", { mint: target }, describeIdentity);
+          });
+        }
+      }
+
+      if (next.children.length > 1) out.appendChild(next);
+
+      out.appendChild(rawBlock("Show the raw answer from resolve", data));
+    }
+
+    function addAction(host, label, fn) {
+      var button = el("button", "act", label);
+      button.type = "button";
+      button.addEventListener("click", function () {
+        var siblings = host.querySelectorAll(".act");
+        Array.prototype.forEach.call(siblings, function (node) { node.disabled = true; });
+        button.textContent = "asking…";
+        fn().then(function () {
+          Array.prototype.forEach.call(siblings, function (node) { node.disabled = false; });
+          button.textContent = label;
+        });
+      });
+      host.appendChild(button);
+    }
+
+    /** Run a tool, drop its card at the bottom, and scroll it into view. */
+    function run(tool, args, describe) {
+      var slot = el("div");
+      out.appendChild(slot);
+
+      return call(tool, args, 40000).then(
+        function (result) {
+          slot.textContent = "";
+          if (!result.ok) {
+            slot.appendChild(problemCard(
+              "It declined to answer",
+              result.data.message || "The tool returned an error rather than a result.",
+              result.data.hint || "This is the tool refusing to guess, not an empty result."
+            ));
+          } else {
+            slot.appendChild(describe(result.data, args));
+          }
+          slot.appendChild(rawBlock("Show the raw answer from " + tool, result.data));
+          if (!REDUCED && slot.scrollIntoView) slot.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        },
+        function (err) {
+          slot.textContent = "";
+          slot.appendChild(problemCard("That call did not get through", transportMessage(err), null));
+        }
+      );
+    }
+
+    /* ---------------------------------------------- friendly descriptions */
+
+    function amountLine(entry, isNative) {
+      var li = el("li", isNative ? "is-native" : null);
+      li.appendChild(el("span", "amt", entry.amount.formatted));
+      li.appendChild(el("span", "sym", entry.amount.symbol || entry.token.symbol));
+      if (isNative) li.appendChild(el("span", "meta", "pays the fees on this chain"));
+      else if (entry.token && entry.token.address) li.appendChild(el("span", "meta", shorten(entry.token.address, 10, 6)));
+      return li;
+    }
+
+    function describeBalance(data) {
+      var card = el("div", "answer-card");
+      var native = data.native;
+      card.appendChild(el("h4", null, "What it holds on " + data.chain));
+
+      var list = el("ul", "holdings");
+      if (native) list.appendChild(amountLine(native, true));
+      (data.tokens || []).forEach(function (entry) { list.appendChild(amountLine(entry, false)); });
+      card.appendChild(list);
+
+      if (!native && !(data.tokens || []).length) {
+        card.appendChild(el("p", null, "Nothing at this address on this chain."));
+      }
+
+      var note = data.tokenScanNote || (data.tokenCompleteness && data.tokenCompleteness.note);
+      card.appendChild(el("p", "why", note || "Read straight from a node, with no price attached — this is a count of things, not a valuation."));
+      return card;
+    }
+
+    function describeHistory(data) {
+      var card = el("div", "answer-card");
+      card.appendChild(el("h4", null, "Recent activity on " + data.chain));
+
+      var entries = data.entries || [];
+      if (!entries.length) {
+        card.appendChild(el("p", null, "No entries came back for this address."));
+      } else {
+        var list = el("ul", "holdings");
+        entries.forEach(function (entry) {
+          var li = el("li");
+          var arrow = entry.direction === "out" ? "sent" : entry.direction === "in" ? "received" : "both ways";
+          li.appendChild(el("span", "amt", arrow));
+          li.appendChild(el("span", "sym", entry.summary || "activity"));
+          li.appendChild(el("span", "meta", (entry.timestamp ? ago(entry.timestamp) : "unconfirmed") + " · " + shorten(entry.hash, 8, 4)));
+          list.appendChild(li);
+        });
+        card.appendChild(list);
+      }
+
+      var note = data.completeness && data.completeness.note;
+      if (note) card.appendChild(el("p", "why", note));
+      return card;
+    }
+
+    function describeTransaction(data) {
+      var card = el("div", "answer-card");
+      var found = data.found || [];
+
+      if (!found.length) {
+        card.className = "answer-card bad";
+        card.appendChild(el("h4", null, "No chain claimed it"));
+        card.appendChild(el("p", null, "Every chain that could carry a hash in this format was asked, and none of them has it."));
+        card.appendChild(el("p", "why", data.note || "A hash that exists nowhere is usually mistyped, or from a testnet this does not cover."));
+        return card;
+      }
+
+      var hit = found[0];
+      card.appendChild(el("h4", null, "Found on " + hit.chain + " — and nowhere else it looked"));
+      card.appendChild(el("p", null, hit.summary || "A transaction in block " + commas(hit.blockNumber) + "."));
+
+      var facts = el("div", "verdict-facts");
+      facts.appendChild(fact("Status", hit.status));
+      if (hit.value) facts.appendChild(fact("Moved", hit.value.formatted + " " + hit.value.symbol));
+      if (hit.fee) facts.appendChild(fact("Fee paid", hit.fee.formatted + " " + hit.fee.symbol));
+      if (hit.timestamp) facts.appendChild(fact("When", ago(hit.timestamp)));
+      card.appendChild(facts);
+
+      if (hit.finality && hit.finality.note) card.appendChild(el("p", "why", hit.finality.note));
+      else card.appendChild(el("p", "why", "It searched by format: a hash does not say which chain it belongs to, so every candidate had to be asked."));
+      return card;
+    }
+
+    function describePortfolio(data) {
+      var card = el("div", "answer-card");
+      var balances = data.balances || [];
+      var queried = data.chainsQueried || [];
+      card.appendChild(el("h4", null, "The same address, on " + queried.length + " chains at once"));
+
+      var list = el("ul", "holdings");
+      var held = 0;
+
+      balances.forEach(function (entry) {
+        var native = entry.native && entry.native.amount;
+        if (!native || Number(native.formatted) === 0) return;
+        held += 1;
+        var li = el("li");
+        li.appendChild(el("span", "amt", native.formatted));
+        li.appendChild(el("span", "sym", native.symbol));
+        li.appendChild(el("span", "meta", "on " + entry.chain));
+        list.appendChild(li);
+      });
+
+      if (held) card.appendChild(list);
+      else card.appendChild(el("p", null, "Every chain answered, and none of them holds anything at this address."));
+
+      if (held && held < balances.length) {
+        card.appendChild(el("p", "why", "The other " + (balances.length - held) + " answered with zero, which is an answer."));
+      }
+      if ((data.errors || []).length) {
+        card.appendChild(el("p", "why", data.errors.length + " chain(s) could not be reached, and are therefore unknown rather than empty."));
+      }
+
+      card.appendChild(el("p", "why", "One EVM address is the same address on every EVM chain — which is why this works, and why people are surprised to find funds somewhere they never deliberately used."));
+      return card;
+    }
+
+    function describeIdentity(data) {
+      var card = el("div", "answer-card");
+      var name = data.name || "this token";
+      card.appendChild(el("h4", null, "Identity of " + name + (data.symbol ? " (" + data.symbol + ")" : "")));
+
+      var immutable = data.immutable || {};
+      var facts = el("div", "verdict-facts");
+      if (data.mint) facts.appendChild(fact("Mint address", shorten(data.mint, 10, 6)));
+      if (immutable.metadata) facts.appendChild(fact("Metadata", immutable.metadata));
+      facts.appendChild(fact("Its document", immutable.document ? "content-addressed" : "a link that can change"));
+      if (data.document) facts.appendChild(fact("Fetched?", data.document.fetched ? "yes" : "no, not without asking"));
+      card.appendChild(facts);
+
+      card.appendChild(el("p", "why", immutable.note || data.note ||
+        "A name and a ticker can be copied onto any mint. The mint address cannot, which is why that is the identity."));
+      return card;
+    }
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      identify(input.value);
+    });
+
+    // A resting state, so the panel is never a blank box with a button.
+    out.appendChild(el("p", "verdict-note",
+      "Nothing asked yet. Paste something, or tap an example — the answer comes from the chain, not from this page."));
+  });
+
+  /* ==================================================================
+     3. Route picker — three jobs, and permission to skip the other two.
+     ================================================================== */
+  safely("routes", function routes() {
+    var buttons = Array.prototype.slice.call(document.querySelectorAll(".route"));
+    var plan = document.getElementById("route-plan");
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll(".sidenav a"));
+    if (!buttons.length || !plan) return;
+
+    var ROUTES = {
+      look: {
+        title: "Looking things up yourself",
+        steps: [
+          ["#install", "Install it — five steps, about four minutes"],
+          ["#first", "Run one real command and understand each part of it"],
+          ["#try", "Practise in the terminal on this page, no install needed"],
+          ["#words", "Keep the vocabulary list open while you do"]
+        ]
+      },
+      ask: {
+        title: "Asking in English through Claude",
+        steps: [
+          ["#claude", "Point Claude at the hosted endpoint — nothing to install"],
+          ["#do", "Steal one of the eight worked questions"],
+          ["#limits", "Know what it will refuse before you ask for it"]
+        ]
+      },
+      build: {
+        title: "Building on it",
+        steps: [
+          ["#sdk", "The SDK: same answers, typed, in your own code"],
+          ["#pay", "Payments and receipts you can verify rather than trust"],
+          ["#chains", "What each chain family can and cannot tell you"],
+          ["#config", "Your own RPC endpoints, before you hit rate limits"],
+          ["#limits", "The refusals, which are on purpose"]
+        ]
+      }
+    };
+
+    function apply(key) {
+      var route = ROUTES[key];
+
+      buttons.forEach(function (button) {
+        button.setAttribute("aria-pressed", String(button.getAttribute("data-route") === key));
+      });
+
+      if (!route) {
+        plan.hidden = true;
+        navLinks.forEach(function (link) { link.removeAttribute("data-route"); });
+        try { localStorage.removeItem("sa-route"); } catch (e) { /* fine */ }
+        return;
+      }
+
+      var keep = {};
+      route.steps.forEach(function (step) { keep[step[0]] = true; });
+      keep["#start"] = true;
+
+      navLinks.forEach(function (link) {
+        link.setAttribute("data-route", keep[link.getAttribute("href")] ? "on" : "off");
+      });
+
+      plan.textContent = "";
+      plan.appendChild(el("strong", null, route.title));
+
+      var list = el("ol");
+      route.steps.forEach(function (step) {
+        var li = el("li");
+        var link = el("a", null, step[1]);
+        link.href = step[0];
+        li.appendChild(link);
+        list.appendChild(li);
+      });
+      plan.appendChild(list);
+
+      var drop = el("button", "drop", "Show me everything instead");
+      drop.type = "button";
+      drop.addEventListener("click", function () { apply(null); });
+      plan.appendChild(drop);
+
+      plan.hidden = false;
+      try { localStorage.setItem("sa-route", key); } catch (e) { /* fine */ }
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        var key = button.getAttribute("data-route");
+        apply(button.getAttribute("aria-pressed") === "true" ? null : key);
+      });
+    });
+
+    try {
+      var saved = localStorage.getItem("sa-route");
+      if (saved && ROUTES[saved]) apply(saved);
+    } catch (e) { /* private browsing — no route remembered, no harm */ }
+  });
+
+  /* ==================================================================
+     4. Install progress. Five steps is short enough to finish and long
+        enough to lose your place in, especially across a restart — which
+        step four asks for.
+     ================================================================== */
+  safely("progress", function progress() {
+    var list = document.querySelector("#install .steps");
+    if (!list) return;
+
+    var items = Array.prototype.slice.call(list.children);
+    var saved = {};
+
+    try { saved = JSON.parse(localStorage.getItem("sa-install") || "{}") || {}; } catch (e) { saved = {}; }
+
+    var bar = el("div", "progress");
+    var count = el("span", "count", "0 / " + items.length);
+    var track = el("div", "bar");
+    var fill = el("i");
+    track.appendChild(fill);
+    var reset = el("button", "reset", "Start over");
+    reset.type = "button";
+
+    bar.appendChild(el("span", null, "Your progress"));
+    bar.appendChild(track);
+    bar.appendChild(count);
+    bar.appendChild(reset);
+    list.parentNode.insertBefore(bar, list);
+
+    var boxes = [];
+
+    function sync() {
+      var done = boxes.filter(function (box) { return box.checked; }).length;
+      count.textContent = done + " / " + items.length;
+      fill.style.width = Math.round((done / items.length) * 100) + "%";
+      bar.firstChild.textContent = done === items.length ? "Installed — nice" : done ? "Where you left off" : "Your progress";
+    }
+
+    items.forEach(function (item, index) {
+      var body = item.querySelector(".step-body");
+      if (!body) return;
+
+      var key = "step" + index;
+      var label = el("label", "tick");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = saved[key] === true;
+      label.appendChild(box);
+      label.appendChild(el("span", null, "Done"));
+      body.appendChild(label);
+
+      item.setAttribute("data-done", box.checked ? "1" : "0");
+      boxes.push(box);
+
+      box.addEventListener("change", function () {
+        item.setAttribute("data-done", box.checked ? "1" : "0");
+        saved[key] = box.checked;
+        try { localStorage.setItem("sa-install", JSON.stringify(saved)); } catch (e) { /* fine */ }
+        sync();
+      });
+    });
+
+    reset.addEventListener("click", function () {
+      boxes.forEach(function (box, index) {
+        box.checked = false;
+        saved["step" + index] = false;
+        items[index].setAttribute("data-done", "0");
+      });
+      try { localStorage.setItem("sa-install", JSON.stringify(saved)); } catch (e) { /* fine */ }
+      sync();
+    });
+
+    sync();
+  });
+
+  /* ==================================================================
+     5. Jargon popovers. The definitions are not written twice: they are
+        lifted out of the glossary already on the page, so the two can
+        never disagree.
+     ================================================================== */
+  safely("terms", function terms() {
+    var rows = document.querySelectorAll(".glossary > div");
+    var buttons = document.querySelectorAll(".jargon");
+    if (!rows.length || !buttons.length) return;
+
+    var book = Object.create(null);
+
+    Array.prototype.forEach.call(rows, function (row) {
+      var dt = row.querySelector("dt");
+      var dd = row.querySelector("dd");
+      if (!dt || !dd) return;
+
+      var alt = dt.querySelector(".alt");
+      var head = dt.cloneNode(true);
+      var strip = head.querySelector(".alt");
+      if (strip) strip.remove();
+
+      var names = [head.textContent.trim()];
+      if (alt) {
+        alt.textContent.split("·").forEach(function (word) {
+          var trimmed = word.trim();
+          if (trimmed) names.push(trimmed);
+        });
+      }
+
+      names.forEach(function (name) {
+        book[name.toLowerCase()] = { title: names[0], html: dd.innerHTML };
+      });
+    });
+
+    var pop = null;
+    var owner = null;
+    var seq = 0;
+
+    function hide() {
+      if (!pop) return;
+      pop.remove();
+      pop = null;
+      if (owner) {
+        owner.setAttribute("aria-expanded", "false");
+        owner.removeAttribute("aria-describedby");
+        owner = null;
+      }
+    }
+
+    function show(button) {
+      var key = (button.getAttribute("data-term") || button.textContent).trim().toLowerCase();
+      var entry = book[key] || book[key.replace(/s$/, "")];
+      if (!entry) return;
+
+      hide();
+      seq += 1;
+      pop = el("div", "jargon-pop");
+      pop.id = "sa-def-" + seq;
+      pop.setAttribute("role", "tooltip");
+      pop.innerHTML = "<b>" + esc(entry.title) + "</b>" + entry.html;
+      document.body.appendChild(pop);
+
+      owner = button;
+      button.setAttribute("aria-expanded", "true");
+      button.setAttribute("aria-describedby", pop.id);
+
+      var box = button.getBoundingClientRect();
+      var width = pop.offsetWidth;
+      var left = Math.min(
+        Math.max(12, box.left + window.scrollX),
+        window.scrollX + document.documentElement.clientWidth - width - 12
+      );
+      pop.style.left = left + "px";
+
+      // Above the word when there is room, below when there is not, so the
+      // definition never covers the sentence it is explaining.
+      var above = box.top > pop.offsetHeight + 16;
+      pop.style.top = (above ? box.top + window.scrollY - pop.offsetHeight - 8 : box.bottom + window.scrollY + 8) + "px";
+    }
+
+    Array.prototype.forEach.call(buttons, function (button) {
+      // The accessible name stays the word as written, so the sentence still
+      // reads as a sentence. What the button does is carried by aria-expanded,
+      // and the definition itself is announced through aria-describedby once
+      // it exists — a label like "gas, what this means" reads as an aside
+      // wedged into the prose.
+      button.setAttribute("aria-expanded", "false");
+      button.title = "Definition";
+
+      button.addEventListener("mouseenter", function () { show(button); });
+      button.addEventListener("focus", function () { show(button); });
+      button.addEventListener("mouseleave", hide);
+      button.addEventListener("blur", hide);
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        if (owner === button) hide();
+        else show(button);
+      });
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") hide();
+    });
+    window.addEventListener("scroll", hide, { passive: true });
+  });
+})();
+
+/* =========================================================================
+   THE TERMINAL, FOR REAL
+
+   The terminal above this used to replay recorded runs. It still can — and
+   still says so when it does — but its default is now to actually execute
+   what you type against the live endpoint, on any address, on any of the
+   thirty-two chains. The recordings are the fallback, not the feature.
+
+   The parser here accepts the CLI's own syntax (`balance <addr> -c base`)
+   because the point is that what you type on this page is what you would
+   type in a real shell. Anything it cannot parse is refused by name, with
+   the list of what it does know, rather than silently doing something else.
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  var SA = window.SA;
+  var screen = document.getElementById("sim-screen");
+  var form = document.getElementById("sim-form");
+  var input = document.getElementById("sim-input");
+  var bar = document.querySelector(".sim .term-bar");
+  if (!SA || !screen || !form || !input || !bar) return;
+
+  /* ------------------------------------------------------- mode switch */
+
+  var live = true;
+
+  var modes = document.createElement("div");
+  modes.className = "modes";
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", "Where answers come from");
+
+  function modeButton(label, isLive, title) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "mode";
+    button.textContent = label;
+    button.title = title;
+    button.setAttribute("aria-pressed", String(isLive === live));
+    button.addEventListener("click", function () { setMode(isLive); });
+    return button;
+  }
+
+  var liveButton = modeButton("Live", true, "Really ask the chains, right now");
+  var replayButton = modeButton("Replay", false, "Show recorded answers from earlier runs");
+  modes.appendChild(liveButton);
+  modes.appendChild(replayButton);
+
+  var note = document.createElement("p");
+  note.className = "sim-note";
+  var noteDot = document.createElement("span");
+  noteDot.className = "live-dot";
+  noteDot.setAttribute("data-state", "ok");
+  noteDot.setAttribute("aria-hidden", "true");
+  var noteText = document.createElement("span");
+  note.appendChild(noteDot);
+  note.appendChild(noteText);
+
+  function setMode(next, because) {
+    live = next;
+    liveButton.setAttribute("aria-pressed", String(live));
+    replayButton.setAttribute("aria-pressed", String(!live));
+    noteDot.setAttribute("data-state", live ? "ok" : "asking");
+    noteText.textContent = because
+      ? because
+      : live
+        ? "Live. Every command below really runs, against the real chains, and can take a few seconds."
+        : "Replay. These are recorded answers from earlier real runs — useful offline, but not current.";
+    input.placeholder = live
+      ? "try: balance vitalik.eth -c base — or any address on any chain"
+      : "type a command, or tap one below — try: help";
+  }
+
+  bar.insertBefore(modes, bar.querySelector(".copy"));
+
+  // Under the example chips, so the reading order is: screen, prompt,
+  // examples, and then the sentence explaining where answers come from.
+  var chips = document.getElementById("sim-chips");
+  if (chips && chips.parentNode) chips.parentNode.insertBefore(note, chips.nextSibling);
+
+  /* ---------------------------------------------------------- printing */
+
+  function put(html) {
+    var row = document.createElement("div");
+    row.className = "sim-row wrap";
+    row.innerHTML = html === "" ? "&nbsp;" : html;
+    screen.appendChild(row);
+    screen.scrollTop = screen.scrollHeight;
+    return row;
+  }
+
+  function dim(text) { return '<span class="dim">' + SA.esc(text) + "</span>"; }
+  function acc(text) { return '<span class="acc">' + SA.esc(text) + "</span>"; }
+  function bad(text) { return '<span class="bad">' + SA.esc(text) + "</span>"; }
+  function ok(text) { return '<span class="ok">' + SA.esc(text) + "</span>"; }
+
+  function pad(text, width) {
+    var value = String(text);
+    return value.length >= width ? value : value + new Array(width - value.length + 1).join(" ");
+  }
+
+  function padStart(text, width) {
+    var value = String(text);
+    return value.length >= width ? value : new Array(width - value.length + 1).join(" ") + value;
+  }
+
+  /** An ISO stamp, made readable, without assuming there is one. */
+  function stamp(iso) {
+    if (!iso) return "unconfirmed";
+    return String(iso).replace("T", " ").replace(/\.\d+Z$|Z$/, "");
+  }
+
+  function heading(text) {
+    put(SA.esc(text));
+    put(dim(new Array(text.length + 1).join("─")));
+  }
+
+  function banner() {
+    screen.textContent = "";
+    put(dim("Singularity Agent — 32 chains, 18 tools, no keys."));
+    put(live
+      ? dim("Live. What you type here really runs. Type ") + acc("help") + dim(" to begin.")
+      : dim("Replay. These are recordings of earlier real runs. Type ") + acc("help") + dim(" to begin."));
+    put("");
+  }
+
+  // The replay layer painted its own banner before this file ran, and it says
+  // the terminal replays recordings. True then, wrong now that Live is the
+  // default — so the first thing the live layer does is correct the claim.
+  setMode(true);
+  banner();
+
+  liveButton.addEventListener("click", announce);
+  replayButton.addEventListener("click", announce);
+
+  // Switching mode leaves earlier output on screen, so the line between the
+  // two has to be drawn where it happened rather than by clearing everything.
+  function announce() {
+    put(live
+      ? ok("— switched to Live. Everything below is asked of the chains as you type it.")
+      : dim("— switched to Replay. Everything below is a recording, not current."));
+    put("");
+  }
+
+  /* ------------------------------------------------------------ parsing */
+
+  /**
+   * The CLI's own grammar, as far as this page needs it: a verb, positional
+   * arguments, and `-c chain` / `-n count` flags in either order.
+   */
+  function parse(text) {
+    var words = text.trim().replace(/^singularity\s+/i, "").split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+
+    var verb = words.shift().toLowerCase();
+    var positional = [];
+    var flags = {};
+
+    for (var i = 0; i < words.length; i += 1) {
+      var word = words[i];
+      if (word === "-c" || word === "--chain") { flags.chain = words[i + 1]; i += 1; }
+      else if (word === "-n" || word === "--limit") { flags.limit = parseInt(words[i + 1], 10); i += 1; }
+      else if (/^--chain=/.test(word)) { flags.chain = word.slice(8); }
+      else if (/^-/.test(word)) { /* an unknown flag is ignored, as the CLI's parser would report it */ }
+      else positional.push(word);
+    }
+
+    return { verb: verb, args: positional, flags: flags };
+  }
+
+  var VERBS = {
+    chains: { tool: "chains", needs: [] },
+    resolve: { tool: "resolve", needs: ["input"], build: function (p) { return { input: p.args[0] }; } },
+    balance: { tool: "balance", needs: ["address", "chain"], build: function (p) { return { address: p.args[0], chain: p.flags.chain }; } },
+    portfolio: { tool: "portfolio", needs: ["address"], build: function (p) { return { address: p.args[0], includeTokens: false }; } },
+    history: { tool: "history", needs: ["address", "chain"], build: function (p) { return { address: p.args[0], chain: p.flags.chain, limit: p.flags.limit || 5 }; } },
+    tx: { tool: "transaction", needs: ["hash"], build: function (p) { return { hash: p.args[0], chain: p.flags.chain }; } },
+    transaction: { tool: "transaction", needs: ["hash"], build: function (p) { return { hash: p.args[0], chain: p.flags.chain }; } },
+    block: { tool: "block", needs: ["chain"], build: function (p) { return { chain: p.flags.chain, ref: p.args[0] }; } },
+    fees: { tool: "fees", needs: ["chain"], build: function (p) { return { chain: p.flags.chain }; } },
+    identity: { tool: "token_identity", needs: ["mint"], build: function (p) { return { mint: p.args[0] }; } },
+    audit: { tool: "mint_audit", needs: ["mint"], build: function (p) { return { mint: p.args[0] }; } },
+    // chain_liveness takes a *list* of chains, not one. `-c base` is the
+    // reasonable thing to type, so it is wrapped here rather than refused.
+    liveness: { tool: "chain_liveness", needs: [], build: function (p) { return { chain: p.flags.chain ? [p.flags.chain] : undefined }; } },
+    decode: { tool: "decode", needs: ["data"], build: function (p) { return { data: p.args[0] }; } }
+  };
+
+  /** Which required arguments the typed line did not supply. */
+  function missing(spec, args) {
+    var gaps = spec.needs.filter(function (need) {
+      var value = args[need];
+      return value === undefined || value === null || value === "";
+    });
+    return gaps.length ? gaps : null;
+  }
+
+  /* --------------------------------------------------------- formatters */
+
+  var FORMAT = {
+    chains: function (data) {
+      var list = data.chains || data;
+      if (!Array.isArray(list)) { fallbackJson(data); return; }
+
+      put(dim("  " + pad("ID", 17) + pad("NAME", 19) + pad("FAMILY", 8) + pad("CHAIN ID", 16) + "ASSET"));
+      list.forEach(function (chain) {
+        put(
+          "  " + SA.esc(pad(chain.id, 17)) + SA.esc(pad(chain.name, 19)) +
+          SA.esc(pad(chain.family, 8)) + dim(pad(chain.chainId === undefined || chain.chainId === null ? "" : chain.chainId, 16)) +
+          SA.esc(chain.nativeSymbol || chain.asset || (chain.native && chain.native.symbol) || "")
+        );
+      });
+      put("");
+      put(dim("  " + list.length + " chain(s). Every one of them answers the same commands."));
+    },
+
+    resolve: function (data) {
+      heading("What that is");
+      put("  " + pad("kind", 10) + acc(data.kind));
+      if (data.family) put("  " + pad("family", 10) + SA.esc(data.family));
+      if (data.address) put("  " + pad("address", 10) + SA.esc(data.address));
+      if (data.name) put("  " + pad("name", 10) + SA.esc(data.name));
+      if (data.chains) {
+        put("  " + pad("chains", 10) + SA.esc(
+          data.chains.length > 6 ? data.chains.slice(0, 6).join(", ") + " …and " + (data.chains.length - 6) + " more" : data.chains.join(", ")
+        ));
+      }
+      if (data.note) { put(""); put(dim("  " + data.note)); }
+    },
+
+    balance: function (data) {
+      heading(data.chain);
+      var native = data.native;
+      if (native) {
+        put("  " + SA.esc(padStart(native.amount.formatted, 14)) + " " + SA.esc(native.amount.symbol) + "  " + dim("(native)"));
+      }
+      var tokens = data.tokens || [];
+      if (tokens.length) {
+        put("");
+        tokens.forEach(function (entry) {
+          put(
+            "  " + SA.esc(padStart(entry.amount.formatted, 14)) + " " + SA.esc(pad(entry.amount.symbol, 8)) +
+            dim(entry.token && entry.token.address ? SA.shorten(entry.token.address, 10, 6) : entry.token.denom || "")
+          );
+        });
+      }
+      var why = data.tokenScanNote || (data.tokenCompleteness && data.tokenCompleteness.note);
+      if (why) { put(""); put(dim("  " + why)); }
+    },
+
+    portfolio: function (data) {
+      heading("Across " + (data.chainsQueried || []).length + " chains");
+      (data.balances || []).forEach(function (entry) {
+        var amount = entry.native && entry.native.amount;
+        if (!amount) return;
+        var zero = Number(amount.formatted) === 0;
+        var line = "  " + pad(entry.chain, 14) + padStart(amount.formatted, 14) + " " + amount.symbol;
+        put(zero ? dim(line) : SA.esc(line));
+      });
+      (data.errors || []).forEach(function (entry) {
+        put("  " + bad(pad(entry.chain || "?", 14) + "unreachable — unknown, not zero"));
+      });
+      if (data.note) { put(""); put(dim("  " + data.note)); }
+    },
+
+    history: function (data) {
+      heading(data.chain + "  " + SA.shorten(data.address, 10, 6));
+      var entries = data.entries || [];
+      if (!entries.length) put(dim("  Nothing came back for this address."));
+
+      entries.forEach(function (entry) {
+        var arrow = entry.direction === "out" ? "->" : entry.direction === "in" ? "<-" : "<>";
+        put(
+          "  " + SA.esc(arrow) + "  " + dim(pad(stamp(entry.timestamp), 21)) +
+          SA.esc(entry.summary || "") + "  " + dim(SA.shorten(entry.hash, 10, 6))
+        );
+      });
+
+      var why = data.completeness && data.completeness.note;
+      if (why) { put(""); put(dim("  " + why)); }
+    },
+
+    transaction: function (data) {
+      var found = data.found || [];
+      if (!found.length) {
+        put(bad("  No chain has this hash."));
+        put("");
+        put(dim("  Every chain whose format could carry it was asked. A hash that exists"));
+        put(dim("  nowhere is usually mistyped, or from a testnet this does not cover."));
+        return;
+      }
+
+      found.forEach(function (hit) {
+        heading(hit.chain + "  " + SA.shorten(hit.hash, 10, 6));
+        put("  " + pad("status", 12) + (hit.status === "success" ? ok(hit.status) : bad(hit.status)));
+        if (hit.blockNumber) put("  " + pad("block", 12) + SA.esc(SA.commas(hit.blockNumber)));
+        if (hit.timestamp) put("  " + pad("when", 12) + SA.esc(stamp(hit.timestamp)) + "  " + dim(SA.ago(hit.timestamp)));
+        if (hit.value) put("  " + pad("moved", 12) + SA.esc(hit.value.formatted + " " + hit.value.symbol));
+        if (hit.fee) put("  " + pad("fee", 12) + SA.esc(hit.fee.formatted + " " + hit.fee.symbol));
+        if (hit.summary) { put(""); put("  " + SA.esc(hit.summary)); }
+        if (hit.finality && hit.finality.note) { put(""); put(dim("  " + hit.finality.note)); }
+        put("");
+      });
+
+      if (found.length > 1) put(dim("  The same hash exists on more than one chain. Both are shown, because"));
+      if (found.length > 1) put(dim("  picking one for you would be a guess."));
+    },
+
+    block: function (data) {
+      heading(data.chain + " — block " + SA.commas(data.number));
+      put("  " + pad("hash", 14) + dim(SA.shorten(data.hash, 14, 8)));
+      put("  " + pad("when", 14) + SA.esc(stamp(data.timestamp)) + "  " + dim(SA.ago(data.timestamp)));
+      if (typeof data.txCount === "number") put("  " + pad("transactions", 14) + SA.esc(SA.commas(data.txCount)));
+
+      if (data.finality) {
+        put("");
+        var settled = data.finality.kind !== "reversible";
+        put("  " + pad("settled", 14) + (settled ? ok(data.finality.kind) : bad(data.finality.kind)));
+        if (data.finality.note) put(dim("  " + data.finality.note));
+      }
+    },
+
+    fees: function (data) {
+      heading("Fees on " + data.chain);
+      if (data.simpleTransfer) {
+        put("  " + pad("Simple transfer", 18) + SA.esc("~" + data.simpleTransfer.formatted + " " + data.simpleTransfer.symbol));
+      }
+      var details = data.details || {};
+      var keys = Object.keys(details);
+      if (keys.length) {
+        put("");
+        keys.forEach(function (key) { put("  " + pad(key, 24) + dim(String(details[key]))); });
+      }
+      if (data.note) { put(""); put(dim("  " + data.note)); }
+    },
+
+    token_identity: function (data) {
+      heading("Identity — " + (data.name || "unnamed") + (data.symbol ? " (" + data.symbol + ")" : ""));
+      put("  " + pad("mint", 10) + dim(data.mint));
+      var immutable = data.immutable || {};
+      if (immutable.metadata) {
+        put("  " + pad("metadata", 10) + (immutable.metadata === "immutable" ? ok(immutable.metadata) : bad(immutable.metadata)));
+      }
+      put("  " + pad("document", 10) + (immutable.document ? ok("content-addressed") : bad("a link that can change")));
+      if (immutable.note) { put(""); put(dim("  " + immutable.note)); }
+      if (data.document && data.document.note) { put(""); put(dim("  " + data.document.note)); }
+    },
+
+    chain_liveness: function (data) {
+      var rows = Array.isArray(data) ? data : data.chains || [];
+      heading("Which nodes are answering");
+      rows.forEach(function (row) {
+        var healthy = row.answering > 0;
+        var line = "  " + pad(row.chain, 14) + padStart(row.answering + "/" + row.configured, 6) + "  endpoints answering";
+        put(healthy ? SA.esc(line) : bad(line));
+      });
+      put("");
+      put(dim("  These are free public nodes. One of three answering is normal, and is"));
+      put(dim("  why Configuration below is worth five minutes of your time."));
+    }
+  };
+
+  function fallbackJson(data) {
+    JSON.stringify(data, null, 2).split("\n").forEach(function (line) { put(SA.esc(line)); });
+  }
+
+  /* ------------------------------------------------------------ running */
+
+  var busy = false;
+
+  function lock(state) {
+    busy = state;
+    if (state) input.setAttribute("disabled", "disabled");
+    else { input.removeAttribute("disabled"); input.focus(); }
+  }
+
+  function help() {
+    put("Commands this terminal really runs:");
+    put("");
+    put("  " + acc("chains") + dim("                        every network it speaks to"));
+    put("  " + acc("resolve") + dim("   <thing>             what is this string?"));
+    put("  " + acc("balance") + dim("   <addr> -c <chain>   what an address holds right now"));
+    put("  " + acc("portfolio") + dim(" <addr>              the same address on every EVM chain"));
+    put("  " + acc("history") + dim("   <addr> -c <chain>   what it has been doing  [-n 5]"));
+    put("  " + acc("tx") + dim("        <hash>              what a transaction did, chain found for you"));
+    put("  " + acc("block") + dim("     -c <chain>          the newest block, and whether it can be undone"));
+    put("  " + acc("fees") + dim("      -c <chain>          what a transfer costs at this moment"));
+    put("  " + acc("identity") + dim("  <mint>              whether a Solana token is the real one"));
+    put("  " + acc("liveness") + dim("                      which public nodes are answering"));
+    put("");
+    put("  " + acc("clear") + dim("                         wipe the screen"));
+    put("");
+    put(dim("Any address, on any of the 32 chains. This is the same tool the install"));
+    put(dim("section gives you — running here instead of on your machine."));
+  }
+
+  function execute(text) {
+    var trimmed = text.trim();
+    if (!trimmed || busy) return false;
+
+    if (/^clear$/i.test(trimmed)) {
+      screen.textContent = "";
+      put(dim("Singularity Agent — 32 chains, 18 tools, no keys."));
+      put(dim("Live. What you type here really runs. Type ") + acc("help") + dim(" to begin."));
+      put("");
+      return true;
+    }
+    if (/^help$/i.test(trimmed)) {
+      put('<span class="sim-echo"><span class="sigil">$</span> ' + SA.esc(trimmed) + "</span>");
+      help();
+      put("");
+      return true;
+    }
+
+    var parsed = parse(trimmed);
+    var spec = parsed && VERBS[parsed.verb];
+    if (!spec) return false;                          // let the replay layer answer or refuse
+
+    var args = spec.build ? spec.build(parsed) : {};
+    var gaps = missing(spec, args);
+
+    // An absent optional argument must not travel as undefined: `chain` left
+    // off `tx` is what makes it search every chain, and NaN from a bad -n
+    // would be rejected by the schema rather than defaulted.
+    Object.keys(args).forEach(function (key) {
+      if (args[key] === undefined || args[key] === "" || args[key] !== args[key]) delete args[key];
+    });
+
+    put('<span class="sim-echo"><span class="sigil">$</span> ' + SA.esc(trimmed) + "</span>");
+
+    if (gaps) {
+      put(bad("  " + parsed.verb + " needs " + gaps.join(" and ") + ", and got neither guessed nor assumed."));
+      put("");
+      if (gaps.indexOf("chain") !== -1) {
+        put(dim("  Add ") + acc("-c <chain>") + dim(" — for example ") + acc("-c base") + dim(". Run ") + acc("chains") + dim(" to see them all."));
+      }
+      var subjects = gaps.filter(function (gap) { return gap !== "chain"; });
+      if (subjects.length) {
+        put(dim("  Give it the " + subjects.join(" and the ") + " to look at."));
+      }
+      put("");
+      return true;
+    }
+
+    lock(true);
+    var pending = put(dim("  asking " + spec.tool + "…"));
+
+    SA.call(spec.tool, args, 45000).then(
+      function (result) {
+        pending.remove();
+
+        if (!result.ok) {
+          var data = result.data || {};
+          put(bad("  " + (data.error || "REFUSED") + ": " + (data.message || "the tool declined to answer.")));
+          if (data.hint) { put(""); put(dim("  " + data.hint)); }
+          put("");
+          put(dim("  That is a refusal, not an empty result — the difference is the whole point."));
+          put("");
+          lock(false);
+          return;
+        }
+
+        var render = FORMAT[spec.tool];
+        try {
+          if (render) render(result.data);
+          else fallbackJson(result.data);
+        } catch (e) {
+          fallbackJson(result.data);
+        }
+        put("");
+        lock(false);
+      },
+      function (err) {
+        pending.remove();
+        put(bad("  The request did not get through."));
+        put("");
+        put(dim("  " + SA.transportMessage(err)));
+        put("");
+        put(dim("  Nothing was invented in its place. Switch to ") + acc("Replay") + dim(" for recorded answers."));
+        put("");
+        lock(false);
+      }
+    );
+
+    return true;
+  }
+
+  // The replay layer owns the form. Intercepting in the capture phase lets the
+  // live layer answer first and stop the event when it has; otherwise the
+  // recorded transcripts still get their turn, which is how an unknown command
+  // keeps its old refusal and `clear` keeps working.
+  form.addEventListener("submit", function (event) {
+    if (!live) return;
+    if (execute(input.value)) {
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = "";
+    }
+  }, true);
+
+  // The example chips call run() directly rather than submitting, so they are
+  // intercepted where they are clicked.
+  var chipHost = document.getElementById("sim-chips");
+  if (chipHost) {
+    chipHost.addEventListener("click", function (event) {
+      var chip = event.target.closest && event.target.closest(".chip");
+      if (!chip || !live) return;
+      if (execute(chip.getAttribute("data-live") || chip.textContent)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+})();
 </script>
 
 </body>
