@@ -7,6 +7,8 @@ import {
   renderQrArt,
   styleFor,
   verifyReceiptImage,
+  receiptUri,
+  referenceFromUri,
 } from 'singularity-agent';
 import type { SettlementResult, StoredIntent } from 'singularity-agent';
 
@@ -154,5 +156,29 @@ describe('receipts, through the SDK', () => {
     expect(() =>
       pay.receipt(settled, { uri: 'https://example.test/r.json', payer: RECIPIENT }),
     ).not.toThrow();
+  });
+});
+
+describe('the flow the README documents, run rather than trusted', () => {
+  it('goes from settlement to an unsigned mint in the two steps it claims', () => {
+    // Documentation that has never been executed is a promise nobody checked.
+    // This is the README's example, verbatim in shape.
+    const { facts, image, metadata } = pay.receipt(settled);
+    expect(metadata['name']).toBe('Receipt 695xPtsS');
+
+    const uri = receiptUri('https://receipts.example.com', facts);
+    expect(referenceFromUri(uri)).toBe(facts.reference);
+
+    const { mint } = pay.receipt(settled, { uri, payer: RECIPIENT });
+    expect(mint?.transaction.instructions).toHaveLength(6);
+
+    // And the claim the whole arrangement rests on.
+    expect(verifyReceiptImage(facts, image)).toBe(true);
+    expect(verifyReceiptImage(facts, '<svg>not it</svg>')).toBe(false);
+  });
+
+  it('keeps the receipt uri inside the on-chain field', () => {
+    const { facts } = pay.receipt(settled);
+    expect(Buffer.byteLength(receiptUri('https://receipts.example.com', facts))).toBeLessThanOrEqual(200);
   });
 });

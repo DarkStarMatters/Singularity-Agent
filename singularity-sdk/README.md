@@ -189,6 +189,74 @@ are written for exactly that reader.
 
 ---
 
+### 5. Payments that leave a receipt
+
+Every QR this SDK renders is artwork derived from the payment's `reference` — the pubkey
+attached to the transfer that makes it findable on chain. Because it is *derived* rather
+than stored, the picture is a fingerprint of one payment: two payments can never render
+alike, the same payment always renders identically, and anyone holding the reference can
+re-derive it and check.
+
+```ts
+const { url, intent } = await pay.createIntent({ to, amount: '0.25' });
+const { png, svg, dataUrl, style } = pay.qr(url);
+
+style.palette.name;   // 'jade/magenta' — the traits the receipt NFT will carry
+```
+
+The seed comes out of the link, which already carries the reference because that is how a
+wallet attaches it. So `pay.qr()` stays pure — no store lookup, no extra argument — and
+the agent's Telegram bot renders the **same bytes** from the same link without either side
+having to agree on anything. That is asserted byte-for-byte in the tests, not hoped for.
+
+Pass `{ plain: true }` for an unstyled code.
+
+Once a payment settles, it can become a receipt NFT of that same picture:
+
+```ts
+const settlement = await pay.settle(intent.id);
+
+// Step one: facts, artwork and metadata. Throws unless the payment is
+// finalized AND matches the claim — a token asserting a reversible payment
+// outlives the transaction it describes.
+const { facts, image, metadata } = pay.receipt(settlement);
+
+// Host the metadata at <base>/<reference>.json, then step two:
+const uri = receiptUri('https://receipts.example.com', facts);
+const { mint } = pay.receipt(settlement, { uri, payer: buyerAddress });
+
+mint.transaction;    // unsigned, six instructions, atomic
+mint.mintKeypair;    // sign with it, send, discard — see below
+```
+
+**The image is not on chain, and nothing here pretends otherwise.** Metaplex caps the
+`uri` field at 200 bytes; the smallest receipt SVG is ~30KB. So the *seed* goes on chain
+instead — the reference is an account key on the payment transaction, and `receiptUri`
+puts it in the URL so it is recorded in the mint's own metadata account. The image is a
+function of it. A host that swaps the picture cannot make the swap verify:
+
+```ts
+verifyReceiptImage(facts, whateverTheHostServed);   // false
+```
+
+That check is also an agent tool (`receipt_art`) and a bot command (`/receipt`), so a
+holder can ask the question without writing any code. A `false` means the image is not
+*evidence* — not that the payment is bad.
+
+Two deliberate constraints on the mint: metadata is **immutable** (this project ships a
+tool that warns holders about rewritable metadata; minting some would make that warning
+advice nobody follows), and `maxSupply` is zero, so the mint authority moves to a PDA
+nobody holds a key for.
+
+> **The one key.** Solana requires a new account's own key to sign its creation, so
+> `buildReceiptMint` generates a throwaway mint keypair and hands it back rather than
+> using it. It is never funded, controls nothing, and holds no authority once the master
+> edition exists. The payer's wallet remains the fee payer, the recipient, and the only
+> signer authorising anything of value. This is the sole exception to the custody seam
+> above, and it is narrow by construction.
+
+---
+
 ## Completeness, which you have to handle
 
 Every list-shaped result carries an envelope, and it is the difference between two
