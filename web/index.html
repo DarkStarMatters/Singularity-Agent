@@ -779,6 +779,7 @@
       <li><a href="#try">Try it</a></li>
       <li><a href="#claude">Use with Claude</a></li>
       <li><a href="#do">What you can ask</a></li>
+      <li><a href="#pay">Payments</a></li>
       <li><a href="#sdk">Build on it</a></li>
       <li><a href="#chains">Chains</a></li>
       <li><a href="#words">Vocabulary</a></li>
@@ -1173,7 +1174,7 @@
         <li>“Prepare a transfer of 25 USDC on Base to this address.”</li>
       </ul>
 
-      <h3>The fifteen tools Claude gets</h3>
+      <h3>The eighteen tools Claude gets</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
@@ -1193,6 +1194,9 @@
             <tr><td><code>verify_burn</code></td><td>Confirm a burn from its signature, at finalized commitment.</td></tr>
             <tr><td><code>build_transfer</code></td><td>Prepare an <strong>unsigned</strong> payment.</td></tr>
             <tr><td><code>build_burn</code></td><td>Prepare an <strong>unsigned</strong> burn.</td></tr>
+            <tr><td><code>chain_liveness</code></td><td>Whether a chain is still producing blocks, rather than merely answering.</td></tr>
+            <tr><td><code>inspect_exit</code></td><td>Before you buy: what could stop you selling it again.</td></tr>
+            <tr><td><code>receipt_art</code></td><td>What a payment receipt looks like, and whether an image is genuinely it.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1457,6 +1461,128 @@ base
         </div>
 
       </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ======================================================== pay -->
+    <section id="pay">
+      <p class="eyebrow">New in v0.2.0</p>
+      <h2>Getting paid, and proving it</h2>
+      <p>
+        Every payment tool answers one question — <em>did a transaction land</em> — and hands
+        back <code>paid: true</code>. That single word hides three things you need to know
+        before you ship anything, so Singularity Pay keeps them apart.
+      </p>
+
+      <div class="split">
+        <div>
+          <h3>How settled is it?</h3>
+          <p>
+            Four answers, not two. <strong>Confirmed</strong> and <strong>finalized</strong>
+            are different claims on Solana, and only one of them cannot be reversed. A tool
+            that calls both of those "paid" is asking you to hand over goods against a
+            transaction that can still vanish.
+          </p>
+        </div>
+        <div>
+          <h3>Were you paid what you asked?</h3>
+          <p>
+            A transaction that lands is not a transaction that paid <em>you</em>, in
+            <em>that</em> token, for <em>that</em> amount. Anyone can make a token called
+            USDC, and a payment in the fake one arrives just as smoothly. Every mismatch is
+            named.
+          </p>
+        </div>
+        <div>
+          <h3>Can it be taken back?</h3>
+          <p>
+            Some tokens let whoever issued them freeze your balance, or move it out of your
+            wallet without you signing anything. That gets checked <em>before</em> the payment
+            link is ever shown to anybody.
+          </p>
+        </div>
+      </div>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">TG</span>
+          <code class="cmd">/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM</code>
+          <button class="copy" type="button" data-copy="/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM">Copy</button>
+        </div>
+        <pre><code><span class="ok">✓</span> Payment request for <span class="num">0.25 SOL</span>
+
+  To        7xKX...gAsU
+  Sender    9WzD...AWWM <span class="dim">— balance 1.84 SOL, enough</span>
+  Reference 695xPtsS...  <span class="dim">— how this payment is found on chain</span>
+
+<span class="dim">[ a QR code image follows, in this payment's own colours ]</span>
+
+Scan it with Phantom. Singularity holds no keys and cannot sign.</code></pre>
+      </figure>
+      <figcaption class="sample">
+        The sender's balance is read before the code is shown, so a wallet that cannot cover
+        the payment fails here rather than on your customer's approval screen.
+      </figcaption>
+
+      <h3>The code is a picture of that one payment</h3>
+      <p>
+        Every payment carries a <strong>reference</strong> — a one-off value attached to the
+        transfer so it can be found on chain. The artwork is calculated from it. Nothing is
+        stored, which is the whole point: two payments can never look alike, the same payment
+        always looks identical, and anyone holding the reference can redraw it and compare.
+      </p>
+      <p>
+        Colour varies. Contrast does not. Every palette is measured against the background
+        and darkened until it clears the threshold a scanner needs — because
+        <em>lightness is not brightness</em>, and a sweep of 400 colour schemes found one
+        that looked perfectly good and sat well below what a cheap camera can read.
+      </p>
+
+      <h3>A receipt you can check, not just keep</h3>
+      <p>
+        Once a payment is finalized it can be minted as an NFT of that same picture. It
+        refuses to mint for a payment that is merely confirmed, or that does not match what
+        was asked for — a receipt is evidence, and evidence built from a request rather than
+        a result is just a nicely formatted claim.
+      </p>
+      <p>
+        <strong>The image is not stored on the blockchain, and we are not going to pretend it
+        is.</strong> There is room for 200 characters; the picture is about 30,000. So the
+        <em>seed</em> goes on chain instead, and the picture is calculated from it. If whoever
+        hosts the image swaps it for a different one, the swap simply fails to verify — ask
+        Claude, or the bot, and it will tell you.
+      </p>
+
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">TG</span>
+          <code class="cmd">/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB</code>
+          <button class="copy" type="button" data-copy="/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB">Copy</button>
+        </div>
+        <pre><code><span class="ok">Receipt 695xPtsS</span>
+
+  Palette   moss/indigo
+  Modules   dot
+  Finders   rounded
+  Contrast  12.6:1 ink, 8.9:1 accent
+
+<span class="dim">Derived from the reference alone, so anyone holding it gets this
+same answer without trusting a server.</span></code></pre>
+      </figure>
+      <figcaption class="sample">
+        A mismatch means the image is not <em>evidence</em> of the payment. It does not
+        mean the payment was bad, and the tool says so rather than letting anyone imply
+        otherwise.
+      </figcaption>
+
+      <p style="font-size:.9375rem;color:var(--ink-2)">
+        One honest footnote. Creating any new token on Solana requires that token's own key to
+        sign for its creation — there is no way around it. So a throwaway key is made, used for
+        that one signature, and thrown away. It never holds funds, and once the receipt exists
+        it can do nothing at all. <strong>Your wallet is still the only thing that signs for
+        anything of value</strong>, and it is still the only thing holding your money.
+      </p>
     </section>
 
     <hr class="rule">

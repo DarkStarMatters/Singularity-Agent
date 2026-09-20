@@ -1,6 +1,6 @@
 # singularity-sdk
 
-**v0.0.1** — build blockchain applications on [Singularity Agent](../README.md).
+**v0.1.0** — build blockchain applications on [Singularity Agent](../README.md).
 
 The agent is a read-only CLI and MCP plugin: one normalized surface over **EVM**,
 **Solana**, **Bitcoin/UTXO** and **Cosmos**, for a human at a terminal or a model over

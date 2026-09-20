@@ -21,6 +21,169 @@ non-goals."
 
 ---
 
+## Shipped — v0.2.0, a payment that proves itself
+
+Singularity Pay, the QR stack underneath it, and receipts that can be checked rather than
+believed. `singularity-sdk` goes to v0.1.0 alongside it, leaving 0.0.x because it gained a
+payment surface, artwork and receipts in this release and a package with that much API
+answering to a patch number misleads whoever reads the registry.
+
+**A payment is not a boolean.** Every rail this project looked at answers one question —
+*did a transaction land* — and returns `paid: true`. That hides three facts a merchant
+needs before shipping anything, and Pay keeps them apart. **How settled is it**:
+`unpaid`, `pending`, `probabilistic`, `final`, four values rather than two, because
+"confirmed" and "finalized" are different claims on Solana and only one is irreversible.
+**Were you paid what you asked for**: a transaction that lands is not a transaction that
+paid *you*, in *that* token, for *that* amount, and `mismatches` names each failure — a
+payment in a lookalike mint with the same ticker lands perfectly well. **Can it be taken
+back**: the mint's freeze authority and permanent delegate are read at intent creation and
+stored with it, so the record survives the decision.
+
+`fulfil` is true exactly once per intent, ever, and is deliberately distinct from
+`level === 'final'`, which stays true on every later call. A reference is public the moment
+it lands, so the same payment can be presented twice; a merchant polling in a loop would
+otherwise ship the same order repeatedly. That is the idempotency primitive the whole flow
+rests on, and it is a return value rather than a convention.
+
+### The QR encoder, and two bugs that every test agreed with
+
+Encoding is hand-rolled — Reed–Solomon over GF(256), mask selection, format information,
+the lot — because a QR generator is the wrong place to take a dependency and the right
+place to be exactly correct. It shipped **two bugs that all of its own tests passed**:
+
+- **Format information written backwards.** The standard numbers the format word 14 down
+  to 0 and puts bit 14 at (8,0). Walking upward while reading bit `i` wrote the whole word
+  in reverse, so scanners read the wrong mask and error-correction level.
+- **The generator polynomial reversed.** Every data codeword was perfect and every
+  error-correction codeword was garbage.
+
+Neither was caught by the divisibility property test written to catch exactly this class of
+bug, and the reason is the lesson: **the test and the encoder shared an author, so they
+shared the misunderstanding.** A property derived from the same reasoning that produced the
+bug proves only that the reasoning is self-consistent. Both are now pinned to a reference
+value and a decode round-trip, and both were verified by reintroducing the bug and watching
+the tests fail.
+
+**Pinning the error-correction level was a third bug of the same family.** `level: 'M'` was
+hardcoded at every call site, and a 261-byte token payment met a 216-byte ceiling and
+failed. The encoder now takes the strongest level that fits, because a payment link's length
+depends on the domain, the mint and the memo, and nothing at the call site knows any of them.
+
+### Correct parts, wrong whole
+
+The first working QR scanned cleanly and **Phantom rejected it as invalid.** Every component
+had been verified individually: the encoding matched the spec, the GET response was
+well-formed, the icon returned 200, and the transaction simulated with `err: null` against
+mainnet. All true, and the whole was still wrong — it used Solana Pay's *transaction
+request* form, where the wallet fetches a transaction from a URL, when what wallets
+overwhelmingly implement is the *transfer request* form, `solana:<recipient>?amount=…`.
+
+There is no unit test for choosing the wrong half of a protocol. Both forms are now built:
+transfer requests for anything a wallet will scan, transaction requests kept where the
+endpoint needs the ability to *refuse* at fetch time.
+
+`/pay <amount> --to <recipient> --sender <wallet>` takes flags rather than positions.
+`--sender` originally checked nothing useful — it called `buildTransfer`, which does not
+read the native balance, so an empty wallet came back clean. It reads the balance now, and
+fails at the terminal rather than on the customer's approval screen.
+
+### Every code is artwork, and the artwork is evidence
+
+Each payment QR is styled by a seed derived from the payment's `reference` — the pubkey
+attached to the transfer that makes it findable on chain. Because it is *derived* rather
+than stored, the picture is a fingerprint of one payment: two payments cannot render alike,
+the same payment always renders identically, and anyone holding the reference can
+re-derive it and check.
+
+Three invariants keep that from costing a scan, and each is asserted rather than intended.
+The matrix is never touched — rendering decides what a module looks like and never which
+modules exist, so the decode round-trip still governs correctness. The quiet zone stays
+empty. And contrast never varies.
+
+**That third one cannot be done with lightness bands, which was the first attempt.**
+Lightness is not brightness: yellow at 38% is far brighter to a sensor than blue at the
+same number, and a 400-seed sweep found an accent at **2.18:1** against a 3:1 requirement.
+Contrast is now *constructed* — each dark colour is measured against that receipt's paper
+and darkened until it clears its target.
+
+Telegram sends photos, not vectors, so the artwork is drawn directly into pixels rather
+than rasterised by a headless browser. Two renderers of one geometry drift, so the tests
+threshold the rendered pixels back into a matrix and compare: a code that binarises wrongly
+still looks exactly like a QR to a person.
+
+**One of those tests was wrong before the renderer was.** It failed twelve modules — the
+corners of rounded and circular finders — and those corners carry no data and are never
+sampled. A decoder locates a code by the 1:1:3:1:1 run ratio through each finder's centre
+and transforms from the three centres. The wrong criterion was replaced with the real one,
+which was then confirmed to bite: shrinking the finder core to 2x2 fails the ratio test and
+passes the matrix comparison.
+
+### Receipts, and what a token can honestly prove
+
+A settled payment can be minted as a receipt NFT of that same picture. `receiptFacts` is
+fail-closed and refuses three things: a settlement that is `probabilistic` rather than
+`final`, because the token outlives a transaction that can still be dropped; one carrying
+mismatches, because final is not the same as yours; and one with no signature to point at.
+A receipt assembled from a claim rather than a settlement is a forgery with good intentions.
+
+**The image is not on chain, and the docs no longer imply otherwise.** Metaplex caps the
+metadata `uri` at 200 bytes; the smallest receipt SVG is about 30KB. No amount of
+optimisation closes two orders of magnitude, so the arrangement is inverted: the *seed*
+goes on chain, where it already is, and the image is a function of it. A host that swaps
+the picture cannot make the swap verify.
+
+That argument had a gap when first written, found while building the agent tool for it.
+Re-derivation answers *"is this image the one this reference generates"*. It does not answer
+*"which reference does this token belong to"* — and the attribute naming the reference lived
+only in the off-chain JSON, which is exactly the part a host can rewrite. The on-chain
+`name` field holds 32 bytes, too few for a 43-character base58 reference; `uri` holds 200.
+So the reference goes in the URL, and the chain becomes checkable end to end: the uri names
+the reference, the reference generates the image, the reference is an account key on the
+payment transaction.
+
+The mint is immutable and its supply is capped at one by an authority nobody holds. Both are
+deliberate: this project ships a tool that warns holders about rewritable metadata, and
+minting some would make that warning advice nobody follows.
+
+**The one key.** Solana requires a new account's own key to sign its creation, so
+`buildReceiptMint` generates a throwaway mint keypair and hands it back rather than using
+it. It is never funded, controls nothing, and holds no authority once the master edition
+exists — `CreateMasterEditionV3` moves the mint authority to a PDA. The payer's wallet stays
+the fee payer, the recipient, and the only signer authorising anything of value. It is the
+sole exception to "no signing, ever", it is narrow by construction, and it is stated here
+rather than buried.
+
+The instruction encoding was verified from outside rather than against itself, which is the
+lesson this release already paid for once. The metadata PDA derivation is pinned to the USDC
+metadata account read off mainnet, and the full six-instruction transaction was simulated
+against mainnet: `err: null`, 740 bytes against a 1232 limit.
+
+### Pair to pair
+
+The SDK and the agent are one system rather than two that resemble each other, and that
+claim is cheap to make and easy to break. Both render QR codes; nothing stopped them
+drifting apart a release at a time until a customer comparing the code in a Telegram
+message against the one in a checkout page saw two different pictures. The SDK's tests now
+assert its output **byte for byte** against the agent's own renderers.
+
+Neither side has to be told the style. The seed comes out of the link, which already carries
+the reference because that is how a wallet attaches it, so `pay.qr()` stays pure — no store
+lookup, no extra argument — and any two callers holding the same link agree by construction.
+
+**`receipt_art`, the eighteenth tool**, lets an agent ask the question a holder cannot answer
+by eye: *is this picture the one this reference generates?* It reads no chain and fetches
+nothing. The tests that matter are the negative ones — a swapped image, a swapped reference
+and a tampered SVG each have to come back false, because a verifier that returns true for
+everything converts "I have not checked" into "I have checked". Both the tool description and
+its output say a mismatch is **not proof of fraud**; it means the image is not evidence,
+which is a different and more useful claim.
+
+Three existing catalogue guards refused to let that tool exist without a bot command and a
+place in the MCP and conversation surfaces. They did the wiring work that would otherwise
+have been left to memory.
+
+---
+
 ## Shipped — v0.1.0, the third caller
 
 The agent has had two callers since v0.0.3: a human at a terminal, and a model over MCP.
