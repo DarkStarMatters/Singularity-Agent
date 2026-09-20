@@ -28,6 +28,7 @@ import type {
 import type { TokenIdentity } from '../core/types.js';
 import type { TokenExitReport } from '../trade/types.js';
 import type { SettlementResult } from '../pay/operations.js';
+import type { StoredIntent } from '../pay/intent.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { SingularityError } from '../core/errors.js';
@@ -672,6 +673,37 @@ export function formatSettlement(result: SettlementResult): string {
   if (result.signature) lines.push(`sig ${code(result.signature)}`);
 
   lines.push('', `<i>${esc(result.note)}</i>`);
+
+  return lines.join('\n');
+}
+
+/**
+ * Open payment requests, for a chat that wants to know what it is owed.
+ *
+ * Each row leads with its state rather than its id, because the question being
+ * asked is "has anything been paid" and the id is only useful once the answer
+ * is no.
+ */
+export function formatIntentList(intents: StoredIntent[], total: number): string {
+  const lines = [bold('Payment requests'), ''];
+
+  for (const intent of intents) {
+    const state = intent.settledAt
+      ? '✅'
+      : new Date(intent.expiresAt) < new Date()
+        ? '⌛'
+        : '⬜';
+
+    const asset = intent.mint ? code(intent.mint.slice(0, 8)) : 'SOL';
+    lines.push(`${state} <b>${esc(intent.amount)}</b> ${asset}${intent.orderId ? ` — ${esc(intent.orderId)}` : ''}`);
+    lines.push(`     <code>${intent.id}</code>`);
+  }
+
+  if (total > intents.length) {
+    lines.push('', `<i>${total - intents.length} more not shown.</i>`);
+  }
+
+  lines.push('', '<i>⬜ open · ✅ paid · ⌛ expired. Check one with /paid &lt;id&gt;.</i>');
 
   return lines.join('\n');
 }

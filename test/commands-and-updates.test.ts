@@ -56,7 +56,7 @@ describe('telegram command surface', () => {
     // `pay`, `paid` and `qr` are deliberately bot-only. A payment request
     // generator is not something a model should reach for mid-sentence, and a
     // QR is a rendering rather than a chain read.
-    for (const name of ['health', 'forget', 'chatid', 'help', 'start', 'pay', 'paid', 'qr']) {
+    for (const name of ['health', 'forget', 'chatid', 'help', 'start', 'pay', 'paid', 'payments', 'qr']) {
       expect(COMMANDS.has(name), `/${name} is missing`).toBe(true);
     }
   });

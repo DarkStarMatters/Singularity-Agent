@@ -166,7 +166,14 @@ that mapping so the three cannot drift:
 | `/burn` | build an **unsigned** burn | `/verifyburn` | confirm a burn happened |
 | `/redeem` | spend a burn, once | `/inspect` | can you sell it again |
 | `/pay` | a QR somebody can scan to pay you | `/paid` | did it settle, safe to ship |
-| `/qr` | render any link as a scannable code | | |
+| `/payments` | what this chat is owed | `/qr` | render any link as a scannable code |
+
+`/pay` is a system rather than a command. It creates a request, replies with a QR, and
+then the bot **watches for the payment and announces it in the chat that asked** — no
+polling by hand, no remembering to check. The chat comes from the payment itself: `/pay`
+writes `sngl-pay:<chatId>` into the memo, which the payer signs and the chain records, so
+a restart of the bot loses nothing. Set `SINGULARITY_PAYMENT_ENDPOINT` to turn it on;
+without it the watcher never starts and says nothing about it.
 
 `/burn` answers with a **scannable QR** when `SINGULARITY_PAY_ENDPOINT` names a deployed
 `/api/burn` — scan it from another phone, or tap the link in the caption on the device

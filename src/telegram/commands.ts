@@ -12,6 +12,8 @@ import { qrPng } from '../core/qr-render.js';
 import { FileIntentStore, allowedRecipients } from '../pay/file-store.js';
 import { createIntent as createPayIntent, settleIntent as settlePayIntent } from '../pay/operations.js';
 import { payCaption } from '../pay/notify.js';
+import { isExpired } from '../pay/intent.js';
+import { chatFromMemo } from './payments.js';
 import { SingularityError } from '../core/errors.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
@@ -32,6 +34,7 @@ import {
   formatMintAudit,
   formatBurnClaim,
   formatExitReport,
+  formatIntentList,
   formatSettlement,
   formatTokenIdentity,
   bold,
@@ -361,6 +364,31 @@ const paid: Command = {
   },
 };
 
+const payments: Command = {
+  name: 'payments',
+  aliases: ['paylist', 'requests'],
+  usage: '/payments [open|all]',
+  summary: 'Payment requests this bot has created',
+  async run(ctx) {
+    const all = await payStore().all();
+    const wantAll = ctx.args[0]?.toLowerCase() === 'all';
+
+    // Only this chat's own requests by default. The memo carries the chat that
+    // asked, so a group cannot list what another group is owed — which matters
+    // because an amount and a reference together are most of an invoice.
+    const mine = all.filter((intent) => chatFromMemo(intent.memo) === ctx.chatId);
+    const shown = (wantAll ? mine : mine.filter((i) => !i.settledAt && !isExpired(i))).slice(0, 15);
+
+    if (shown.length === 0) {
+      return wantAll
+        ? 'No payment requests from this chat yet. <code>/pay &lt;amount&gt;</code> makes one.'
+        : 'No open payment requests. <code>/payments all</code> includes settled and expired ones.';
+    }
+
+    return formatIntentList(shown, mine.length);
+  },
+};
+
 const burn: Command = {
   name: 'burn',
   aliases: ['build_burn'],
@@ -655,6 +683,7 @@ const COMMAND_LIST: Command[] = [
   qr,
   pay,
   paid,
+  payments,
   burn,
   verifyburn,
   redeem,

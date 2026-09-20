@@ -16,6 +16,8 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { COMMANDS, commandMenu, type CommandContext, type CommandResult } from './commands.js';
+import { PaymentWatcher } from './payments.js';
+import { FileIntentStore } from '../pay/file-store.js';
 import { esc, formatError } from './format.js';
 import { loadConfig, loadEnvFile, ConfigError, type TelegramConfig } from './config.js';
 import {
@@ -118,6 +120,14 @@ export class SingularityBot {
   /** The chat approval cards are sent to, so `/drafts` can say where they went. */
   controlChatId: number | undefined;
 
+  /**
+   * Watches open payment requests and announces the ones that land.
+   *
+   * Null until a payment endpoint is configured, because a bot that cannot
+   * create a payment request has nothing to watch for.
+   */
+  private payments: PaymentWatcher | null = null;
+
   constructor(private readonly config: TelegramConfig) {
     this.api = new TelegramApi(config.token);
     this.limiter = new RateLimiter(config.rateLimitPerMinute);
@@ -155,11 +165,34 @@ export class SingularityBot {
       console.error(`[singularity-bot] could not publish the command menu: ${(err as Error).message}`);
     }
 
+    this.startPaymentWatcher();
+
     await this.poll();
+  }
+
+  /**
+   * Begin sweeping for settled payments, where payments are configured at all.
+   *
+   * Silent when they are not: most deployments never take a payment, and a
+   * warning about an unset variable they have no use for is noise on every
+   * startup.
+   */
+  private startPaymentWatcher(): void {
+    if (!process.env.SINGULARITY_PAYMENT_ENDPOINT?.trim()) return;
+
+    this.payments = new PaymentWatcher(this.api, new FileIntentStore(), {
+      ...(this.controlChatId !== undefined ? { fallbackChatId: this.controlChatId } : {}),
+    });
+
+    this.payments.start();
+    console.error(
+      '[singularity-bot] watching open payment requests — a settled payment is announced in the chat that asked for it.',
+    );
   }
 
   stop(): void {
     this.running = false;
+    this.payments?.stop();
   }
 
   private async poll(): Promise<void> {
