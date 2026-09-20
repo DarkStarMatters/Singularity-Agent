@@ -95,20 +95,35 @@ function marginOf(matrix: QrMatrix): number {
   return margin;
 }
 
+/**
+ * A coordinate, rounded to something worth writing down.
+ *
+ * Not cosmetic. `fill` is a fraction, so every offset arrives as float noise —
+ * `56.339999999999996` rather than `56.34` — and an SVG carries a few thousand
+ * of them. Left alone that is 400KB for one QR, which is too large to put in a
+ * Telegram message, let alone anywhere near a chain. Two decimals is finer than
+ * a pixel at any scale this renders at, and cuts the file by roughly four.
+ */
+function n(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
+
 function modulePath(shape: ModuleShape, x: number, y: number, size: number): string {
   const inset = size / 2;
 
   switch (shape) {
     case 'dot':
-      return `M${x + inset} ${y}a${inset} ${inset} 0 1 0 0.01 0z`;
+      return `M${n(x + inset)} ${n(y)}a${n(inset)} ${n(inset)} 0 1 0 0.01 0z`;
     case 'diamond':
-      return `M${x + inset} ${y}L${x + size} ${y + inset}L${x + inset} ${y + size}L${x} ${y + inset}z`;
+      return `M${n(x + inset)} ${n(y)}L${n(x + size)} ${n(y + inset)}L${n(x + inset)} ${n(y + size)}L${n(x)} ${n(y + inset)}z`;
     case 'rounded': {
       const r = size * 0.3;
-      return `M${x + r} ${y}h${size - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${size - 2 * r}a${r} ${r} 0 0 1 -${r} ${r}h-${size - 2 * r}a${r} ${r} 0 0 1 -${r} -${r}v-${size - 2 * r}a${r} ${r} 0 0 1 ${r} -${r}z`;
+      const straight = n(size - 2 * r);
+      const rr = n(r);
+      return `M${n(x + r)} ${n(y)}h${straight}a${rr} ${rr} 0 0 1 ${rr} ${rr}v${straight}a${rr} ${rr} 0 0 1 -${rr} ${rr}h-${straight}a${rr} ${rr} 0 0 1 -${rr} -${rr}v-${straight}a${rr} ${rr} 0 0 1 ${rr} -${rr}z`;
     }
     default:
-      return `M${x} ${y}h${size}v${size}h-${size}z`;
+      return `M${n(x)} ${n(y)}h${n(size)}v${n(size)}h-${n(size)}z`;
   }
 }
 
@@ -136,8 +151,8 @@ function finderShapes(
   return [
     // The ring: a stroked square of exactly one module's width, which is the
     // spec's outer band.
-    `<rect x="${x + unit / 2}" y="${y + unit / 2}" width="${outer - unit}" height="${outer - unit}" rx="${Math.max(0, radius - unit / 2)}" fill="none" stroke="${palette.accent}" stroke-width="${unit}"/>`,
-    `<rect x="${x + unit * 2}" y="${y + unit * 2}" width="${core}" height="${core}" rx="${coreRadius}" fill="${palette.accentDeep}"/>`,
+    `<rect x="${n(x + unit / 2)}" y="${n(y + unit / 2)}" width="${n(outer - unit)}" height="${n(outer - unit)}" rx="${n(Math.max(0, radius - unit / 2))}" fill="none" stroke="${palette.accent}" stroke-width="${n(unit)}"/>`,
+    `<rect x="${n(x + unit * 2)}" y="${n(y + unit * 2)}" width="${n(core)}" height="${n(core)}" rx="${n(coreRadius)}" fill="${palette.accentDeep}"/>`,
   ].join('');
 }
 
