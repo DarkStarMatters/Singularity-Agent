@@ -72,7 +72,61 @@ rather than as a JSON-RPC error object, or as an MCP tool result with
 spec, or `result.isError` per MCP, sees neither and may read the failure as a
 success with an unexpected body.
 
-## Blocking issue: `register_agent` rejects every input with "Invalid URL"
+## Update, 20 September 2026: registered, and two things still mismatch
+
+**SingularityAgent is registered and healthy.** The registry now returns it with
+`status: connected`, `transport: streamable-http`, and all eighteen tools
+introspected from `https://singularity-agent.cicada71.net/api/mcp` with their
+full input schemas. `agent_match` finds it. Whatever route that registration
+took, it worked.
+
+Error responses have also improved: failures now come back as proper JSON-RPC
+errors (`{"error":{"code":-32000,...}}`) rather than as a bare
+`{"error":"request_failed"}` with HTTP 200, which resolves the second issue
+reported below.
+
+Two problems remain.
+
+### 1. `logistics_request` can never match anyone, because of a network-name mismatch
+
+The two matching tools disagree about how a network is spelled:
+
+| Value | `agent_match` |
+| --- | --- |
+| `solana-mainnet-beta` (hyphen) | matches SingularityAgent |
+| `solana:mainnet-beta` (colon) | `unsupported target network: solana:mainnet-beta` |
+| `solana` | `unsupported target network: solana` |
+
+The hyphenated form is the one `pdao_services` advertises in
+`supportedNetworks`. But **`logistics_request` defaults to the colon form** — its
+own response records `"network":"solana:mainnet-beta"` — which `agent_match`
+rejects as unsupported.
+
+The result is that `logistics_request` returns `candidates: []` even for a
+capability that `agent_match` matches successfully a moment earlier. Two
+requests raised while testing (`log_0653872c…`, `log_54e72dff…`) both show
+`status: quoted` with no candidates for exactly this reason.
+
+Either normalise the two vocabularies, or have `logistics_request` emit the
+hyphenated form it expects downstream.
+
+### 2. `register_agent` still rejects every input
+
+Now returning a JSON-RPC error rather than a bare object, but the message is
+unchanged and still does not depend on the argument — see the table below. Since
+registration evidently succeeded by some other path, this tool appears to be
+dead code or a broken alternate entry point. It is worth either fixing or
+removing, because it is the obvious thing an agent will call first.
+
+### 3. Registered agents carry no `networks`
+
+Our entry lists `networks: []` while declaring eighteen chain-reading tools
+across 32 chains. Nothing in the MCP handshake conveys supported networks, so
+there is no way for an agent to declare them — and if `networks` participates in
+matching, every agent will look like it supports none. A documented field, or
+deriving it from a tool result, would fix it.
+
+## Original report: `register_agent` rejects every input with "Invalid URL"
 
 Unlike the schema problem above, this one cannot be worked around by probing.
 `register_agent` returns the same error for **every** argument shape tried,
