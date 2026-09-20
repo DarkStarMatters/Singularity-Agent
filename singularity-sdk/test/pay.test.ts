@@ -170,9 +170,16 @@ describe('what the endpoint refuses', () => {
 });
 
 describe('the link a customer receives', () => {
-  it('carries an opaque id and no payment detail at all', async () => {
-    // Native SOL: no mint, so no issuer to read and nothing to stub. The link
-    // shape is the point here, and it does not depend on the asset.
+  it('carries the payment parameters, which the allowlist is what makes safe', async () => {
+    // This changed during deployment and the reason is worth keeping. The link
+    // originally carried an opaque id, so nothing in it could be tampered
+    // with — but resolving an id needs storage, and the endpoint runs
+    // serverless, where there is none. Parameters are safe instead because the
+    // endpoint refuses any recipient outside SINGULARITY_PAY_RECIPIENTS: a
+    // stranger editing the URL can only pay the merchant, and the payer sees
+    // the amount on their own approval screen.
+    process.env.SINGULARITY_PAY_RECIPIENTS = 'Merchant11111111111111111111111111111111111';
+
     const { pay } = payWith();
     const created = await pay.createIntent({
       to: 'Merchant11111111111111111111111111111111111',
@@ -181,15 +188,37 @@ describe('the link a customer receives', () => {
     });
 
     const inner = decodeURIComponent(created.url.replace(/^solana:/, ''));
+    const query = new URL(inner).searchParams;
 
     expect(created.url.startsWith('solana:')).toBe(true);
-    expect(inner).toBe(`${ENDPOINT}/${created.intent.id}`);
+    expect(query.get('t')).toBe('Merchant11111111111111111111111111111111111');
+    expect(query.get('a')).toBe('25');
 
-    // Nothing to tamper with: editing a character yields an id that does not
-    // resolve, not a payment to somewhere else.
-    expect(new URL(inner).search).toBe('');
-    expect(inner).not.toContain('25');
-    expect(inner).not.toContain('Merchant');
+    // The reference travels too: it is what lets the merchant match this
+    // payment to the order without asking the payer to quote anything.
+    expect(query.get('r')).toBe(created.intent.reference);
+  });
+
+  it('stays inside a scannable QR even with a token mint and a reference', async () => {
+    // The constraint that decided the single-letter parameter names. Two
+    // base58 addresses plus a reference is already most of a version-9 code.
+    process.env.SINGULARITY_PAY_RECIPIENTS = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
+
+    const { pay } = payWith();
+    vi.spyOn(agent, 'assessMintRisk').mockResolvedValue({
+      mint: 'X',
+      custodyIsYours: true,
+      warnings: [],
+    } as never);
+
+    const created = await pay.createIntent({
+      to: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
+      amount: '25',
+      mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    });
+
+    expect(new TextEncoder().encode(created.url).length).toBeLessThan(274);
+    expect(() => pay.qr(created.url)).not.toThrow();
   });
 
   it('skips the mint read for a native SOL payment, which has no issuer', async () => {

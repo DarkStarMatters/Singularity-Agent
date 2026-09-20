@@ -741,13 +741,16 @@ function payStore(): FileIntentStore {
 
 /** The endpoint links are built against, refusing rather than guessing. */
 function payEndpoint(): string {
-  const endpoint = process.env.SINGULARITY_PAY_ENDPOINT?.trim();
+  // Not SINGULARITY_PAY_ENDPOINT: that predates this and points at /api/burn.
+  // Two routes doing two things need two variables, or whichever was set last
+  // silently breaks the other.
+  const endpoint = process.env.SINGULARITY_PAYMENT_ENDPOINT?.trim();
 
   if (!endpoint) {
     throw new SingularityError(
       'NO_PAY_ENDPOINT',
-      'SINGULARITY_PAY_ENDPOINT is not set, so there is nowhere for a wallet to fetch the request from.',
-      'Set it to the public URL of your transaction-request endpoint, e.g. https://pay.example.com/i — the intent id is appended to it, and that URL is what goes inside the QR.',
+      'SINGULARITY_PAYMENT_ENDPOINT is not set, so there is nowhere for a wallet to fetch the request from.',
+      'Set it to the public URL of your deployed /api/pay route, e.g. https://pay.example.com/api/pay. Note it is not SINGULARITY_PAY_ENDPOINT, which names the burn route.',
     );
   }
 

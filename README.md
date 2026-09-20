@@ -532,6 +532,29 @@ order every time.
 command that builds a payment request to whatever address it is handed is a way to get a
 stranger paid under your name. Unset means it refuses.
 
+### Deploying the endpoint
+
+A payment link has to resolve somewhere a wallet can reach. `api/pay.ts` is that route,
+and it deploys alongside `api/burn.ts` with no extra configuration — Vercel compiles it
+from this repo as-is.
+
+```bash
+SINGULARITY_PAY_RECIPIENTS=<your address>            # on the deployment
+SINGULARITY_PAYMENT_ENDPOINT=https://you.example/api/pay   # wherever you create requests
+```
+
+Two variables rather than one, and `SINGULARITY_PAYMENT_ENDPOINT` is deliberately not
+`SINGULARITY_PAY_ENDPOINT` — that one predates this and names the *burn* route. Two
+routes doing two things need two names, or whichever was configured last silently breaks
+the other.
+
+The endpoint is stateless: the request carries its own parameters and the allowlist is
+what makes that safe. That is a change from the first design, which used an opaque id
+and a stored intent — resolving an id needs storage, and a serverless function has none.
+The intent is still stored, on the merchant's side, where it holds the order binding,
+the expiry, the mint risk read, and the ledger that makes fulfilment happen exactly
+once.
+
 ---
 
 ## What makes it practical

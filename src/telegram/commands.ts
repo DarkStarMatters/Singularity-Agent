@@ -304,12 +304,14 @@ const pay: Command = {
     const mint = ctx.args[1];
     const orderId = ctx.args[2];
 
-    const endpoint = process.env.SINGULARITY_PAY_ENDPOINT?.trim();
+    // Not SINGULARITY_PAY_ENDPOINT, which names the burn route and predates
+    // this one. Two routes, two variables.
+    const endpoint = process.env.SINGULARITY_PAYMENT_ENDPOINT?.trim();
     if (!endpoint) {
       throw new SingularityError(
         'NO_PAY_ENDPOINT',
         'No payment endpoint is configured, so a wallet would have nowhere to fetch the request from.',
-        'Set SINGULARITY_PAY_ENDPOINT to the public URL of your /i/ endpoint.',
+        'Set SINGULARITY_PAYMENT_ENDPOINT to the public URL of your deployed /api/pay route.',
       );
     }
 

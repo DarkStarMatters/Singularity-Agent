@@ -37,6 +37,19 @@ import { SingularityError } from './errors.js';
  */
 export type EcLevel = 'L' | 'M' | 'Q' | 'H';
 
+/**
+ * `auto` picks the strongest level the content fits in at the smallest version.
+ *
+ * Worth having because the alternative is worse in both directions. Pinning a
+ * level means a payload one byte over the limit fails outright, when dropping
+ * from M to L would have carried it with room to spare; pinning a *weak* level
+ * throws away recovery on the short payloads that are most of the traffic.
+ *
+ * The order is strongest-first at each version, so a short link gets `H` and a
+ * long one degrades only as far as it must.
+ */
+export type EcChoice = EcLevel | 'auto';
+
 /** A square of true (dark) and false (light) modules, including the quiet zone. */
 export type QrMatrix = boolean[][];
 
@@ -223,6 +236,30 @@ function chooseVersion(byteLength: number, level: EcLevel): number {
     `${byteLength} bytes does not fit in a version-${MAX_VERSION} QR code at level ${level}.`,
     `The ceiling here is ${dataCapacity(MAX_VERSION, level)} bytes. Shorten the content, or drop to a lower error-correction level — a Solana Pay link is normally well under a hundred bytes, so content this long usually means something other than a link got passed in.`,
   );
+}
+
+/**
+ * The strongest error-correction level this content fits in, at the smallest
+ * version that will take it.
+ *
+ * Version first, then level: a smaller code with weaker recovery scans better
+ * off a phone screen than a larger one with stronger recovery, because the
+ * modules are physically bigger. Within a version, take the most protection
+ * going.
+ */
+export function strongestLevel(byteLength: number): EcLevel {
+  for (let version = 1; version <= MAX_VERSION; version += 1) {
+    const countBits = version < 10 ? 8 : 16;
+    const needed = Math.ceil((4 + countBits) / 8) + byteLength;
+
+    for (const level of ['H', 'Q', 'M', 'L'] as const) {
+      if (needed <= dataCapacity(version, level)) return level;
+    }
+  }
+
+  // Nothing fits anywhere; let chooseVersion raise the error that names the
+  // ceiling rather than duplicating it here.
+  return 'L';
 }
 
 /** Mode indicator, length, payload, terminator, padding — as a bit string. */
@@ -536,8 +573,15 @@ function applyVersion(grid: boolean[][], version: number): void {
 }
 
 export interface QrOptions {
-  /** Error correction. Default `M` — see {@link EcLevel}. */
-  level?: EcLevel;
+  /**
+   * Error correction, or `auto` to take the strongest that fits.
+   *
+   * Default `M`. Callers encoding something whose length they do not control —
+   * a payment link carrying two base58 addresses, say — should pass `auto`
+   * rather than guess, because the difference between fitting and not is a
+   * handful of bytes of domain name.
+   */
+  level?: EcChoice;
   /**
    * Light modules around the code. The spec requires four and scanners
    * genuinely need them: without a quiet zone a code against a busy background
@@ -553,7 +597,6 @@ export interface QrOptions {
  * output function in this file is a presentation of exactly this.
  */
 export function qrMatrix(text: string, options: QrOptions = {}): QrMatrix {
-  const level = options.level ?? 'M';
   const margin = options.margin ?? 4;
 
   if (!text) {
@@ -565,6 +608,7 @@ export function qrMatrix(text: string, options: QrOptions = {}): QrMatrix {
   }
 
   const bytes = new TextEncoder().encode(text);
+  const level = options.level === 'auto' ? strongestLevel(bytes.length) : (options.level ?? 'M');
   const version = chooseVersion(bytes.length, level);
   const size = version * 4 + 17;
 
