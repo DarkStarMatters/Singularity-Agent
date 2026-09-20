@@ -61,6 +61,7 @@ const INSTRUCTIONS = [
 interface Request {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 interface Response {
@@ -161,6 +162,36 @@ export default async function handler(req: Request, res: Response): Promise<void
 
   if (req.method === 'OPTIONS') {
     res.status(204).end();
+    return;
+  }
+
+  // A GET asking for a stream is the one case where 405 is the right answer:
+  // the spec lets a server decline server-initiated SSE, and saying so plainly
+  // is how a client learns to stop asking.
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    const accept = String(req.headers?.['accept'] ?? '');
+
+    if (accept.includes('text/event-stream')) {
+      res.status(405).json(
+        rpcError(null, -32600, 'This endpoint does not offer a server-initiated SSE stream. POST JSON-RPC instead.'),
+      );
+      return;
+    }
+
+    // Everything else that arrives by GET is a health check, a registry
+    // crawler or a person pasting the URL into a browser. All three want to
+    // know the endpoint is alive and what it is, and all three read a 405 as a
+    // failure — which is how a working server gets reported as broken.
+    res.status(200).json({
+      name: 'singularity-agent',
+      version: VERSION,
+      protocol: 'mcp',
+      protocolVersion: PROTOCOL_VERSION,
+      transport: 'http-jsonrpc',
+      tools: TOOLS.length,
+      readOnly: true,
+      usage: 'POST JSON-RPC 2.0 here: initialize, tools/list, tools/call.',
+    });
     return;
   }
 

@@ -42,9 +42,13 @@ function fakeRes(): { res: any; captured: Captured } {
   return { res, captured };
 }
 
-async function rpc(body: unknown, method = 'POST'): Promise<Captured> {
+async function rpc(
+  body: unknown,
+  method = 'POST',
+  headers: Record<string, string> = {},
+): Promise<Captured> {
   const { res, captured } = fakeRes();
-  await handler({ method, body } as any, res);
+  await handler({ method, body, headers } as any, res);
   return captured;
 }
 
@@ -172,8 +176,32 @@ describe('protocol manners', () => {
     expect((body as any).error.code).toBe(-32601);
   });
 
-  it('rejects a GET with a usable message', async () => {
+  it('answers a plain GET with 200, because a crawler reads 405 as broken', async () => {
+    // Health checkers, registry crawlers and people pasting the URL into a
+    // browser all arrive this way, and all three treat a non-2xx as a dead
+    // endpoint — which is how a working server gets reported as failing.
     const captured = await rpc(undefined, 'GET');
+
+    expect(captured.code).toBe(200);
+    expect((captured.body as any).name).toBe('singularity-agent');
+    expect((captured.body as any).tools).toBeGreaterThan(0);
+  });
+
+  it('answers HEAD the same way', async () => {
+    expect((await rpc(undefined, 'HEAD')).code).toBe(200);
+  });
+
+  it('still declines a GET that asks for an SSE stream', async () => {
+    // The one case where 405 is correct: the spec lets a server refuse
+    // server-initiated SSE, and saying so is how a client stops asking.
+    const captured = await rpc(undefined, 'GET', { accept: 'text/event-stream' });
+
+    expect(captured.code).toBe(405);
+    expect((captured.body as any).error.message).toMatch(/SSE/i);
+  });
+
+  it('rejects other verbs with a usable message', async () => {
+    const captured = await rpc(undefined, 'DELETE');
     expect(captured.code).toBe(405);
     expect((captured.body as any).error.message).toMatch(/JSON-RPC over POST/i);
   });
