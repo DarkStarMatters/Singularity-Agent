@@ -11,6 +11,7 @@ import type {
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import type { TokenExitReport } from '../trade/types.js';
+import type { PaymentDemandReport } from '../pay/types.js';
 import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
@@ -968,4 +969,55 @@ export function renderIntentList(intents: StoredIntent[]): string {
   ]);
 
   return table(rows, ['', 'id', 'amount', 'to', 'order']);
+}
+
+/**
+ * A payment demand, for somebody deciding at a terminal.
+ *
+ * The verdict is one line and the reason is the next, because the caller may
+ * well be a script reading the exit code and a human reading only the top.
+ */
+export function renderPaymentDemand(report: PaymentDemandReport): string {
+  const lines: string[] = [];
+
+  const fatal = report.findings.filter((f) => f.severity === 'fatal');
+
+  lines.push(
+    report.verdict === 'unpayable'
+      ? `  ${red('do not pay')}   ${bold(`${fatal.length} thing(s) make this unpayable as stated`)}`
+      : report.verdict === 'payable'
+        ? `  ${green('payable')}      ${dim('every stated claim checks out')}`
+        : `  ${yellow('unchecked')}    ${dim('the chain would not answer, so nothing was confirmed')}`,
+  );
+
+  if (report.token) {
+    const named = report.token.symbol ? ` ${dim(`(${report.token.symbol})`)}` : '';
+    lines.push('', `  ${dim('asset')}        ${report.token.mint}${named}`);
+  }
+
+  if (report.destination) {
+    const { address, exists, owner, frozen } = report.destination;
+    const state = exists ? (frozen ? red('exists, frozen') : dim('exists')) : red('does not exist');
+    lines.push(`  ${dim('destination')}  ${address}  ${state}`);
+    if (owner) lines.push(`  ${dim('owned by')}     ${owner}`);
+  }
+
+  const groups = [
+    ['fatal', red('✗'), 'stops this being a payment'],
+    ['warning', yellow('!'), 'worth knowing before you sign'],
+    ['note', dim('·'), 'recorded'],
+  ] as const;
+
+  for (const [severity, mark, heading] of groups) {
+    const found = report.findings.filter((f) => f.severity === severity);
+    if (found.length === 0) continue;
+
+    lines.push('', `  ${dim(heading)}`);
+    for (const f of found) {
+      lines.push(`  ${mark} ${bold(f.code)}`);
+      lines.push(`      ${wrap(f.detail, 76, '      ')}`);
+    }
+  }
+
+  return lines.join('\n');
 }

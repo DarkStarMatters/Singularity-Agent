@@ -27,6 +27,7 @@ import type {
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
 import type { TokenExitReport } from '../trade/types.js';
+import type { PaymentDemandReport } from '../pay/types.js';
 import type { SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import type { TransactionHistory } from '../core/adapter.js';
@@ -704,6 +705,56 @@ export function formatIntentList(intents: StoredIntent[], total: number): string
   }
 
   lines.push('', '<i>⬜ open · ✅ paid · ⌛ expired. Check one with /paid &lt;id&gt;.</i>');
+
+  return lines.join('\n');
+}
+
+/**
+ * A payment demand, rendered for somebody about to decide whether to sign.
+ *
+ * The verdict goes first and the worst finding goes second, because this is
+ * read on a phone by somebody with a wallet already open. Everything else can
+ * scroll.
+ */
+export function formatPaymentDemand(report: PaymentDemandReport): string {
+  const lines = [`${bold('Payment check')} — ${esc(report.chain)}`, ''];
+
+  const verdicts = {
+    unpayable: '⛔ <b>Do not pay</b> — this cannot do what it says',
+    payable: '✅ <b>Payable</b> — every stated claim checks out',
+    unproven: '❓ <b>Unchecked</b> — the chain would not answer',
+  } as const;
+
+  lines.push(verdicts[report.verdict], '', esc(report.note));
+
+  if (report.token) {
+    const named = report.token.symbol ? ` (${esc(report.token.symbol)})` : '';
+    lines.push('', `${bold('Asset')} ${code(report.token.mint)}${named}, ${report.token.decimals} decimals`);
+  }
+
+  if (report.destination) {
+    const { address, exists, owner, frozen } = report.destination;
+    lines.push('', `${bold('Destination')} ${code(address)}`);
+    lines.push(`  ${exists ? 'exists' : '<b>does not exist</b>'}${frozen ? ', <b>frozen</b>' : ''}`);
+    if (owner) lines.push(`  owned by ${code(owner)}`);
+  }
+
+  const groups = [
+    ['fatal', '⛔', 'Stops this being a payment'],
+    ['warning', '⚠️', 'Worth knowing before you sign'],
+    ['note', 'ℹ️', 'Recorded'],
+  ] as const;
+
+  for (const [severity, mark, heading] of groups) {
+    const found = report.findings.filter((f) => f.severity === severity);
+    if (found.length === 0) continue;
+
+    lines.push('', bold(heading));
+    for (const f of found) {
+      lines.push(`${mark} <b>${esc(f.code)}</b>`);
+      lines.push(`  ${esc(f.detail)}`);
+    }
+  }
 
   return lines.join('\n');
 }

@@ -34,6 +34,7 @@ import {
   formatMintAudit,
   formatBurnClaim,
   formatExitReport,
+  formatPaymentDemand,
   formatIntentList,
   formatSettlement,
   formatTokenIdentity,
@@ -669,6 +670,86 @@ const inspect: Command = {
 };
 
 /**
+ * Somebody sent you an invoice. Can it actually be paid?
+ *
+ * Takes the demand in the shape it arrived, either as `key=value` pairs or as
+ * the JSON blob a payment API returned, and checks each claim against the chain
+ * rather than against the rest of the invoice. Nothing is normalised on the way
+ * in: the question is whether the demand *as received* is payable, and quietly
+ * repairing it would answer a different one.
+ */
+const DEMAND_FIELDS = [
+  'to',
+  'tokenAccount',
+  'mint',
+  'asset',
+  'amount',
+  'amountBaseUnits',
+  'decimals',
+  'memo',
+  'reference',
+  'expiresAt',
+  'chain',
+] as const;
+
+type DemandArgs = Parameters<typeof ops.inspectPayment>[0];
+
+function parseDemand(args: string[]): DemandArgs {
+  const joined = args.join(' ').trim();
+  const demand: Record<string, unknown> = {};
+
+  const take = (key: string, value: unknown): void => {
+    const field = DEMAND_FIELDS.find((name) => name.toLowerCase() === key.toLowerCase());
+    if (!field || value === undefined || value === null) return;
+    demand[field] = field === 'decimals' ? Number(value) : String(value);
+  };
+
+  // A pasted payment intent. Only the documented fields are read, so what the
+  // bot checks never drifts from what the tool checks.
+  if (joined.startsWith('{')) {
+    const parsed: unknown = JSON.parse(joined);
+    if (parsed && typeof parsed === 'object') {
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) take(key, value);
+    }
+    return demand as DemandArgs;
+  }
+
+  for (const arg of args) {
+    const at = arg.indexOf('=');
+    if (at > 0) take(arg.slice(0, at), arg.slice(at + 1));
+  }
+
+  return demand as DemandArgs;
+}
+
+const checkpay: Command = {
+  name: 'checkpay',
+  aliases: ['inspect_payment', 'invoice'],
+  usage: '/checkpay mint=<addr> to=<addr> amount=<n> [asset=USDC] [tokenAccount=<addr>]',
+  summary: 'Before you sign: whether a payment demand can be paid at all',
+  async run(ctx) {
+    required(ctx, 0, 'an invoice, as key=value pairs or pasted JSON', checkpay);
+
+    let demand: DemandArgs;
+    try {
+      demand = parseDemand(ctx.args);
+    } catch {
+      return 'That did not parse as JSON. Paste the payment intent whole, or give <code>key=value</code> pairs.';
+    }
+
+    if (Object.keys(demand).length === 0) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        'Nothing in that named a field I check.',
+        `Usage: ${checkpay.usage}`,
+      );
+    }
+
+    return formatPaymentDemand(await ops.inspectPayment(demand));
+  },
+};
+
+/**
  * Is the picture on my receipt the one my payment generates?
  *
  * The check a holder cannot do by eye. A receipt NFT's image is served by a
@@ -867,6 +948,7 @@ const COMMAND_LIST: Command[] = [
   mint,
   identity,
   inspect,
+  checkpay,
   receipt,
   qr,
   pay,

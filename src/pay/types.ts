@@ -179,3 +179,138 @@ export interface MintRisk {
   /** Plain sentences, written for a merchant deciding whether to accept. */
   warnings: string[];
 }
+
+/**
+ * A payment somebody else is asking *you* to make.
+ *
+ * Everything above this line is written from the merchant's side: you issued a
+ * claim, and you are deciding whether it was met. This is the other side of the
+ * same table, and it is the side nobody instruments. An invoice arrives — from
+ * an exchange, an API, a marketplace, another agent — naming a recipient, a
+ * token, an amount and a memo, and the only question that matters is whether
+ * signing it does what it says.
+ *
+ * A wallet cannot answer that. It shows you a decoded transaction *after*
+ * something has already decided where the money goes, and every field in it was
+ * chosen by whoever sent the demand. The checks that would catch a bad one are
+ * all chain reads, and none of them happen anywhere in the usual flow.
+ *
+ * This interface is deliberately shaped like the payment intents real services
+ * emit, rather than like a clean internal model, because the whole point is to
+ * take one as it arrives and check it unmodified. Every field is optional: a
+ * demand that omits something cannot be checked on it, which is itself a
+ * finding rather than an error.
+ */
+export interface PaymentDemand {
+  /** The wallet the demand says will be paid. */
+  to?: string;
+  /**
+   * The exact token account the demand names as the destination.
+   *
+   * Worth its own field rather than being folded into {@link to}, because a
+   * demand that names one is making a much stronger and much more checkable
+   * claim: not "pay this person" but "pay this specific account". That account
+   * either exists, holds the right mint and belongs to the right owner, or it
+   * does not — and all three are readable.
+   */
+  tokenAccount?: string;
+  /** Mint address. Absent means native SOL. Never a ticker. */
+  mint?: string;
+  /**
+   * The ticker the demand claims to be denominated in, e.g. `"USDC"`.
+   *
+   * Checked *against* {@link mint}, never used in place of it. A demand that
+   * says USDC while naming a mint that is not USDC is the entire attack, and it
+   * is also what a typo in somebody's configuration looks like from outside.
+   */
+  asset?: string;
+  /** Whole tokens as a decimal string, never base units. */
+  amount?: string;
+  /**
+   * The same amount in base units, where the demand states both.
+   *
+   * Stating both is a gift: they must agree, and a demand where they disagree
+   * is asking you to sign one number while showing you another.
+   */
+  amountBaseUnits?: string;
+  /** The decimals the demand assumes. Checked against the mint's own. */
+  decimals?: number;
+  /** Text the payment must carry, usually what credits it to your order. */
+  memo?: string;
+  /** The Solana Pay reference that makes the payment findable. */
+  reference?: string;
+  /** When the demand stops being valid, ISO 8601. */
+  expiresAt?: string;
+}
+
+/**
+ * How bad a finding is, and therefore what it does to the verdict.
+ *
+ * - `fatal` — signing this cannot do what the demand says. The money either
+ *   does not move at all or does not arrive where it claims to.
+ * - `warning` — it can land, and something about it is not what a signer would
+ *   assume. Costs rent, arrives short, can be frozen afterwards.
+ * - `note` — worth recording, decides nothing.
+ */
+export type DemandSeverity = 'fatal' | 'warning' | 'note';
+
+/**
+ * One thing found wrong, or worth saying, about a demand.
+ *
+ * `detail` is a whole sentence naming both values, because whoever reads this
+ * is deciding whether to pay a stranger and "mismatch" is not a reason.
+ */
+export interface DemandFinding {
+  code: string;
+  severity: DemandSeverity;
+  detail: string;
+}
+
+/**
+ * Whether this demand can be paid as stated.
+ *
+ * Three values rather than a boolean, for the same reason settlement has four.
+ * `unproven` is the one that earns its place: an RPC that would not answer and
+ * a destination that does not exist are completely different situations, and a
+ * validator that reports both as "do not pay" teaches people to ignore it.
+ */
+export type DemandVerdict = 'payable' | 'unpayable' | 'unproven';
+
+/** What the destination turned out to be, once read rather than assumed. */
+export interface DemandDestination {
+  /** The account the tokens would actually land in. */
+  address: string;
+  /** Whether that account exists on chain right now. */
+  exists: boolean;
+  /** The mint it holds, read from the account rather than from the demand. */
+  mint?: string;
+  /** Who owns it, read from the account. */
+  owner?: string;
+  /** True when it is the associated token account for `owner` and `mint`. */
+  isAssociated?: boolean;
+  /** True when the account is frozen and cannot receive. */
+  frozen?: boolean;
+}
+
+/**
+ * Everything readable about a demand, and whether it survives being read.
+ *
+ * Read `findings` before `verdict`. The verdict is a summary of them and
+ * nothing else, so a caller that branches on it is branching on the findings
+ * whether or not they look — but the findings are what a human needs when they
+ * have to tell a counterparty why their invoice was refused.
+ */
+export interface PaymentDemandReport {
+  chain: string;
+  verdict: DemandVerdict;
+  /** Ordered fatal first, then warnings, then notes. */
+  findings: DemandFinding[];
+  /** Where the money would actually go, as opposed to where it was said to. */
+  destination?: DemandDestination;
+  /** What the mint actually is, where one was named and could be read. */
+  token?: { mint: string; decimals: number; symbol?: string };
+  /** What holding this token afterwards exposes you to. */
+  risk?: MintRisk;
+  /** One sentence for whoever has to act on this. Never empty. */
+  note: string;
+}

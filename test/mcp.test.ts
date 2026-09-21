@@ -37,6 +37,7 @@ describe('MCP server', () => {
       'fees',
       'history',
       'inspect_exit',
+      'inspect_payment',
       'mint_audit',
       'portfolio',
       'read_contract',

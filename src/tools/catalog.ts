@@ -399,6 +399,35 @@ export const TOOLS: ToolDefinition[] = [
     run: (args) => ops.inspectExit(args),
   }),
   defineTool({
+    name: 'inspect_payment',
+    title: 'Whether a payment you were asked to make can actually be paid',
+    description:
+      "Before signing a payment somebody else asked you to make, find out whether it can be paid at all. Takes an invoice or payment intent in the shape it arrived — payee, destination token account, mint, claimed ticker, amount, base units, decimals, expiry — and checks each claim against the chain instead of against the rest of the invoice. It catches what a wallet cannot show: a mint address that is valid base58 with no token at it, a destination token account that does not exist, holds a different mint, is frozen, or belongs to somebody other than the payee named, a displayed amount and a base-unit amount that disagree, decimals that do not match the mint, a ticker naming one token while the mint names another, and an expiry already passed. Reach for it whenever a payment demand arrives from anywhere you do not control — an exchange, an API, a marketplace, another agent — and before building or signing anything against it. `verdict` is `unpayable` when at least one finding means signing cannot do what the demand says, `payable` when every stated claim checked out, and `unproven` when the chain could not be read, which is not the same as cleared. Read `findings` before `verdict`. Solana only. This reads: it builds nothing, signs nothing and sends nothing, and `unpayable` means the demand is wrong rather than that the counterparty is dishonest — a typo in somebody else's configuration produces exactly this.",
+    shape: {
+      to: z.string().optional().describe('The wallet the demand says will be paid.'),
+      tokenAccount: z
+        .string()
+        .optional()
+        .describe('The exact destination token account the demand names, where it names one.'),
+      mint: z.string().optional().describe('Mint address. Omit for native SOL. Never a ticker.'),
+      asset: z
+        .string()
+        .optional()
+        .describe('The ticker the demand claims, e.g. USDC. Checked against `mint`, never used instead of it.'),
+      amount: z.string().optional().describe('Whole tokens as a decimal string, as the demand displays it.'),
+      amountBaseUnits: z
+        .string()
+        .optional()
+        .describe('The same amount in base units, where the demand states both. They must agree.'),
+      decimals: z.number().optional().describe('The decimals the demand assumes. Checked against the mint.'),
+      memo: z.string().optional().describe('Text the demand says the payment must carry.'),
+      reference: z.string().optional().describe('The Solana Pay reference that would make the payment findable.'),
+      expiresAt: z.string().optional().describe('When the demand stops being valid, ISO 8601.'),
+      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+    },
+    run: (args) => ops.inspectPayment(args),
+  }),
+  defineTool({
     name: 'receipt_art',
     title: 'What a payment receipt looks like, and whether an image is it',
     description:

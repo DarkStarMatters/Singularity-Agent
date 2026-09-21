@@ -703,6 +703,76 @@ program
     process.exitCode = report.canExit ? 0 : 1;
   });
 
+
+/**
+ * `checkpay` — whether an invoice you were handed can be paid at all.
+ *
+ * Exits non-zero when it cannot, so it drops into a script that refuses to sign
+ * rather than into a human's judgement. That is the point of having it here:
+ * the demand usually arrives in an automated flow, and the check is only worth
+ * anything if it can stop one.
+ *
+ * `--json` prints the whole report, which is what a caller that wants to log
+ * the reason alongside the refusal should use.
+ */
+program
+  .command('checkpay')
+  .description('Before signing: whether a payment demand can actually be paid.')
+  .option('--to <address>', 'The wallet the demand says will be paid.')
+  .option('--token-account <address>', 'The exact destination token account the demand names.')
+  .option('--mint <address>', 'Mint address. Omit for native SOL. Never a ticker.')
+  .option('--asset <symbol>', 'The ticker the demand claims, e.g. USDC. Checked against --mint.')
+  .option('--amount <amount>', 'Whole tokens, as the demand displays it.')
+  .option('--base-units <amount>', 'The same amount in base units, where the demand states both.')
+  .option('--decimals <n>', 'The decimals the demand assumes.', (v: string) => Number(v))
+  .option('--memo <text>', 'Text the demand says the payment must carry.')
+  .option('--reference <pubkey>', 'The Solana Pay reference the demand names.')
+  .option('--expires-at <iso>', 'When the demand stops being valid.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias. Defaults to "solana".')
+  .action(
+    async (options: {
+      to?: string;
+      tokenAccount?: string;
+      mint?: string;
+      asset?: string;
+      amount?: string;
+      baseUnits?: string;
+      decimals?: number;
+      memo?: string;
+      reference?: string;
+      expiresAt?: string;
+      chain?: string;
+    }) => {
+      const report = await ops.inspectPayment({
+        ...(options.to ? { to: options.to } : {}),
+        ...(options.tokenAccount ? { tokenAccount: options.tokenAccount } : {}),
+        ...(options.mint ? { mint: options.mint } : {}),
+        ...(options.asset ? { asset: options.asset } : {}),
+        ...(options.amount ? { amount: options.amount } : {}),
+        ...(options.baseUnits ? { amountBaseUnits: options.baseUnits } : {}),
+        ...(options.decimals !== undefined ? { decimals: options.decimals } : {}),
+        ...(options.memo ? { memo: options.memo } : {}),
+        ...(options.reference ? { reference: options.reference } : {}),
+        ...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
+        ...(options.chain ? { chain: options.chain } : {}),
+      });
+
+      if (program.opts().json) {
+        console.log(toJson(report));
+      } else {
+        console.log(render.heading('Payment check'));
+        console.log(render.renderPaymentDemand(report));
+        console.log();
+        console.log(`  ${report.note}`);
+      }
+
+      // Non-zero on anything that is not a clean bill of health. `unproven` is
+      // deliberately non-zero too: a script that treats "I could not check" as
+      // "go ahead" is the failure this whole command exists to prevent.
+      process.exitCode = report.verdict === 'payable' ? 0 : 1;
+    },
+  );
+
 /**
  * `pay` — create a payment request somebody can scan.
  *

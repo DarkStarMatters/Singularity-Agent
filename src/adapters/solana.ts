@@ -49,9 +49,18 @@ import { finality } from '../core/finality.js';
 import type {
   MintRisk,
   PaymentClaim,
+  PaymentDemand,
+  PaymentDemandReport,
   PaymentSettlement,
   SettlementLevel,
 } from '../pay/types.js';
+import {
+  classifyDemand,
+  demandNote,
+  demandVerdict,
+  type DemandChain,
+  type DemandFacts,
+} from '../pay/demand.js';
 import type { Concentration, ExitRisk, TokenExitReport } from '../trade/types.js';
 import { classifyExitRisks, exitVerdict, sortBySeverity } from '../trade/classify.js';
 
@@ -2550,4 +2559,162 @@ export async function inspectTokenExit(
       explorerUrl: explorerUrl(chain, 'address', mint.toBase58()),
     } satisfies TokenExitReport;
   });
+}
+
+/** Where a token account keeps the mint it holds, and whose it is. */
+const TOKEN_ACCOUNT_MINT_OFFSET = 0;
+const TOKEN_ACCOUNT_OWNER_OFFSET = 32;
+
+/**
+ * Whether a payment somebody is asking you to make can actually be paid.
+ *
+ * The mirror of {@link findPayment}. That one asks, afterwards, whether a
+ * payment satisfied a claim you issued. This asks, beforehand, whether a claim
+ * *issued at you* is one that signing can satisfy — and it exists because the
+ * answer is routinely no, in ways that are invisible in a wallet and trivial to
+ * read off the chain.
+ *
+ * The failure that prompted it is worth stating, because it is not exotic. A
+ * live marketplace quoted an invoice naming USDC, an amount, a treasury owner
+ * and the exact token account to pay into. Every field was well-formed. The
+ * mint was one character short of USDC's — a valid base58 pubkey for a mint
+ * that has never existed — and the token account was the associated account
+ * *derived from that non-existent mint*, so it had never existed either. The
+ * invoice was perfectly consistent with itself and completely unpayable, and
+ * nothing in the signing path would have said so.
+ *
+ * That is the general shape: the dangerous demands are not malformed. They are
+ * consistent with themselves and inconsistent with the chain, so the only thing
+ * that catches them is reading the chain.
+ *
+ * This function only reads. What a reading *means* is {@link classifyDemand},
+ * which is pure and where every case is tested — the same split `inspect_exit`
+ * makes, and for the same reason: the account shapes worth checking are ones
+ * nobody has deployed on purpose.
+ */
+export async function inspectPaymentDemand(
+  chain: ChainSpec,
+  demand: PaymentDemand,
+): Promise<PaymentDemandReport> {
+  const malformed: string[] = [];
+  const parse = (value: string | undefined, label: string): PublicKey | undefined => {
+    if (!value) return undefined;
+    try {
+      return requirePubkey(value, label);
+    } catch {
+      malformed.push(label);
+      return undefined;
+    }
+  };
+
+  const mint = parse(demand.mint, 'mint');
+  const to = parse(demand.to, 'recipient');
+  const named = parse(demand.tokenAccount, 'destination token account');
+
+  const facts: DemandFacts = { ...(malformed.length > 0 ? { malformed } : {}) };
+
+  try {
+    await withConnection(chain, 'inspectPaymentDemand', async (connection) => {
+      // A mint that was named but would not parse: there is nothing to read,
+      // and treating it as a native payment would answer a different question.
+      if (demand.mint && !mint) return;
+
+      if (!mint) {
+        if (to) {
+          const info = await connection.getAccountInfo(to).catch(() => null);
+          facts.destination = { address: to.toBase58(), exists: Boolean(info) };
+          facts.recipientIsTokenAccount = Boolean(
+            info && (info.owner.equals(TOKEN_PROGRAM_ID) || info.owner.equals(TOKEN_2022_PROGRAM_ID)),
+          );
+        }
+        return;
+      }
+
+      let mintFacts: MintFacts;
+      try {
+        mintFacts = await readMintFacts(connection, mint, chain);
+      } catch {
+        facts.mintMissing = true;
+        return;
+      }
+
+      const curated = knownTokens(chain.id).find((known) => known.address === mint.toBase58())?.symbol;
+      facts.mint = {
+        address: mint.toBase58(),
+        decimals: mintFacts.decimals,
+        ...(curated ? { curatedSymbol: curated } : {}),
+      };
+
+      const derived = to ? deriveAta(to, mint, mintFacts.programId) : undefined;
+      if (derived) facts.derivedAta = derived.toBase58();
+
+      // The named account wins over the derived one. A demand that names a
+      // destination is making the stronger claim, and checking the account it
+      // would rather you looked at is not checking the payment.
+      const target = named ?? derived;
+      if (!target) return;
+
+      const info = await connection.getAccountInfo(target).catch(() => null);
+
+      if (!info?.data || info.data.length < TOKEN_ACCOUNT_STATE_OFFSET + 1) {
+        facts.destination = {
+          address: target.toBase58(),
+          exists: false,
+          ...(derived ? { isAssociated: derived.equals(target) } : {}),
+        };
+        return;
+      }
+
+      const view = Buffer.from(info.data);
+      const heldMint = new PublicKey(view.subarray(TOKEN_ACCOUNT_MINT_OFFSET, TOKEN_ACCOUNT_MINT_OFFSET + 32));
+      const owner = new PublicKey(view.subarray(TOKEN_ACCOUNT_OWNER_OFFSET, TOKEN_ACCOUNT_OWNER_OFFSET + 32));
+
+      facts.destination = {
+        address: target.toBase58(),
+        exists: true,
+        mint: heldMint.toBase58(),
+        owner: owner.toBase58(),
+        frozen: view.readUInt8(TOKEN_ACCOUNT_STATE_OFFSET) === TOKEN_ACCOUNT_FROZEN,
+        ...(derived ? { isAssociated: derived.equals(target) } : {}),
+      };
+    });
+  } catch (error) {
+    // An endpoint that would not answer is not evidence about the demand, and
+    // reporting it as a refusal is how a validator gets ignored.
+    facts.unreadable = error instanceof Error ? error.message : String(error);
+  }
+
+  if (facts.mint) {
+    const risk = await assessMintRisk(chain, facts.mint.address).catch(() => undefined);
+    if (risk) facts.risk = risk;
+  }
+
+  const context: DemandChain = {
+    id: chain.id,
+    name: chain.name,
+    nativeSymbol: chain.nativeCurrency.symbol,
+    nativeDecimals: chain.nativeCurrency.decimals,
+  };
+
+  const authentic = demand.asset ? tokenBySymbol(chain.id, demand.asset)?.address : undefined;
+  const findings = classifyDemand(context, demand, facts, authentic);
+  const verdict = demandVerdict(findings, !facts.unreadable);
+
+  return {
+    chain: chain.id,
+    verdict,
+    findings,
+    ...(facts.destination ? { destination: facts.destination } : {}),
+    ...(facts.mint
+      ? {
+          token: {
+            mint: facts.mint.address,
+            decimals: facts.mint.decimals,
+            ...(facts.mint.curatedSymbol ? { symbol: facts.mint.curatedSymbol } : {}),
+          },
+        }
+      : {}),
+    ...(facts.risk ? { risk: facts.risk } : {}),
+    note: demandNote(findings, verdict),
+  } satisfies PaymentDemandReport;
 }

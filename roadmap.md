@@ -1301,7 +1301,7 @@ one worth solving with a positive corpus in hand, not before.
 
 ### 2.3 Address-book verification — **shipped**
 Optional pinning, enforced at the single funnel every address passes through; see "the
-alias that cannot drift" above. With it, Phase 2 is closed.
+alias that cannot drift" above.
 
 The limit worth stating: a pin verifies **where the alias points**, not who is at the other
 end. An address that has been correct since the day it was saved is still an address whose
@@ -1309,6 +1309,28 @@ owner may have changed — the key could be compromised, the multisig re-keyed, 
 upgraded behind its proxy. Nothing readable from a chain distinguishes that from an
 ordinary quiet address, so it is not a check this tool can offer, and a pin should not be
 read as one.
+
+### 2.4 The invoice nobody checks — **shipped**
+
+Every payment surface in this project was written for the party asking to be paid. `inspect_payment` is the other side of the table: somebody hands *you* a demand — a payee, a token account, a mint, an amount, a memo — and the only question that matters is whether signing it does what it says.
+
+A wallet cannot answer that. It decodes a transaction *after* something has already decided where the money goes, and every field in it was chosen by whoever sent the demand. The checks that would catch a bad one are all chain reads, and none of them happen anywhere in the usual flow.
+
+**What prompted it.** A live agent marketplace quoted an invoice for 0.01 USDC. It named the asset, the amount in two forms, a treasury owner and the exact token account to pay into. Every field was well-formed and internally consistent. The mint was one character short of USDC's — a valid base58 pubkey for a mint that has never existed — and the token account was the associated account *derived from that non-existent mint*, so it had never existed either. Signing it would have failed; a client that helpfully created the account first would have paid rent on a destination the payee was not watching. Nothing in the signing path would have said a word.
+
+That is the shape of the dangerous ones. **They are not malformed. They are consistent with themselves and inconsistent with the chain**, so the only thing that catches them is reading the chain.
+
+Three checks do most of the work, and all three are cheap:
+
+- **Does the ticker match the mint?** Answered offline against the curated map. A demand saying USDC while naming an address that is not USDC is either the oldest trick there is or somebody's typo, and from outside they are indistinguishable — so the finding says what is true and declines to say which.
+- **Does the destination exist, hold that mint, and belong to the payee named?** Three separate reads of one account, and a demand can fail any of them while looking perfect. A named account that does not exist is fatal; a payee who simply has no token account yet is a warning about rent, because that is ordinary.
+- **Do the numbers agree?** Where a demand states an amount, its base units and its decimals, they must all agree with the mint's own decimals. Base units are what gets signed, so a demand where the two disagree is showing you one number and charging you the other.
+
+`verdict` is three values, not a boolean, for the same reason settlement has four. `unproven` is the one that earns its place: an endpoint that would not answer is not evidence about the demand, and a validator that reports "I could not check" as "do not pay" is one people learn to ignore — while a validator that reports it as "payable" is worse. The CLI exits non-zero on `unproven` as well as `unpayable`, because a script treating an unchecked invoice as cleared is the exact failure this exists to prevent.
+
+The judging is split from the reading, as `inspect_exit` already does it, and for the same reason: the account shapes worth testing — a token account holding the wrong mint, a frozen destination, a mint address with nothing at it — are shapes nobody deploys on purpose. `pay/demand.ts` is pure and carries the cases; the Solana adapter only reads.
+
+**It still signs nothing.** It returns findings and a verdict, and the decision stays with the caller. `unpayable` means the demand is wrong, never that the counterparty is dishonest — the invoice above was somebody's configuration typo, and saying so plainly is what makes the report worth reading.
 
 ---
 

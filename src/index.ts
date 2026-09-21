@@ -71,12 +71,25 @@ export { notifyPayment, payCaption, payChatId } from './pay/notify.js';
 export type { NotifyResult } from './pay/notify.js';
 export { meetsSettlement, SETTLEMENT_ORDER } from './pay/types.js';
 export type {
+  DemandDestination,
+  DemandFinding,
+  DemandSeverity,
+  DemandVerdict,
   MintRisk,
   PaymentClaim,
+  PaymentDemand,
+  PaymentDemandReport,
   PaymentSettlement,
   SettlementLevel,
 } from './pay/types.js';
 export { assessMintRisk, buildPayment, findPayment } from './adapters/solana.js';
+
+/**
+ * The payer's side of the table: whether an invoice handed to you can be paid
+ * as stated. Every other payment export here is written for whoever is asking
+ * to be paid; this one is for whoever is being asked. Read-only.
+ */
+export { inspectPaymentDemand } from './adapters/solana.js';
 
 /**
  * Pre-trade exit analysis: the mechanisms by which a position may not be

@@ -7,9 +7,11 @@ import type { TransactionHistory } from '../core/adapter.js';
 import {
   auditMint as auditSolanaMint,
   buildBurn as buildSolanaBurn,
+  inspectPaymentDemand,
   inspectTokenExit,
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
+import type { PaymentDemandReport } from '../pay/types.js';
 import type { TokenExitReport } from '../trade/types.js';
 import { fetchIdentityDocument, isContentAddressed } from '../core/identity.js';
 import {
@@ -1355,4 +1357,35 @@ export async function receiptArt(options: {
         ? 'Pass `image` to check a served picture against it.'
         : 'Pass `link` to render the code, and `image` to check one.'),
   };
+}
+
+/**
+ * Whether an invoice handed to you can be paid as stated.
+ *
+ * The counterpart to everything else in this file, which reads things the
+ * caller chose to look at. This reads a demand *somebody else* wrote, and the
+ * reason it belongs in a read-only client is that every check it makes is a
+ * read — the facts that condemn a bad invoice are all sitting on chain, and the
+ * only reason they go unchecked is that nothing in a signing flow looks.
+ *
+ * Addresses are passed through exactly as the demand stated them, without alias
+ * resolution or normalisation. That is deliberate: the question is whether the
+ * demand as received is payable, and a validator that quietly repairs its input
+ * answers a different question than the one asked.
+ */
+export async function inspectPayment(options: {
+  to?: string;
+  tokenAccount?: string;
+  mint?: string;
+  asset?: string;
+  amount?: string;
+  amountBaseUnits?: string;
+  decimals?: number;
+  memo?: string;
+  reference?: string;
+  expiresAt?: string;
+  chain?: string;
+}): Promise<PaymentDemandReport> {
+  const { chain: named, ...demand } = options;
+  return inspectPaymentDemand(solanaChain(named, 'Payment inspection'), demand);
 }

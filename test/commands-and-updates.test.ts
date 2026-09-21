@@ -41,6 +41,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   token_identity: 'identity',
   chain_liveness: 'health',
   inspect_exit: 'inspect',
+  inspect_payment: 'checkpay',
   receipt_art: 'receipt',
 };
 
