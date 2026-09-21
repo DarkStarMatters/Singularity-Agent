@@ -226,3 +226,88 @@ advertise properties — when that number stops being zero, the guesswork gets
 deleted and the client is rewritten against the published schemas.
 
 Happy to test against a fix.
+
+## Update, 21 September 2026: the mint is fixed, and the first successful payment broke job creation
+
+**The malformed USDC constant is fixed.** Payment intents now name
+`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` and a `treasuryTokenAccount` of
+`5RyKShQxSkbUJ9vA2MZ1Qf2TKgnwhhS3m7mj2ZZaVh6t`, which is the correct associated
+token account for treasury owner `2BJ4ezxq...` under the real USDC mint.
+`ataRequired: true` is reported honestly. Thank you.
+
+We then paid one job, and found two further problems. The payment itself
+succeeded: signature
+`3cFevGd9LR89mkn9XXUQhKgyAX7PDuUdny3FfUbjKneRfpHGZE5X61VfnpiYnvn9f4q8cwjeLEJ1tVUxAKBXnXRs`,
+finalized, 0.01 USDC delivered to the treasury token account with the memo
+`PDAOJOB:job_3bcb47c4-8c4a-4450-8818-da067b089f90`. The treasury balance
+confirms receipt.
+
+### 1. A payment made three seconds after the quote was issued is rejected as "quote expired"
+
+| Event | Time (UTC) | Source |
+| --- | --- | --- |
+| Job created | `12:48:11.306Z` | your `created_at` |
+| Payment finalized on chain | `12:48:14Z` | block time |
+| Signature submitted | ~`12:48:30Z` | our client, straight after confirmation |
+| Job `expires_at` | `13:03:11.306Z` | your `/api/jobs/<id>` |
+
+`POST /api/jobs/<id>/payment` answered `400 {"error":"request_failed","message":"quote
+expired"}`, and answers the same on every retry since. The job still reports
+`status: awaiting_payment` while the money sits in the treasury.
+
+Whatever window is being checked, it is not the fifteen minutes in `expires_at`
+and not the five minutes in the intent's own `expiresAt` — the payment landed
+three seconds after the quote was issued. The practical effect is that a
+correctly paid job is never credited and the payer has no recourse: the funds
+moved, the service did not run, and nothing in the API acknowledges the payment.
+
+`submit_payment` over MCP returns `{"status":"use_http_payment_endpoint"}`, so
+the HTTP endpoint is the only path and it is the one failing.
+
+### 2. Creating any paid job now fails, because the treasury token account exists
+
+Since that payment, every `create_paid_job` — over MCP and over HTTP, for
+`market.snapshot` and `risk.score` alike — returns:
+
+```json
+{"error":"request_failed",
+ "message":"Solana RPC -32600: Encoded binary (base 58) data should be less than 128 bytes, please use Base64 encoding."}
+```
+
+That is verbatim what Solana RPC returns for `getAccountInfo` with
+`encoding: "base58"` against an account larger than 128 bytes:
+
+```bash
+curl -s https://api.mainnet-beta.solana.com -H 'content-type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"getAccountInfo","params":
+       ["5RyKShQxSkbUJ9vA2MZ1Qf2TKgnwhhS3m7mj2ZZaVh6t",{"encoding":"base58"}]}'
+# -32600 Encoded binary (base 58) data should be less than 128 bytes...
+```
+
+An SPL token account is 165 bytes, so it can never be returned as base58.
+
+The reason this surfaced only now is the part worth reading: **before that
+payment the treasury had never held USDC and the account did not exist.**
+`getAccountInfo` returned `value: null`, nothing was encoded, no error was
+raised, and the intent was built with `ataRequired: true`. Our payment created
+the account — which is what `ataRequired: true` asks the payer to do — and from
+that moment the same call has an account to encode and fails every time.
+
+So the first successful payment to the treasury disabled job creation for
+everyone, and it cannot recover on its own: the account exists now and will
+continue to exist. The treasury account is shared across all callers, so this is
+not specific to us.
+
+The fix is the encoding argument — `base64`, or `jsonParsed` if the token
+balance is what is wanted. Worth checking every `getAccountInfo` call in that
+path rather than only the one that fired, since any account over 128 bytes hits
+the same limit.
+
+### What this cost
+
+0.01 USDC delivered and not credited, plus about 0.0015 SOL of rent for the
+token account we created on the treasury's behalf. The rent is recoverable only
+by the account's owner. Small amounts, but the shape is the point: a payer
+following the documented flow exactly loses the payment and has nothing to
+retry against.
+
+Happy to re-test both as soon as there is a fix.
