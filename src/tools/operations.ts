@@ -41,6 +41,7 @@ import {
   type Finality,
 } from '../core/finality.js';
 import { lookupAlias, type AliasTarget } from '../core/address-book.js';
+import { consolidate, type Holding } from '../core/holdings.js';
 import { detect } from '../core/detect.js';
 import { SingularityError } from '../core/errors.js';
 import { decodeCalldata, decodeWithAbi } from '../core/abi.js';
@@ -383,11 +384,35 @@ export async function getBalance(options: {
   };
 }
 
-export interface PortfolioResult {
+/** One address the caller gave, resolved and matched to the chains it works on. */
+export interface PortfolioAddress {
+  /** Exactly what was passed in — a name or alias still reads as itself here. */
+  input: string;
   address: string;
   chainsQueried: string[];
+}
+
+export interface PortfolioResult {
+  /**
+   * The first address queried.
+   *
+   * Kept so that callers written against the single-address form read the same
+   * as they always did. `addresses` is the whole answer.
+   */
+  address: string;
+  /** Every address asked about, resolved, with the chains each was valid on. */
+  addresses: PortfolioAddress[];
+  chainsQueried: string[];
   balances: BalanceResult[];
-  errors: Array<{ chain: string; error: string; hint?: string }>;
+  /**
+   * What is held, by asset rather than by chain.
+   *
+   * Summed only where a sum is honest — same token, same chain, across the
+   * addresses you gave. Never across chains and never across two contracts
+   * that merely share a ticker. See `core/holdings.ts`.
+   */
+  holdings: Holding[];
+  errors: Array<{ chain: string; address?: string; error: string; hint?: string }>;
   /**
    * The weakest guarantee across every chain queried — what the *combined*
    * answer may claim. One curated EVM scan is enough to make "this address
@@ -399,31 +424,20 @@ export interface PortfolioResult {
 }
 
 /**
- * Query one address across many chains at once.
+ * Turn one thing the caller typed into an address and the chains it works on.
  *
- * Chains are filtered to those the address format is actually valid on, so an
- * EVM address does not produce twenty Solana errors.
+ * A name has to become an address before any chain can be asked about it —
+ * otherwise every chain rejects the name and the whole call looks unsupported.
  */
-export async function getPortfolio(options: {
-  address: string;
-  chains?: string[];
-  includeTokens?: boolean;
-  budget?: ResponseBudget;
-}): Promise<PortfolioResult> {
-  const lookup = lookupAlias(options.address);
+async function resolveForPortfolio(input: string, requested: string[]): Promise<PortfolioAddress> {
+  const lookup = lookupAlias(input);
   const raw = lookup.target;
-  const requested = options.chains?.length ? options.chains : portfolioChains();
-
-  // A name has to become an address before any chain can be asked about it —
-  // otherwise every chain rejects the name and the whole call looks unsupported.
   const detection = detect(raw);
-  let address: string;
 
+  let address: string;
   if (detection.kind === 'name') {
     const nameChain = getChain(detection.chains[0] ?? 'ethereum');
-    const resolved = lookup.settle(
-      (await adapterFor(nameChain).resolveName?.(nameChain, raw)) ?? null,
-    );
+    const resolved = lookup.settle((await adapterFor(nameChain).resolveName?.(nameChain, raw)) ?? null);
     if (!resolved) {
       throw new SingularityError(
         'NAME_NOT_RESOLVED',
@@ -436,26 +450,96 @@ export async function getPortfolio(options: {
     address = lookup.settle(raw);
   }
 
-  const candidates = requested
+  const chains = requested
     .map((id) => getChain(id))
-    .filter((chain) => adapterFor(chain).isValidAddress(chain, address));
+    .filter((chain) => adapterFor(chain).isValidAddress(chain, address))
+    .map((chain) => chain.id);
 
-  if (!candidates.length) {
-    const resolvedDetection = detect(address);
+  return { input, address, chainsQueried: chains };
+}
+
+/**
+ * Query a set of addresses across many chains at once.
+ *
+ * Takes `addresses` — an EVM address, a Solana pubkey and a Bitcoin address are
+ * one person's holdings and were three separate questions until now — or
+ * `address` for the single case, which behaves exactly as it did.
+ *
+ * Each address is matched only to the chains its own format is valid on, so
+ * this is not a cross product: a Solana pubkey never produces twenty EVM
+ * errors, and adding a Bitcoin address to the set costs one query, not thirty.
+ *
+ * An address that matches no requested chain is reported in `errors` rather
+ * than failing the call. In a set, one unusable address is a gap in the answer;
+ * refusing the whole thing over it would throw away every other address's
+ * balances. Only a set where *nothing* matched is an error, because then there
+ * was no question anyone could have asked.
+ */
+export async function getPortfolio(options: {
+  address?: string;
+  addresses?: string[];
+  chains?: string[];
+  includeTokens?: boolean;
+  budget?: ResponseBudget;
+}): Promise<PortfolioResult> {
+  const given = options.addresses?.length
+    ? options.addresses
+    : options.address
+      ? [options.address]
+      : [];
+
+  if (!given.length) {
+    throw new SingularityError(
+      'NO_ADDRESS',
+      'A portfolio needs at least one address.',
+      'Pass `address` for one, or `addresses` for a set spanning several chain families.',
+    );
+  }
+
+  const requested = options.chains?.length ? options.chains : portfolioChains();
+
+  // Deduplicated on what the caller typed: the same wallet pasted twice is one
+  // wallet, and summing it into itself would double every balance it holds.
+  const unique = [...new Set(given.map((a) => a.trim()).filter(Boolean))];
+  const resolved = await Promise.all(unique.map((input) => resolveForPortfolio(input, requested)));
+
+  const errors: PortfolioResult['errors'] = [];
+  const jobs: Array<{ address: string; chain: string }> = [];
+
+  for (const entry of resolved) {
+    if (!entry.chainsQueried.length) {
+      const detection = detect(entry.address);
+      errors.push({
+        chain: '(none)',
+        address: entry.address,
+        error: `"${shortAddress(entry.address, 10, 6)}" is not a valid address on any of: ${requested.join(', ')}.`,
+        hint: detection.chains.length
+          ? `That address works on: ${detection.chains.slice(0, 6).join(', ')}. Pass those as \`chains\`.`
+          : detection.reason,
+      });
+      continue;
+    }
+    for (const chain of entry.chainsQueried) jobs.push({ address: entry.address, chain });
+  }
+
+  if (!jobs.length) {
+    const detection = detect(resolved[0]!.address);
     throw new SingularityError(
       'NO_MATCHING_CHAINS',
-      `"${shortAddress(address, 10, 6)}" is not a valid address on any of: ${requested.join(', ')}.`,
-      resolvedDetection.chains.length
-        ? `That address works on: ${resolvedDetection.chains.slice(0, 6).join(', ')}. Pass those as \`chains\`.`
-        : resolvedDetection.reason,
+      given.length === 1
+        ? `"${shortAddress(resolved[0]!.address, 10, 6)}" is not a valid address on any of: ${requested.join(', ')}.`
+        : `None of the ${unique.length} addresses given is valid on any of: ${requested.join(', ')}.`,
+      detection.chains.length
+        ? `That address works on: ${detection.chains.slice(0, 6).join(', ')}. Pass those as \`chains\`.`
+        : detection.reason,
     );
   }
 
   const settled = await Promise.allSettled(
-    candidates.map((chain) =>
+    jobs.map((job) =>
       getBalance({
-        address,
-        chain: chain.id,
+        address: job.address,
+        chain: job.chain,
         includeTokens: options.includeTokens,
         // Per chain, not divided between them. A portfolio is a fan-out of
         // independent scans and each one is shaped to the stated budget; this
@@ -467,17 +551,17 @@ export async function getPortfolio(options: {
   );
 
   const balances: BalanceResult[] = [];
-  const errors: PortfolioResult['errors'] = [];
 
   settled.forEach((result, index) => {
-    const chain = candidates[index]!;
+    const job = jobs[index]!;
     if (result.status === 'fulfilled') {
       balances.push(result.value);
       return;
     }
     const err = result.reason;
     errors.push({
-      chain: chain.id,
+      chain: job.chain,
+      address: job.address,
       error: err instanceof Error ? err.message : String(err),
       hint: err instanceof SingularityError ? err.hint : undefined,
     });
@@ -489,13 +573,21 @@ export async function getPortfolio(options: {
       ...errors.map((e) => completeness.failed(`${e.chain}: ${e.error}`)),
     ]) ?? completeness.failed('No chain answered.');
 
+  const queried = [...new Set(jobs.map((j) => j.chain))];
+
   return {
-    address,
-    chainsQueried: candidates.map((c) => c.id),
+    address: resolved[0]!.address,
+    addresses: resolved,
+    chainsQueried: queried,
     balances,
+    holdings: consolidate(balances),
     errors,
     completeness: combined,
-    note: 'Balances only — no fiat pricing. Chains where the address format does not apply were skipped, not queried and failed.',
+    note:
+      `Balances only — no fiat pricing, so there is no total value here. ` +
+      `${unique.length === 1 ? 'One address' : `${unique.length} addresses`} across ${queried.length} chain(s). ` +
+      'Chains where an address format does not apply were skipped, not queried and failed. ' +
+      'Holdings are summed only within a chain; the same ticker on two chains is two tokens and is never added together.',
   };
 }
 

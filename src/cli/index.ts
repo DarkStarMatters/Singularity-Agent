@@ -112,15 +112,18 @@ program
 
 program
   .command('portfolio')
-  .description('Balances for one address across many chains at once.')
-  .argument('<address>', 'Address, ENS/SNS name, or configured alias.')
+  .description('Balances for one address, or a set of them, across many chains at once.')
+  .argument(
+    '<address...>',
+    'One or more addresses, ENS/SNS names, or aliases. They may span chain families.',
+  )
   .option('-c, --chain <chain...>', 'Chains to query. Defaults to a spread across all families.')
   .option('--no-tokens', 'Native balances only (much faster).')
   .option('--budget <size>', "How much of each list to return: small, standard, full, or an exact count.")
   .action(
-    async (address: string, options: { chain?: string[]; tokens: boolean; budget?: string }) => {
+    async (addresses: string[], options: { chain?: string[]; tokens: boolean; budget?: string }) => {
       const result = await ops.getPortfolio({
-        address,
+        addresses,
         chains: options.chain,
         includeTokens: options.tokens,
         budget: cliBudget(options.budget),

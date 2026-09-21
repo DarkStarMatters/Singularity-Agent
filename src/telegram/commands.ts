@@ -141,15 +141,19 @@ const balance: Command = {
 
 const portfolio: Command = {
   name: 'portfolio',
-  usage: '/portfolio <address> [chain,chain,…]',
-  summary: 'One address across many chains',
+  usage: '/portfolio <address[,address,…]> [chain,chain,…]',
+  summary: 'One address, or several, across many chains',
   async run(ctx) {
-    const address = required(ctx, 0, 'an address', portfolio);
+    // Comma-separated rather than space-separated: the second positional is
+    // already the chain list, and a set of addresses cannot be told from a set
+    // of chains by shape alone.
+    const first = required(ctx, 0, 'an address', portfolio);
+    const addresses = first.split(',').map((a) => a.trim()).filter(Boolean);
     const requested = ctx.args[1]?.split(',').map((c) => c.trim()).filter(Boolean);
 
     return formatPortfolio(
       await ops.getPortfolio({
-        address,
+        addresses,
         ...(requested?.length ? { chains: requested } : ctx.config.defaultChains ? { chains: ctx.config.defaultChains } : {}),
       }),
     );

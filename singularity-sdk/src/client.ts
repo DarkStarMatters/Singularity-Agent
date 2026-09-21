@@ -145,8 +145,16 @@ export interface Singularity<S extends Signer | undefined = undefined> {
     budget?: ResponseBudget;
   }): Promise<BalanceResult>;
 
+  /**
+   * Balances for one address, or a set of them spanning chain families.
+   *
+   * `holdings` on the result is the consolidated view, by asset rather than
+   * by chain. It sums only within a chain; the same ticker on two chains is
+   * two tokens and is never added together.
+   */
   portfolio(options: {
-    address: string;
+    address?: string;
+    addresses?: string[];
     chains?: string[];
     includeTokens?: boolean;
     budget?: ResponseBudget;

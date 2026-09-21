@@ -90,7 +90,33 @@ export function formatBalance(result: BalanceResult): string {
 }
 
 export function formatPortfolio(result: PortfolioResult): string {
-  const lines = [bold(`Portfolio — ${shortAddress(result.address)}`), ''];
+  const who =
+    result.addresses.length === 1
+      ? shortAddress(result.address)
+      : `${result.addresses.length} addresses`;
+
+  const lines = [bold(`Portfolio — ${who}`), ''];
+
+  // What is held, before where it is held. An asset on several chains gets a
+  // line per chain and no total, because there is not one.
+  if (result.holdings.length) {
+    lines.push(bold('Holdings'));
+    for (const holding of result.holdings) {
+      const flag = holding.untrusted ? ' ⚠️' : '';
+      if (holding.chains.length === 1) {
+        const only = holding.chains[0]!;
+        lines.push(
+          `${esc(holding.symbol)}${flag}  <code>${esc(only.total.formatted)}</code> <i>${esc(only.chain)}</i>`,
+        );
+        continue;
+      }
+      lines.push(`${esc(holding.symbol)}${flag} <i>— ${holding.chains.length} chains, not summed</i>`);
+      for (const onChain of holding.chains) {
+        lines.push(`  <code>${esc(onChain.total.formatted)}</code> <i>${esc(onChain.chain)}</i>`);
+      }
+    }
+    lines.push('');
+  }
 
   for (const balance of result.balances) {
     const tokens = balance.tokens

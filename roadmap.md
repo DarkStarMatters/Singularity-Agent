@@ -1571,10 +1571,51 @@ Still open: the loops are in-process, so "poll every twelve seconds for a week" 
 process somebody has to keep alive. That is the substrate question 4.5 leaves open below,
 and it is a deployment concern rather than a missing feature.
 
-### 4.4 Cross-family portfolio
-`portfolio` today takes one address and finds the chains it is valid on. Accept a *set*
-of addresses — an EVM address, a Solana pubkey, a Bitcoin address — and return one
-consolidated view across all four families.
+### 4.4 Cross-family portfolio — **shipped**
+
+`portfolio` took one address and found the chains it was valid on. It now takes a *set* —
+an EVM address, a Solana pubkey, a Bitcoin address — which is how people actually hold
+things, and which was three separate questions until now.
+
+The fan-out is the easy half, and it is not a cross product: each address is matched only
+to the chains its own format is valid on, so a Solana pubkey never produces twenty EVM
+errors and adding a Bitcoin address costs one query rather than thirty. An address valid
+on *nothing* requested is reported in `errors` instead of failing the call — in a set, one
+unusable address is a gap in the answer, and refusing the whole thing over it would throw
+away every other address's balances. Only a set where nothing matched is an error, because
+then there was no question anyone could have asked.
+
+**The hard half is consolidation, which is entirely a question of what may be added to
+what.** A total is a claim, and there is exactly one place one can be made honestly: the
+same token, on the same chain, across the addresses you gave. Same contract, same units,
+different pockets. That is summed.
+
+Two things it refuses to do, and both refusals are the feature:
+
+- **It will not add a token to itself across chains.** USDC on Ethereum and USDC on Base
+  are different contracts with different issuers of record. Bridged supply can be frozen,
+  a bridge can fail, and the two can trade apart — holding one is not holding the other.
+  They are listed side by side under `spansChains`, with a sentence saying why there is no
+  single number, rather than leaving the absence to be inferred.
+- **It will not merge two contracts because they share a name.** Grouping by symbol is
+  precisely the operation an impersonating token is deployed hoping somebody performs:
+  call yourself USDC, wait to be added to the real one. So only curated symbols — the ones
+  this tool names from its own text — group by name at all. Anything whose symbol was read
+  off the chain is keyed by its address and stands alone, however familiar it looks. This
+  is Phase 2's impersonation work arriving somewhere it was not originally aimed.
+
+A denom whose decimals nothing declares is summed in base units and marked
+`decimalsUnknown`, rather than formatted against a guessed exponent — the same reasoning
+as everywhere else: a guess stops being distinguishable from a reading the moment it is a
+number.
+
+Still no fiat pricing, so still no portfolio "value". That is not an omission to fill in
+later. A value needs a price, a price needs a source, and a sourced price is a different
+kind of claim from a balance read off a chain.
+
+The consolidation is pure and lives in `core/holdings.ts`, split from the fan-out for the
+usual reason: the cases worth testing — two contracts wearing one ticker, a denom with no
+declared scale — are not ones you can conveniently arrange against live chains.
 
 ### 4.5 Liveness — **shipped**
 Not planned here, which is worth recording: it arrived because `doctor` was found to be

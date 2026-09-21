@@ -135,11 +135,18 @@ export const TOOLS: ToolDefinition[] = [
 
   defineTool({
     name: 'portfolio',
-    title: 'Get balances across many chains',
+    title: 'Get balances for a set of addresses across many chains',
     description:
-      'Query one address across many chains in parallel. Chains where the address format does not apply are skipped rather than reported as errors. Returns balances only — there is no fiat pricing.',
+      "Query one address, or a whole set of them, across many chains in parallel. Pass `addresses` when somebody holds an EVM address, a Solana pubkey and a Bitcoin address — that is one person's holdings and would otherwise be three separate questions. Each address is matched only to the chains its own format is valid on, so this is not a cross product and a Solana pubkey never produces twenty EVM errors; an address valid nowhere is reported in `errors` rather than failing the call. `holdings` is the consolidated view, by asset rather than by chain. It sums only where a sum is honest: the same token, on the same chain, across the addresses you gave. It never adds a token to itself across chains — USDC on Ethereum and USDC on Base are different contracts with different issuers of record — and never merges two contracts because they share a ticker, since only symbols this tool supplies itself are grouped by name at all. `spansChains` marks an asset found in more than one place. Read `completeness` before concluding anything is absent. Balances only: there is no fiat pricing and therefore no total value.",
     shape: {
-      address: z.string().describe('Address, ENS/SNS name, or configured alias.'),
+      address: z
+        .string()
+        .optional()
+        .describe('One address, ENS/SNS name, or configured alias. Use `addresses` for a set.'),
+      addresses: z
+        .array(z.string())
+        .optional()
+        .describe('Several addresses, which may span chain families. Deduplicated before querying.'),
       chains: z
         .array(z.string())
         .optional()

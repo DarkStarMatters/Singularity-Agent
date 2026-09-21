@@ -12,6 +12,7 @@ import type {
 import type { TransactionHistory } from '../core/adapter.js';
 import type { TokenExitReport } from '../trade/types.js';
 import type { PaymentDemandReport } from '../pay/types.js';
+import type { Holding } from '../core/holdings.js';
 import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
@@ -262,11 +263,62 @@ export function renderBalance(result: BalanceResult): string {
   return lines.join('\n');
 }
 
+/**
+ * What is held, by asset.
+ *
+ * Above the per-chain detail because it is the question actually being asked.
+ * An asset on more than one chain is printed as one row per chain with no total
+ * line, and the reason is stated rather than left to be inferred from the
+ * absence of a number.
+ */
+export function renderHoldings(holdings: Holding[]): string {
+  if (!holdings.length) return `  ${dim('(nothing held on the chains queried)')}`;
+
+  const width = Math.max(...holdings.map((h) => h.symbol.length), 6);
+  const lines: string[] = [];
+
+  for (const holding of holdings) {
+    holding.chains.forEach((onChain, index) => {
+      const label = index === 0 ? holding.symbol.padEnd(width) : ' '.repeat(width);
+      const where = dim(onChain.chain);
+      const spread =
+        onChain.addresses.length > 1 ? dim(` (${onChain.addresses.length} addresses)`) : '';
+      lines.push(`  ${bold(label)}  ${onChain.total.formatted.padStart(18)}  ${where}${spread}`);
+    });
+
+    if (holding.spansChains) {
+      lines.push(
+        `  ${' '.repeat(width)}  ${dim(`${holding.chains.length} chains, deliberately not summed`)}`,
+      );
+    }
+    if (holding.untrusted) {
+      lines.push(`  ${' '.repeat(width)}  ${yellow('symbol chosen by its deployer, not verified')}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function renderPortfolio(result: PortfolioResult): string {
+  const who =
+    result.addresses.length === 1
+      ? result.address
+      : `${result.addresses.length} addresses`;
+
   const sections = [
-    heading(`Portfolio for ${result.address}`),
+    heading(`Portfolio for ${who}`),
     dim(`  Queried ${result.chainsQueried.length} chain(s).`),
   ];
+
+  if (result.addresses.length > 1) {
+    for (const entry of result.addresses) {
+      sections.push(
+        `  ${dim(entry.address)}  ${dim(entry.chainsQueried.join(', ') || '(no matching chains)')}`,
+      );
+    }
+  }
+
+  sections.push(heading('Holdings'), renderHoldings(result.holdings));
 
   const withBalance = result.balances.filter(
     (b) => b.native.amount.raw !== '0' || b.tokens.length > 0,
