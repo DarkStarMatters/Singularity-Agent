@@ -1,6 +1,6 @@
 {
   "name": "singularity-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Build blockchain applications on Singularity Agent — one typed client over EVM, Solana, Bitcoin and Cosmos, with watch primitives, an agent-tool bridge, and a custody seam the SDK never crosses.",
   "type": "module",
   "license": "MIT",
@@ -57,7 +57,7 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "singularity-agent": ">=0.2.0"
+    "singularity-agent": ">=0.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

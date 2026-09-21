@@ -95,7 +95,7 @@ Or by hand, in any MCP client that speaks streamable HTTP:
 
 The `type` field matters: a `url` without one is skipped silently by some clients.
 
-This serves the same eighteen tools as the local server, from the same catalogue, with
+This serves the same twenty tools as the local server, from the same catalogue, with
 full input schemas. It is read-only, holds no keys, and needs no credentials — so the
 trade is the obvious one: your queries reach our endpoint rather than staying on your
 machine. If that matters, use the local route below; it is identical in every other way.

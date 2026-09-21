@@ -2,7 +2,7 @@
 
 **Read-only blockchain access for agents, and the enforcement that makes it safe to act on**
 
-Version 0.2.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.3.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
 *This paper describes `main`. Everything in it is implemented and tested; where something
 has landed since the v0.0.9 tag it is marked.*

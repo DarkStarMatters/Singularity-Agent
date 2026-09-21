@@ -7,7 +7,7 @@
  * exchange, which registers agents by endpoint and has nothing to call
  * otherwise.
  *
- * So the same eighteen tools are served here, from the same catalogue. That
+ * So the same twenty tools are served here, from the same catalogue. That
  * sharing is the point rather than a convenience: two hand-maintained tool
  * lists drift, and the one that drifts silently is the one nobody runs
  * locally.
@@ -93,7 +93,9 @@ function rpcResult(id: unknown, result: unknown): unknown {
  * The tool list, with real schemas.
  *
  * Worth stating plainly because the exchange this endpoint exists to talk to
- * does the opposite: it advertises eleven tools with empty schemas that accept
+ * does the opposite. The count in the next line is theirs, not ours, which is
+ * why it carries a marker: tool-count:ignore
+ * It advertises eleven tools with empty schemas that accept
  * no properties, while requiring arguments. A client — human or model — has
  * then no way to construct a valid call except by guessing and reading the
  * error. Every tool here carries its full parameter schema, derived from the

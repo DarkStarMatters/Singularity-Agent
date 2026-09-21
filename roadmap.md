@@ -25,6 +25,119 @@ declines to pretend it knows what a year from now contains.
 
 ---
 
+## Shipped — v0.3.0, the other side of the table
+
+Every payment surface in v0.2.0 was written for whoever is asking to be paid. This release
+is the other side: somebody hands you a demand, and the only question that matters is
+whether signing it does what it says. Two new tools, `inspect_payment` and `build_payment`,
+take the tool count to twenty. `singularity-sdk` goes to v0.2.0 for one widened API.
+
+**The invoice that is consistent with itself and inconsistent with the chain.** A live
+agent marketplace quoted an invoice for 0.01 USDC. It named the asset, the amount in two
+forms, a treasury owner and the exact token account to pay into, and every field was
+well-formed and consistent with every other field. The mint was one character short of
+USDC's — a valid base58 pubkey for a mint that has never existed — and the token account
+was the associated account derived from that non-existent mint, so it had never existed
+either. Signing it would have failed; a client that helpfully created the destination first
+would have paid rent on an account the payee was not watching. Nothing in the signing path
+would have said a word, because a wallet confirmation screen never reads the chain.
+
+That is the shape of the dangerous ones, and it is why `inspect_payment` checks each claim
+separately rather than validating a shape. Does the ticker match the mint. Does the
+destination exist, hold that mint, and belong to the payee named. Do the displayed amount,
+the base units and the decimals all agree with the mint's own — base units being what
+actually gets signed. `verdict` is three values, and `unproven` is the one that earns its
+place: an endpoint that would not answer is not evidence about the demand. The CLI exits
+non-zero on it as well as on `unpayable`, because a script that reads "I could not check"
+as "go ahead" is the failure this exists to prevent.
+
+**A check nobody is obliged to read is a check nobody runs.** `inspect_payment` returned a
+verdict and left the caller free to ignore it, so `build_payment` runs the same checks and
+hands back an unsigned transaction only when they pass. `unpayable` stops being advice and
+becomes a refusal with nothing to sign. `unproven` refuses too. The warnings travel with
+the payload rather than staying in a report, because the transaction's own `warnings` is
+the last text read before a signature.
+
+Which exposed a gap worth its own finding: a demand can insist the payment carry a memo or
+a reference, and a plain transfer on EVM has nowhere to put one. Paid as an ordinary
+transfer it lands and is not credited, which looks exactly like not having paid — the worst
+shape a payment failure takes. Reported as a warning rather than a refusal: the payment is
+real, the credit is the risk.
+
+### Phase 5, and a payment measured rather than reasoned about
+
+§2.5 recorded a hole in writing: a fee-on-transfer ERC-20 is invisible to the standard
+interface, because the behaviour lives inside `transfer` itself. There is no field to read.
+`inspect_payment` reports such a demand payable, the payer sends the amount demanded, the
+payee receives less, and every fact checked out.
+
+Simulation closes it, and the prize is not the revert check — it is the arithmetic. Read
+the recipient's balance, execute, read it again, subtract. A transfer fee, a skimming hook
+and a rounding surprise all surface the same way, without anyone having to anticipate the
+mechanism. That is a different kind of check from naming known mechanisms, because it
+measures the outcome. Phase 5 below has the detail; all three of its items shipped here.
+
+The shortfall note deliberately does not say *why*. A transfer fee, a hook that skims, and
+a transaction built for a different amount than the one quoted are indistinguishable from a
+subtraction, and naming the likeliest as though it were the finding is the unsupported
+confidence this tool refuses everywhere else. A first draft did exactly that and was wrong
+on the first case run through it.
+
+**`scripts/verify-builders.mjs`, and why it is not in `npm test`.** The builders emit bytes
+— instruction discriminators, account orderings, struct offsets, calldata — and a test
+written from the same understanding that produced the bytes agrees with them whether or not
+they are right. The QR encoder taught that once already: two bugs, every test agreeing with
+both. So the chain is asked instead. Twenty-five checks against mainnet, covering the
+associated-token-account instruction, the token account offsets, the EIP-7702 designator
+and the ERC-20 calldata — every piece of byte-level code in this release. It needs the
+network, and putting it in CI would train people to ignore CI.
+
+### What a live run proved, including the part that did not work
+
+The invoice above was refused. It was reported upstream, the malformed mint constant was
+fixed, and a real payment then went through: 0.01 USDC, finalized, with the job reference
+as a memo, simulated at `err: null` and 45,681 compute units beforehand and landing exactly
+as simulated. The recipient had never held the token, so the transfer created the
+destination account first — which is what `ataRequired: true` asks the payer to do.
+
+The job was never credited. The payment endpoint answered `quote expired` for a payment
+that landed three seconds after the quote was issued, and still answers that on every
+retry. That is somebody else's bug and it is written up in
+`docs/privatedao-schema-report.md` with the timings and the signature, but it belongs here
+too, because it is the cleanest demonstration this project has of its own central claim:
+`level: final` is a fact about the chain and not a fact about the counterparty's ledger. A
+rail that had returned `paid: true` would have been correct about the chain and useless
+about the outcome.
+
+### Holdings, the way people actually hold them
+
+`portfolio` took one address, and nobody holds anything that way — an EVM address, a Solana
+pubkey and a Bitcoin address are one person's holdings and were three separate questions.
+It takes a set now, closing 4.4 properly. The fan-out is deliberately not a cross product:
+each address is matched only to the chains its own format is valid on, so a Solana pubkey
+never produces twenty EVM errors.
+
+The hard half is deciding what may be added to what. A total is a claim, and there is one
+place one can be made honestly: the same token, on the same chain, across the addresses you
+gave. It refuses two sums, and both refusals are the point. It will not add a token to
+itself across chains — USDC on Ethereum and USDC on Base are different contracts with
+different issuers of record, and bridged supply can be frozen. And it will not merge two
+contracts because they share a name, which is exactly the operation an impersonating token
+is deployed hoping somebody performs. Only curated symbols group by name at all.
+
+### Served over HTTP, and a site that is the product
+
+The MCP endpoint is served over HTTP at `mcp-singularity.cicada71.net`, from the same
+catalogue as the local server, so the documentation and the product are the same thing: a
+visitor who has installed nothing is still using it, and the worst they can do with it is
+look something up. The page asks four chains for their newest block on load, runs `resolve`
+on whatever you paste, and executes real CLI commands against any of the 32 chains. Replay
+mode keeps recorded transcripts for when a free public node is having a bad day, and
+**labels them as recordings**, because a stale number that looks current is the failure this
+project is arranged against.
+
+---
+
 ## Shipped — v0.2.0, a payment that proves itself
 
 Singularity Pay, the QR stack underneath it, and receipts that can be checked rather than
@@ -1636,35 +1749,9 @@ Phase 3 would be a crude first version of.
 
 ---
 
-## Horizons
+## Phase 5 — Answers grounded in execution — **shipped**
 
-Everything above this line is shipped. What follows is not, and the quarters attached to
-it are **horizons rather than commitments** — an ordering with a rough sense of distance,
-not a set of dates anybody should hold this project to.
-
-The reason for saying so plainly: this repository is six days old. It went from the
-initial commit to v0.2.0 in five of them, across four phases and a hundred and ten
-commits, and every numbered item written down as future work so far has shipped within
-days of being written. A roadmap that claimed to know what Q3 2027 contains would be
-making exactly the kind of confident, unfalsifiable statement the rest of this document
-exists to argue against.
-
-So the bands mean: Phase 5 is next, Phase 8 is furthest, and the gap between them is
-larger than the gap within them. If the cadence holds they will arrive far earlier than
-their labels, and the labels are the part that should be corrected rather than the work
-reordered to fit them.
-
-The ordering principle from the top still governs, and it is why coverage does not own a
-quarter below. **Response discipline before chain coverage.** Sui, Aptos, TON, Tron, and
-Dogecoin and Bitcoin Cash behind a Blockbook adapter are all linear work with a known
-shape; they continue as background across every phase here rather than displacing any of
-it. See Phase 3, "Still to come".
-
----
-
-## Phase 5 — Answers grounded in execution
-
-*Horizon: Q4 2026. Goal: stop reporting facts about a transaction and start reporting what
+*Shipped in v0.3.0. Goal: stop reporting facts about a transaction and start reporting what
 it will do.*
 
 Every check this project makes is a reading: what a mint declares, what an account holds,
@@ -1680,7 +1767,7 @@ checked out and the payment was still short.
 The only thing that closes that is executing the transaction against current state instead
 of reasoning about its parts.
 
-### 5.1 Simulate before returning a payload
+### 5.1 Simulate before returning a payload — **shipped**
 
 `build_payment` refuses to build a demand that does not check out. It should also refuse
 one that does not *execute*. Simulation is one call, it costs nothing, and this project
@@ -1693,7 +1780,7 @@ The claim this upgrades is the central one. `build_payment` currently says the f
 out. It should say the transaction was executed against the chain as it is right now and
 did not revert.
 
-### 5.2 The delivered amount, not the sent amount
+### 5.2 The delivered amount, not the sent amount — **shipped**
 
 Simulation's real prize is not the revert check but the arithmetic. On Solana,
 `simulateTransaction` returns post-state for named accounts, so the recipient's token
@@ -1706,7 +1793,7 @@ That is a different kind of check from everything in Phase 2. Those name mechani
 tool knows about; this one catches mechanisms nobody has thought of yet, because it
 measures the outcome rather than enumerating the causes.
 
-### 5.3 What simulation still will not tell you, said out loud
+### 5.3 What simulation still will not tell you, said out loud — **shipped**
 
 EVM is weaker here and the asymmetry must be reported rather than smoothed over. Plain
 `eth_call` catches reverts and hooks that reject outright, but a fee-on-transfer ERC-20
@@ -1722,7 +1809,32 @@ authority of one.
 Two further limits, stated now so they are not discovered as disappointments. Simulation
 is against *current* state, and a transaction signed a minute later executes against a
 different one. And a simulated transaction is not a signed one: nothing here moves the
-no-signing line, which is where it has always been.
+no-signing line, which is where it has always been.---
+
+## Horizons
+
+Everything above this line is shipped. What follows is not, and the quarters attached to
+it are **horizons rather than commitments** — an ordering with a rough sense of distance,
+not a set of dates anybody should hold this project to.
+
+The reason for saying so plainly: this repository is six days old. It went from the
+initial commit to v0.3.0 in six of them, across five phases and a hundred and thirty
+commits, and every numbered item written down as future work so far has shipped within
+days of being written. A roadmap that claimed to know what Q3 2027 contains would be
+making exactly the kind of confident, unfalsifiable statement the rest of this document
+exists to argue against.
+
+Phase 5 is the sharpest case so far, and the reason this paragraph is not being softened.
+It was given a horizon of Q4 2026 and shipped the same day it was written, which is
+roughly a year early. The labels are the part that should be corrected rather than the
+work reordered to fit them, so: Phase 6 is next, Phase 8 is furthest, and the gap between
+them is larger than the gap within them.
+
+The ordering principle from the top still governs, and it is why coverage does not own a
+quarter below. **Response discipline before chain coverage.** Sui, Aptos, TON, Tron, and
+Dogecoin and Bitcoin Cash behind a Blockbook adapter are all linear work with a known
+shape; they continue as background across every phase here rather than displacing any of
+it. See Phase 3, "Still to come".
 
 ---
 
