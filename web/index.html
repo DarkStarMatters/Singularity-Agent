@@ -2,20 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Singularity Agent</title>
-<meta name="description" content="Agentic blockchain, made practical. One command-line tool for Ethereum, Solana, Bitcoin and Cosmos — read-only, it never holds your keys, and you can run it live in this page before installing anything.">
+<meta name="description" content="Agentic blockchain, made practical. One command-line tool for Ethereum, Solana, Bitcoin and Cosmos — read-only, it never holds your keys, and the console on this page really runs against all 32 chains before you install anything.">
 <meta property="og:title" content="Singularity Agent">
-<meta property="og:description" content="One tool for Ethereum, Solana, Bitcoin and Cosmos. Read-only, never holds your keys — and the terminal on the page really runs, live, against all 32 chains.">
+<meta property="og:description" content="One tool for Ethereum, Solana, Bitcoin and Cosmos. Read-only, never holds your keys — and the console on the page really runs, live, against all 32 chains.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="/assets/icon-64.png" sizes="64x64" type="image/png">
 <link rel="apple-touch-icon" href="/assets/mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
 <style>
+
   /* =====================================================================
      Tokens. Palette sampled from the logo: ring lime #84F024 / #54C024,
      chrome #F0F0F0 -> #D8D8D8, ground pure black. Neutrals stay hue-neutral
@@ -414,14 +416,6 @@
   .keys-note strong { color: var(--ink); font-weight: 600; }
   .keys-note svg { flex: none; margin-top: .18rem; color: var(--warn); }
 
-  /* ------------------------------------------------------------ sections */
-  section { margin-top: 4rem; scroll-margin-top: 5.5rem; }
-  section > * + * { margin-top: 1rem; }
-  section h2 { font-size: 1.6rem; }
-  section h3 { font-size: 1.0625rem; letter-spacing: -0.012em; }
-
-  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
-
   /* ------------------------------------------------------------ terminal */
   .term {
     margin: 0;
@@ -706,47 +700,6 @@
   footer .mark-sm { width: 20px; height: 20px; border-radius: 5px; background: var(--stage-bg); border: 1px solid var(--stage-edge); overflow: hidden; flex: none; }
   footer .mark-sm picture,
   footer .mark-sm img { width: 100%; height: 100%; display: block; }
-
-  /* -------------------------------------------------------------- narrow */
-  @media (max-width: 900px) {
-    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
-    .sidenav {
-      position: sticky;
-      top: 3.25rem;
-      z-index: 20;
-      max-height: none;
-      overflow: visible;
-      padding-block: 0;
-      margin-inline: -20px;
-      background: color-mix(in srgb, var(--bg) 92%, transparent);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--line);
-    }
-    .sidenav .eyebrow { display: none; }
-    .sidenav ol {
-      flex-direction: row;
-      gap: .3rem;
-      overflow-x: auto;
-      padding: .5rem 20px;
-      margin: 0;
-      scrollbar-width: none;
-    }
-    .sidenav ol::-webkit-scrollbar { display: none; }
-    .sidenav a {
-      white-space: nowrap;
-      border-left: 0;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: .22rem .7rem;
-      font-size: .8125rem;
-    }
-    .sidenav a[aria-current="true"] { border-color: var(--accent); }
-    main { padding-block: 1.8rem 0; }
-    .stage { padding-block: 1.6rem; }
-    .stage .halo { width: 460px; height: 460px; margin: -230px 0 0 -230px; }
-    .glossary > div { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
-  }
-
   /* =====================================================================
      THE LIVE PIECES
      ---------------------------------------------------------------------
@@ -1031,7 +984,10 @@
     text-decoration: line-through;
     text-decoration-color: var(--line-2);
   }
-  .tick {
+  /* Named `step-tick` rather than `tick`, which the rail at the foot of the
+     page spends on its panel indicators. Two meanings of one class name in
+     one stylesheet is a bug lying in wait for whoever edits it next. */
+  .step-tick {
     display: inline-flex;
     align-items: center;
     gap: .45rem;
@@ -1041,8 +997,8 @@
     user-select: none;
     align-self: flex-start;
   }
-  .tick input { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
-  .tick:hover { color: var(--ink-2); }
+  .step-tick input { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
+  .step-tick:hover { color: var(--ink-2); }
 
   .progress {
     display: flex;
@@ -1157,82 +1113,948 @@
     line-height: 1.4;
   }
   .sim-chips .chip:hover { color: var(--ink); border-color: var(--ink-3); }
+
+
+  /* =====================================================================
+     THE DECK
+     ---------------------------------------------------------------------
+     The page is not a scroll. It is eight panels side by side, one screen
+     each, that slide horizontally — with the long reference material
+     living in drawers that slide in over the top, and the live console in
+     a dock that slides up from the floor.
+
+     Why this shape and not a scroll: the content is eight distinct jobs,
+     not one argument, and a beginner reading a 2,400-line page cannot see
+     where they are or how much is left. A panel is a place. You can be
+     told you are on the fourth of eight, you can be handed a Next button
+     that names what comes next, and you can leave the reference material
+     out of the way until you ask for it.
+
+     Three rules keep that from becoming a website that fights you.
+
+     1. Vertical scroll stays vertical. Each panel scrolls its own
+        content; nothing hijacks the wheel to move sideways. Horizontal
+        movement happens only when asked for — a button, an arrow key, a
+        swipe, a link.
+     2. Every place has a URL. Panels and drawers are hash routes, so back
+        and forward work, a link can point at any of it, and a refresh
+        lands where you were.
+     3. Motion is decoration and never information. With reduced motion
+        every transition collapses to nothing and the page still works
+        identically, because position is carried by the rail and the
+        heading, not by the animation.
+     ===================================================================== */
+
+  :root {
+    /* One easing curve for everything that moves, so the whole page feels
+       like one mechanism. Slightly overshooting on the way out. */
+    --ease: cubic-bezier(.22, 1, .30, 1);
+    --ease-in: cubic-bezier(.5, 0, .75, 0);
+    --slide: 620ms;
+    --drawer: 460ms;
+    --dock: 420ms;
+    --micro: 200ms;
+
+    --bridge-h: 3.35rem;
+    --rail-h: 4.25rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --slide: 1ms;
+      --drawer: 1ms;
+      --dock: 1ms;
+      --micro: 1ms;
+    }
+  }
+
+  /* The document itself never scrolls; the panels do. */
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    display: grid;
+    /* The column is stated, and stated as minmax(0, 1fr), because a grid's
+       implicit column sizes to its widest item's max-content — and this
+       grid contains a track eight viewports wide. Left to itself the whole
+       page becomes eight screens wide and the text runs off the right edge
+       of a phone. */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  /* Same reasoning, one level down: each of these holds something wider than
+     itself and must refuse to be sized by it. */
+  .bridge, .deck, .rail { min-width: 0; }
+
+  .skip {
+    position: absolute;
+    left: 50%;
+    top: -4rem;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: .5rem 1rem;
+    border-radius: 0 0 8px 8px;
+    font-size: .875rem;
+    text-decoration: none;
+    transition: top var(--micro) var(--ease);
+  }
+  .skip:focus { top: 0; }
+
+  /* ===================================================== the bridge (top) */
+  .bridge {
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: 0 clamp(.85rem, 3vw, 1.6rem);
+    height: var(--bridge-h);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    z-index: 40;
+  }
+
+  .bridge .wordmark { flex: none; }
+
+  /* The panel's name, cross-fading as you move. It is the answer to "where
+     am I" for anyone who does not look at the rail. */
+  .bridge .where {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    min-width: 0;
+    margin-left: .3rem;
+    padding-left: .9rem;
+    border-left: 1px solid var(--line);
+  }
+  .bridge .where .n {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    color: var(--accent);
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .bridge .where .t {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .875rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bridge .where[data-swap] .t,
+  .bridge .where[data-swap] .n { animation: swap-in 420ms var(--ease) both; }
+
+  @keyframes swap-in {
+    from { opacity: 0; transform: translateY(.4rem); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .bridge-tail { margin-left: auto; display: flex; align-items: center; gap: .45rem; flex: none; }
+
+  .ghost-btn {
+    font: inherit;
+    font-size: .8125rem;
+    font-family: var(--sans);
+    color: var(--ink-2);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: .28rem .8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    white-space: nowrap;
+    transition: color var(--micro), border-color var(--micro), background var(--micro), transform var(--micro) var(--ease);
+  }
+  .ghost-btn:hover { color: var(--ink); border-color: var(--line-2); }
+  .ghost-btn:active { transform: scale(.96); }
+  .ghost-btn[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .ghost-btn kbd {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 .25rem;
+    background: var(--surface-2);
+  }
+
+  /* ============================================================ the deck */
+  .deck {
+    grid-row: 2;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+    /* Drawers and the dock push the deck back, which is what makes them
+       read as being in front rather than merely on top. */
+    transition: transform var(--drawer) var(--ease), filter var(--drawer) var(--ease);
+  }
+  body[data-over] .deck {
+    transform: scale(.975) translateY(-.5rem);
+    filter: brightness(.82) saturate(.9);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-over] .deck { transform: none; filter: brightness(.9); }
+  }
+
+  .track {
+    display: flex;
+    height: 100%;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    transition: transform var(--slide) var(--ease);
+  }
+
+  .scene {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scroll-behavior: smooth;
+  }
+  .scene::-webkit-scrollbar { width: 9px; }
+  .scene::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; border: 3px solid transparent; background-clip: content-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scene { scroll-behavior: auto; }
+  }
+
+  /* The parallax layer. Offset and scale are set per panel from script, so
+     the panel you are moving toward grows and brightens into place while
+     the one you are leaving falls back — depth from two numbers. */
+  .scene-in {
+    max-width: 1140px;
+    margin-inline: auto;
+    padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem) clamp(3rem, 8vw, 5rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+    transform-origin: 50% 40%;
+    will-change: transform, opacity;
+    transition: transform var(--slide) var(--ease), opacity var(--slide) var(--ease);
+  }
+  .scene-in > * { margin: 0; }
+
+  .scene[data-wide] .scene-in { max-width: 1240px; }
+
+  /* Contents rise in behind the slide, staggered. Only on the active panel,
+     and only once it has arrived, so nothing animates off-screen. */
+  .scene[data-active] .scene-in > * { animation: rise 520ms var(--ease) both; }
+  .scene[data-active] .scene-in > *:nth-child(1) { animation-delay: 90ms; }
+  .scene[data-active] .scene-in > *:nth-child(2) { animation-delay: 140ms; }
+  .scene[data-active] .scene-in > *:nth-child(3) { animation-delay: 185ms; }
+  .scene[data-active] .scene-in > *:nth-child(4) { animation-delay: 225ms; }
+  .scene[data-active] .scene-in > *:nth-child(5) { animation-delay: 260ms; }
+  .scene[data-active] .scene-in > *:nth-child(6) { animation-delay: 290ms; }
+  .scene[data-active] .scene-in > *:nth-child(n+7) { animation-delay: 315ms; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(1.1rem); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scene[data-active] .scene-in > * { animation: none; }
+  }
+
+  /* The eyebrow becomes a panel plate: number, rule, name. */
+  .plate {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    color: var(--ink-3);
+  }
+  .plate .num {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: 5px;
+    padding: .1rem .4rem;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .plate .kind {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .6875rem;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    flex: none;
+  }
+  .plate .line { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
+
+  .scene h1 {
+    font-size: clamp(1.9rem, 5.2vw, 3rem);
+    line-height: 1.06;
+    letter-spacing: -0.028em;
+  }
+  .scene h2 {
+    font-size: clamp(1.45rem, 3.6vw, 2rem);
+    line-height: 1.12;
+    letter-spacing: -0.022em;
+  }
+  .scene h3 { font-size: 1.0625rem; letter-spacing: -0.012em; }
+  .scene p, .scene li { max-width: var(--measure); }
+  .scene .wide-ok, .scene .wide-ok * { max-width: none; }
+
+  /* Two columns where the content earns it, one where it does not. */
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+    gap: clamp(1rem, 3vw, 2rem);
+    align-items: start;
+  }
+  .cols > * { min-width: 0; }
+  .cols p, .cols li { max-width: 46ch; }
+
+  .stack { display: flex; flex-direction: column; gap: 1.05rem; min-width: 0; }
+
+  /* ============================================================= the rail */
+  .rail {
+    grid-row: 3;
+    position: relative;
+    z-index: 40;
+    height: var(--rail-h);
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: 0 clamp(.6rem, 3vw, 1.4rem);
+    background: color-mix(in srgb, var(--bg) 84%, transparent);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border-top: 1px solid var(--line);
+  }
+
+  .step-btn {
+    flex: none;
+    font: inherit;
+    width: 2.3rem;
+    height: 2.3rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: transform var(--micro) var(--ease), border-color var(--micro), color var(--micro), background var(--micro);
+  }
+  .step-btn:hover:not([disabled]) { color: var(--accent); border-color: var(--accent); }
+  .step-btn:active:not([disabled]) { transform: scale(.9); }
+  .step-btn[disabled] { opacity: .3; cursor: default; }
+  .step-btn svg { width: 1rem; height: 1rem; }
+
+  /* The tick strip. One tick per panel, with a single indicator that slides
+     between them rather than eight that switch on and off — the movement is
+     what tells you which direction you went. */
+  .ticks {
+    flex: 1 1 auto;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    gap: .15rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    padding: .3rem 0;
+    scroll-behavior: smooth;
+  }
+  .ticks::-webkit-scrollbar { display: none; }
+
+  .tick {
+    position: relative;
+    z-index: 2;
+    flex: none;
+    font: inherit;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .75rem;
+    letter-spacing: -0.005em;
+    color: var(--ink-3);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    padding: .38rem .7rem;
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    transition: color var(--micro) var(--ease);
+  }
+  .tick:hover { color: var(--ink); }
+  .tick[aria-selected="true"] { color: var(--on-accent); }
+  .tick .dot {
+    width: .3rem;
+    height: .3rem;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .4;
+    flex: none;
+    transition: opacity var(--micro);
+  }
+  .tick[aria-selected="true"] .dot { opacity: 1; }
+  .tick[data-seen="1"]:not([aria-selected="true"]) .dot { background: var(--accent); opacity: .85; }
+  /* Panels outside the chosen route recede without becoming unreachable. */
+  .tick[data-route="off"] { opacity: .42; }
+
+  .ticks .marker {
+    position: absolute;
+    z-index: 1;
+    top: .3rem;
+    left: 0;
+    height: calc(100% - .6rem);
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 40%, transparent);
+    transition: transform var(--slide) var(--ease), width var(--slide) var(--ease);
+    pointer-events: none;
+    will-change: transform, width;
+  }
+
+  /* A hairline of overall progress, welded to the top edge of the rail. */
+  .rail .meter {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
+    transition: width var(--slide) var(--ease);
+    pointer-events: none;
+  }
+
+  .next-btn {
+    flex: none;
+    font: inherit;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .8125rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: .45rem .5rem .45rem 1rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    max-width: 15rem;
+    overflow: hidden;
+    transition: background var(--micro), transform var(--micro) var(--ease), max-width var(--slide) var(--ease);
+  }
+  .next-btn:hover { background: var(--accent-deep); }
+  .next-btn:active { transform: scale(.97); }
+  .next-btn[disabled] { opacity: .35; cursor: default; }
+  .next-btn .lbl {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .next-btn .arrow {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--on-accent) 20%, transparent);
+  }
+  .next-btn .arrow svg { width: .85rem; height: .85rem; }
+  .next-btn:hover .arrow { animation: nudge 620ms var(--ease) infinite; }
+
+  @keyframes nudge {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(.18rem); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .next-btn:hover .arrow { animation: none; }
+  }
+
+  @media (max-width: 720px) {
+    .next-btn .lbl { display: none; }
+    .next-btn { padding: .45rem; }
+    .bridge .where { display: none; }
+    :root { --rail-h: 3.9rem; }
+  }
+
+  /* ========================================================== the drawers */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--drawer) var(--ease);
+  }
+  .scrim[data-on] { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: fixed;
+    z-index: 90;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(46rem, 100%);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-left: 1px solid var(--line);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, .28);
+    transform: translate3d(100%, 0, 0);
+    transition: transform var(--drawer) var(--ease), opacity var(--drawer) var(--ease), filter var(--drawer) var(--ease);
+    will-change: transform;
+  }
+  .drawer[data-open] { transform: translate3d(0, 0, 0); }
+  /* A drawer opened from inside a drawer pushes its parent back, so the stack
+     is legible without a breadcrumb doing all the work. */
+  .drawer[data-behind] { transform: translate3d(-4%, 0, 0); filter: brightness(.8); }
+
+  .drawer-head {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .85rem clamp(1rem, 3vw, 1.6rem);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    flex: none;
+  }
+  .drawer-head .crumb {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    flex: none;
+  }
+  .drawer-head h2 {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: -0.015em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .drawer-head .shut { margin-left: auto; }
+
+  .drawer-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: clamp(1.1rem, 3vw, 1.9rem) clamp(1rem, 3vw, 1.6rem) 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.05rem;
+    scrollbar-width: thin;
+  }
+  .drawer-body > * { margin: 0; }
+  .drawer-body p, .drawer-body li { max-width: var(--measure); }
+  .drawer[data-open] .drawer-body > * { animation: rise 460ms var(--ease) both; }
+  .drawer[data-open] .drawer-body > *:nth-child(1) { animation-delay: 120ms; }
+  .drawer[data-open] .drawer-body > *:nth-child(2) { animation-delay: 165ms; }
+  .drawer[data-open] .drawer-body > *:nth-child(3) { animation-delay: 200ms; }
+  .drawer[data-open] .drawer-body > *:nth-child(n+4) { animation-delay: 230ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drawer[data-open] .drawer-body > * { animation: none; }
+  }
+
+  /* Cards that open drawers. The arrow is the affordance; the lift is the
+     confirmation that it is a thing you can go into. */
+  .openers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(15.5rem, 100%), 1fr));
+    gap: .7rem;
+  }
+  .opener {
+    position: relative;
+    overflow: hidden;
+    text-align: left;
+    font: inherit;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .95rem 1rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: .32rem;
+    transition: transform var(--micro) var(--ease), border-color var(--micro), box-shadow var(--micro);
+  }
+  .opener:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .09);
+  }
+  .opener:active { transform: translateY(0) scale(.99); }
+  .opener .ot {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .9375rem;
+    color: var(--ink);
+    padding-right: 1.4rem;
+  }
+  .opener .od { font-size: .8125rem; color: var(--ink-2); }
+  .opener .om { font-size: .6875rem; color: var(--ink-3); font-family: var(--mono); letter-spacing: .04em; }
+  .opener .go {
+    position: absolute;
+    top: .95rem;
+    right: .95rem;
+    color: var(--ink-3);
+    transition: transform var(--micro) var(--ease), color var(--micro);
+  }
+  .opener .go svg { width: .9rem; height: .9rem; display: block; }
+  .opener:hover .go { transform: translateX(3px); color: var(--accent); }
+  /* A hairline that wipes across on hover, picking up the logo's chrome. */
+  .opener::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    transform: translateX(-100%);
+    transition: transform 620ms var(--ease);
+  }
+  .opener:hover::after { transform: translateX(100%); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .opener:hover { transform: none; }
+    .opener:hover::after { transform: translateX(-100%); }
+    .opener:hover .go { transform: none; }
+  }
+
+  /* ============================================================= the dock */
+  .dock {
+    position: fixed;
+    z-index: 70;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: clamp(20rem, 52vh, 38rem);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-top: 1px solid var(--line-2);
+    box-shadow: 0 -20px 50px rgba(0, 0, 0, .3);
+    transform: translate3d(0, 100%, 0);
+    transition: transform var(--dock) var(--ease), height var(--dock) var(--ease);
+    will-change: transform;
+  }
+  .dock[data-open] { transform: translate3d(0, 0, 0); }
+  .dock[data-tall] { height: clamp(24rem, 82vh, 60rem); }
+
+  .dock-head {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .55rem clamp(.8rem, 3vw, 1.4rem);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    flex: none;
+  }
+  .dock-head .dt {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: .8125rem;
+    color: var(--ink);
+  }
+  .dock-head .dn { font-size: .75rem; color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-head .tail { margin-left: auto; display: flex; gap: .4rem; flex: none; }
+
+  .dock-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: clamp(.8rem, 2vw, 1.2rem) clamp(.8rem, 3vw, 1.4rem) 1.4rem;
+    scrollbar-width: thin;
+  }
+  /* Docked, the terminal fills the dock rather than keeping its page height. */
+  .dock-body .sim-screen { min-height: 0; max-height: none; height: auto; }
+
+  /* The console lives in one place at a time and physically moves between
+     them, so there is only ever one terminal with one history. The move is
+     animated by measuring both positions — see flip() in the script. */
+  .console-slot { display: flex; flex-direction: column; gap: 0; }
+  .console-slot[data-empty]::before {
+    content: "The console is docked at the bottom of the screen.";
+    display: block;
+    border: 1px dashed var(--line-2);
+    border-radius: var(--radius);
+    padding: 1.4rem 1rem;
+    text-align: center;
+    font-size: .875rem;
+    color: var(--ink-3);
+  }
+  .console-wrap { display: flex; flex-direction: column; gap: 0; }
+
+  /* ===================================================== scene decorations */
+  /* A quiet grid behind the opening panel, so the first screen has depth
+     without another image to download. */
+  .field {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--line) 60%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--line) 60%, transparent) 1px, transparent 1px);
+    background-size: 62px 62px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 10%, transparent 75%);
+    opacity: .7;
+  }
+  .scene { position: relative; }
+  .scene-in { position: relative; z-index: 1; }
+
+  .hero-head { display: flex; flex-direction: column; gap: 1rem; }
+  .hero-head h1 { max-width: 22ch; }
+  .hero-head .lede { font-size: clamp(1rem, 2.4vw, 1.1875rem); max-width: 52ch; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(1.2rem, 4vw, 2.6rem);
+    align-items: center;
+  }
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: minmax(0, 1fr); }
+    .hero-grid .stage { order: -1; }
+  }
+
+  /* A count-up of the numbers the product is actually about. */
+  .tallies { display: flex; flex-wrap: wrap; gap: .4rem 1.6rem; }
+  .tally { display: flex; flex-direction: column; gap: .05rem; }
+  .tally .v {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .tally .l { font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-family: var(--display); font-weight: 600; }
+
+  /* Keyboard hints, shown once and then never again. */
+  .hints {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    font-size: .8125rem;
+    color: var(--ink-3);
+    flex-wrap: wrap;
+  }
+  .hints kbd {
+    font-family: var(--mono);
+    font-size: .6875rem;
+    color: var(--ink-2);
+    border: 1px solid var(--line-2);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: .05rem .3rem;
+    background: var(--surface);
+  }
+  .hints .dismiss { font: inherit; font-size: .75rem; color: var(--ink-3); background: transparent; border: 0; text-decoration: underline; cursor: pointer; padding: 0; }
+  .hints .dismiss:hover { color: var(--ink); }
+
+  /* ================================================== the route selector */
+  .routes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+    gap: .6rem;
+  }
+  .route {
+    position: relative;
+    text-align: left;
+    font: inherit;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .8rem .9rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    transition: transform var(--micro) var(--ease), border-color var(--micro), background var(--micro);
+  }
+  .route:hover { transform: translateY(-2px); border-color: var(--line-2); }
+  .route[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .route[aria-pressed="true"]::after {
+    content: "✓";
+    position: absolute;
+    top: .7rem;
+    right: .8rem;
+    color: var(--accent);
+    font-size: .8125rem;
+  }
+  .route .rt { font-family: var(--display); font-weight: 600; font-size: .875rem; color: var(--ink); padding-right: 1.2rem; }
+  .route .rd { font-size: .8125rem; color: var(--ink-2); }
+  .route .rm { font-size: .6875rem; color: var(--ink-3); font-family: var(--mono); }
+  @media (prefers-reduced-motion: reduce) {
+    .route:hover { transform: none; }
+  }
+
+  .route-plan {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--surface);
+    padding: .8rem 1rem;
+    font-size: .9375rem;
+    color: var(--ink-2);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    max-width: var(--measure);
+  }
+  .route-plan[hidden] { display: none; }
+  .route-plan ol { margin: 0; padding-left: 1.35rem; display: flex; flex-direction: column; gap: .22rem; }
+  .route-plan .drop { align-self: flex-start; font: inherit; font-size: .75rem; color: var(--ink-3); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+  .route-plan .drop:hover { color: var(--ink); }
+
+  /* ====================================================== small utilities */
+  .lede { font-size: 1.0625rem; color: var(--ink-2); }
+
+  .footnote {
+    border-top: 1px solid var(--line);
+    padding-top: 1rem;
+    margin-top: .8rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.4rem;
+    align-items: center;
+    font-size: .8125rem;
+    color: var(--ink-3);
+  }
+  .footnote .mark-sm { width: 20px; height: 20px; border-radius: 5px; background: var(--stage-bg); border: 1px solid var(--stage-edge); overflow: hidden; flex: none; }
+  .footnote .mark-sm picture, .footnote .mark-sm img { width: 100%; height: 100%; display: block; }
+
+  /* An inline jump that moves the deck rather than scrolling the document. */
+  .jump {
+    font: inherit;
+    color: var(--accent);
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .jump:hover { text-decoration-color: currentColor; }
+
+  /* Long reference tables inside a drawer get their own scroll, not the page's. */
+  .drawer-body .table-wrap { max-width: none; }
+
+
+  /* Salvaged from the old narrow breakpoint: the halo is too big for a phone
+     and the glossary's two columns stop being two columns. */
+  @media (max-width: 900px) {
+    .stage .halo { width: 460px; height: 460px; margin: -230px 0 0 -230px; }
+    .glossary > div { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+  }
 </style>
 </head>
+
 <body>
 
-<header class="masthead">
-  <div class="masthead-in">
-    <a class="wordmark" href="#top">
-      <span class="tile">
-        <picture>
-          <source srcset="/assets/mark.webp" type="image/webp">
-          <img src="/assets/mark.png" alt="" width="30" height="30" decoding="async">
-        </picture>
-      </span>
-      <span class="name">Singularity<b>-Agent</b></span>
-    </a>
-    <div class="masthead-tail">
-      <button class="theme-toggle" type="button" id="theme-toggle" aria-live="polite">Dark</button>
-    </div>
+<a class="skip" href="#scene-open">Skip to the first panel</a>
+
+<header class="bridge">
+  <a class="wordmark" href="#/open">
+    <span class="tile">
+      <picture>
+        <source srcset="/assets/mark.webp" type="image/webp">
+        <img src="/assets/mark.png" alt="" width="30" height="30" decoding="async">
+      </picture>
+    </span>
+    <span class="name">Singularity<b>-Agent</b></span>
+  </a>
+
+  <p class="where" id="where"><span class="n">1/8</span><span class="t">Start</span></p>
+
+  <div class="bridge-tail">
+    <button class="ghost-btn" type="button" id="dock-toggle" aria-pressed="false">
+      <span class="live-dot" data-state="ok" aria-hidden="true"></span>
+      <span class="lbl">Console</span>
+      <kbd>`</kbd>
+    </button>
+    <button class="ghost-btn" type="button" id="theme-toggle" aria-live="polite">Dark</button>
   </div>
 </header>
 
-<div class="shell" id="top">
+<main class="deck" id="deck">
+  <div class="track" id="track">
+    <section class="scene" id="scene-open" data-name="open" data-title="Start"
+             role="tabpanel" aria-labelledby="tick-open" tabindex="-1">
+      <div class="scene-in">
+      <div class="field" aria-hidden="true"></div>
+      <p class="plate"><span class="num">01</span><span class="kind">start here</span><span class="line" aria-hidden="true"></span></p>
+      <div class="hero-grid">
+        <div class="hero-head">
+          <h1>Read any blockchain<br>from your terminal.</h1>
+          <p class="lede">
+            One tool for Ethereum, Solana, Bitcoin and Cosmos. Check what is in a wallet, look up
+            what a transaction did, see what fees cost right now — and get the answer in the same
+            shape no matter which chain it came from.
+          </p>
+          <div class="keys-note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span><strong>It never asks for your <button class="jargon" type="button" data-term="private key">private keys</button>.</strong>
+            Singularity can read the blockchain and prepare a payment for you, but it cannot sign
+            or send one. There is no code in it that can move your money.</span>
+          </div>
+          <div class="hero-actions">
+            <button class="btn btn-primary" type="button" data-goto="identify">Try it on something of yours</button>
+            <button class="btn btn-ghost" type="button" data-goto="install">Install it</button>
+          </div>
+        </div>
 
-  <nav class="sidenav" aria-label="Page sections">
-    <p class="eyebrow">On this page</p>
-    <ol>
-      <li><a href="#start">Start here</a></li>
-      <li><a href="#what">What it does</a></li>
-      <li><a href="#safety">Your keys</a></li>
-      <li><a href="#install">Install</a></li>
-      <li><a href="#first">First command</a></li>
-      <li><a href="#try">Try it</a></li>
-      <li><a href="#claude">Use with Claude</a></li>
-      <li><a href="#do">What you can ask</a></li>
-      <li><a href="#pay">Payments</a></li>
-      <li><a href="#sdk">Build on it</a></li>
-      <li><a href="#chains">Chains</a></li>
-      <li><a href="#words">Vocabulary</a></li>
-      <li><a href="#config">Configuration</a></li>
-      <li><a href="#help">If it breaks</a></li>
-      <li><a href="#limits">Limits</a></li>
-    </ol>
-  </nav>
-
-  <main>
-
-    <div class="hero">
-      <div class="stage">
-        <div class="halo" aria-hidden="true"></div>
-        <picture class="lockup">
-          <source srcset="/assets/lockup.webp" type="image/webp">
-          <img src="/assets/lockup.png" width="880" height="615"
-               alt="Singularity-Agent — agentic blockchain, made practical" fetchpriority="high">
-        </picture>
+        <div class="stage">
+          <div class="halo" aria-hidden="true"></div>
+          <picture class="lockup">
+            <source srcset="/assets/lockup.webp" type="image/webp">
+            <img src="/assets/lockup.png" width="880" height="615"
+                 alt="Singularity-Agent — agentic blockchain, made practical" fetchpriority="high">
+          </picture>
+        </div>
       </div>
 
-      <h1>Read any blockchain from your terminal.</h1>
-      <p class="lede">
-        One tool for Ethereum, Solana, Bitcoin and Cosmos. Check what is in a wallet, look up
-        what a transaction did, see what fees cost right now — and get the answer in the same
-        shape no matter which chain it came from.
-      </p>
-
-      <div class="keys-note">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-        </svg>
-        <span><strong>It never asks for your <button class="jargon" type="button" data-term="private key">private keys</button>.</strong> Singularity can read the blockchain
-        and prepare a payment for you, but it cannot sign or send one. There is no code in it
-        that can move your money.</span>
-      </div>
-
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="#install">Install it</a>
-        <a class="btn btn-ghost" href="#do">See what it can do</a>
+      <div class="tallies">
+        <div class="tally"><span class="v" data-to="32">32</span><span class="l">Chains</span></div>
+        <div class="tally"><span class="v" data-to="18">18</span><span class="l">Tools</span></div>
+        <div class="tally"><span class="v" data-to="4">4</span><span class="l">Families</span></div>
+        <div class="tally"><span class="v">0</span><span class="l">Keys it holds</span></div>
       </div>
 
       <!-- The pulse asks four chains for their newest block on page load. It
@@ -1264,177 +2086,260 @@
           them, through the same read-only endpoint the tool uses.
         </div>
       </figure>
-    </div>
 
-    <!-- ================================================= paste anything -->
-    <section id="start">
-      <p class="eyebrow">Start here</p>
-      <h2>Paste anything. Find out what it is.</h2>
-      <p>
+      <p class="hints" id="hints">
+        <kbd>&larr;</kbd><kbd>&rarr;</kbd> move between panels · <kbd>`</kbd> opens the console from
+        anywhere · <kbd>Esc</kbd> closes whatever is in front.
+        <button class="dismiss" type="button">Got it</button>
+      </p>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-identify" data-name="identify" data-title="Paste anything"
+             role="tabpanel" aria-labelledby="tick-identify" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">02</span><span class="kind">the payoff</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Paste anything. Find out what it is.</h1>
+      <p class="lede">
         A beginner's first problem is not installing a tool. It is that somebody sent them
-        <code>0xd8dA…96045</code> and they have no idea whether that is a wallet, a receipt, a
-        token or a typo — or which of thirty-two chains it belongs to.
+        <code>0xd8dA&hellip;96045</code> and they have no idea whether that is a wallet, a receipt,
+        a token or a typo — or which of thirty-two chains it belongs to.
       </p>
       <p>
-        So start with that. Paste it in. This box is the real tool, running for real, right now:
-        it asks the same read-only service the command line asks, and it cannot ask for your keys
-        because it has nowhere to put them.
+        So start there. This box is the real tool, running for real, right now: it asks the same
+        read-only service the command line asks, and it cannot ask for your keys because it has
+        nowhere to put them.
       </p>
 
       <div class="probe" id="probe">
-        <form class="probe-form" id="probe-form" autocomplete="off">
-          <label class="sr-only" for="probe-input">An address, a name or a transaction hash</label>
-          <input
-            class="probe-input"
-            id="probe-input"
-            name="value"
-            type="text"
-            placeholder="an address, a name like vitalik.eth, or a transaction hash"
-            spellcheck="false"
-            autocapitalize="off"
-            autocorrect="off">
-          <button class="probe-go" id="probe-go" type="submit">Identify it</button>
-        </form>
+              <form class="probe-form" id="probe-form" autocomplete="off">
+                <label class="sr-only" for="probe-input">An address, a name or a transaction hash</label>
+                <input
+                  class="probe-input"
+                  id="probe-input"
+                  name="value"
+                  type="text"
+                  placeholder="an address, a name like vitalik.eth, or a transaction hash"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocorrect="off">
+                <button class="probe-go" id="probe-go" type="submit">Identify it</button>
+              </form>
 
-        <div class="probe-examples" id="probe-examples">
-          <span>Nothing to hand? Try:</span>
-        </div>
+              <div class="probe-examples" id="probe-examples">
+                <span>Nothing to hand? Try:</span>
+              </div>
 
-        <div class="probe-out" id="probe-out" role="region" aria-live="polite" aria-label="What the endpoint answered">
-          <noscript>
+              <div class="probe-out" id="probe-out" role="region" aria-live="polite" aria-label="What the endpoint answered">
+                <noscript>
+                  <p class="verdict-note">
+                    This box asks the endpoint for you, which needs JavaScript. Without it, the same
+                    question is <code>singularity resolve &lt;whatever you have&gt;</code> once the tool
+                    is installed — see <a href="#install">Install</a>.
+                  </p>
+                </noscript>
+              </div>
+            </div>
+
             <p class="verdict-note">
-              This box asks the endpoint for you, which needs JavaScript. Without it, the same
-              question is <code>singularity resolve &lt;whatever you have&gt;</code> once the tool
-              is installed — see <a href="#install">Install</a>.
+              Every number above arrives from a chain while you wait, so it will not match this page
+              tomorrow — that is the point. If the endpoint is having a bad day it says so rather than
+              showing you a stale answer.
             </p>
-          </noscript>
-        </div>
-      </div>
-
-      <p class="verdict-note">
-        Every number above arrives from a chain while you wait, so it will not match this page
-        tomorrow — that is the point. If the endpoint is having a bad day it says so rather than
-        showing you a stale answer.
-      </p>
 
       <div class="callout">
-        <strong>Why it is safe to let a web page do this</strong>
-        <span>
-          The service behind this box can read chains and prepare
-          <button class="jargon" type="button" data-term="unsigned transaction">unsigned transactions</button>.
-          That is all it can do. It has no signing code and no key storage, so a page that can
-          reach it still cannot move anybody's money — yours or anyone else's.
-        </span>
-      </div>
+              <strong>Why it is safe to let a web page do this</strong>
+              <span>
+                The service behind this box can read chains and prepare
+                <button class="jargon" type="button" data-term="unsigned transaction">unsigned transactions</button>.
+                That is all it can do. It has no signing code and no key storage, so a page that can
+                reach it still cannot move anybody's money — yours or anyone else's.
+              </span>
+            </div>
 
-      <h3 id="routes-heading">Now pick a route</h3>
+      <h2 id="routes-heading">Three ways to use this, pick one</h2>
       <p>
-        The rest of this page covers three different jobs, and you almost certainly want one of
-        them. Choose one and the sidebar will dim the sections you can skip.
+        The seven panels after this one cover three different jobs. Choosing a route does not hide
+        anything — every panel stays one click away on the rail below — it just changes what the
+        Next button means.
       </p>
 
       <div class="routes" role="group" aria-labelledby="routes-heading">
         <button class="route" type="button" data-route="look" aria-pressed="false">
-          <span class="rt">I just want to look things up</span>
+          <span class="rt">Look things up myself</span>
           <span class="rd">Check a balance, read a transaction, see what fees cost. Type commands yourself.</span>
-          <span class="rm">4 sections · ~8 min</span>
+          <span class="rm">6 panels · ~8 min</span>
         </button>
         <button class="route" type="button" data-route="ask" aria-pressed="false">
-          <span class="rt">I want to just ask in English</span>
+          <span class="rt">Just ask in English</span>
           <span class="rd">Wire it into Claude and describe what you want instead of learning commands.</span>
-          <span class="rm">3 sections · ~6 min</span>
+          <span class="rm">5 panels · ~6 min</span>
         </button>
         <button class="route" type="button" data-route="build" aria-pressed="false">
-          <span class="rt">I am building software on it</span>
+          <span class="rt">Build software on it</span>
           <span class="rd">Put it inside your own app, with types, streams and no keys anywhere.</span>
-          <span class="rm">5 sections · ~12 min</span>
+          <span class="rm">6 panels · ~12 min</span>
         </button>
       </div>
 
       <div class="route-plan" id="route-plan" hidden></div>
+      </div>
     </section>
 
-    <hr class="rule">
-
-    <!-- ================================================== what it does -->
-    <section id="what">
-      <p class="eyebrow">The idea</p>
-      <h2>One tool instead of four</h2>
-      <p>
-        A blockchain is a public ledger. Anyone can read it — you do not need an account, a
-        password, or anyone's permission. What you normally <em>do</em> need is the right tool
-        for the right chain: one for Ethereum, a different one for Solana, another for Bitcoin.
-        Each has its own address format, its own vocabulary, and its own way of telling you the
-        same thing.
-      </p>
-      <p>
-        Singularity-Agent is one tool for all of them. You ask a question, it goes and reads the
-        ledger, and it answers in a consistent format. A Bitcoin balance and a Cosmos balance
-        come back with the same field names, so you only have to learn them once.
-      </p>
-      <p>
-        It works in two places: as a <strong>command you type in a terminal</strong>, and as a
-        <strong>plugin for Claude</strong>, so you can ask questions in plain English instead.
-        Both run exactly the same code.
-      </p>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ======================================================= safety -->
-    <section id="safety">
-      <p class="eyebrow">Safety</p>
-      <h2>What it can and can't do</h2>
-      <p>
-        Every crypto wallet is controlled by a <strong>private key</strong> — a long secret that
-        acts like the password to your money. Anyone who has it can spend everything. The single
-        most important thing to know about this tool is that it never touches yours.
-      </p>
-
-      <div class="split">
-        <div>
-          <h3><span class="yes" aria-hidden="true">●</span> It can read</h3>
-          <ul>
-            <li>Balances of any public address</li>
-            <li>What a past transaction did</li>
-            <li>Current network fees</li>
-            <li>Data stored in smart contracts</li>
-            <li>Prepare an unsigned payment for you</li>
-          </ul>
+    <section class="scene" id="scene-idea" data-name="idea" data-title="What it is"
+             role="tabpanel" aria-labelledby="tick-idea" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">03</span><span class="kind">the idea</span><span class="line" aria-hidden="true"></span></p>
+      <h1>One tool instead of four.</h1>
+      <div class="cols">
+        <div class="stack">
+          <p>
+            A blockchain is a public ledger. Anyone can read it — you do not need an account, a
+            password, or anyone's permission. What you normally <em>do</em> need is the right tool
+            for the right chain: one for Ethereum, a different one for Solana, another for Bitcoin.
+            Each has its own address format, its own vocabulary, and its own way of telling you the
+            same thing.
+          </p>
+          <p>
+            Singularity-Agent is one tool for all of them. You ask a question, it goes and reads the
+            ledger, and it answers in a consistent format. A Bitcoin balance and a Cosmos balance
+            come back with the same field names, so you only have to learn them once.
+          </p>
+          <p>
+            It works in two places: as a <strong>command you type in a terminal</strong>, and as a
+            <strong>plugin for Claude</strong>, so you can ask questions in plain English instead.
+            Both run exactly the same code.
+          </p>
         </div>
-        <div>
-          <h3><span class="no" aria-hidden="true">●</span> It cannot</h3>
-          <ul>
-            <li>Ask for, store, or read a private key</li>
-            <li>Sign a transaction</li>
-            <li>Send or broadcast anything</li>
-            <li>Move a single coin, in any circumstance</li>
-          </ul>
+        <div class="stack">
+          <h2>What it can and can't do</h2>
+          <p>
+            Every crypto wallet is controlled by a <strong>private key</strong> — a long secret that
+            acts like the password to your money. Anyone who has it can spend everything. The single
+            most important thing to know about this tool is that it never touches yours.
+          </p>
+
+          <div class="split">
+            <div>
+              <h3><span class="yes" aria-hidden="true">●</span> It can read</h3>
+              <ul>
+                <li>Balances of any public address</li>
+                <li>What a past transaction did</li>
+                <li>Current network fees</li>
+                <li>Data stored in smart contracts</li>
+                <li>Prepare an unsigned payment for you</li>
+              </ul>
+            </div>
+            <div>
+              <h3><span class="no" aria-hidden="true">●</span> It cannot</h3>
+              <ul>
+                <li>Ask for, store, or read a private key</li>
+                <li>Sign a transaction</li>
+                <li>Send or broadcast anything</li>
+                <li>Move a single coin, in any circumstance</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>What "unsigned" means</strong>
+            <span>
+              Singularity can fill out the paperwork for a payment — who is sending, who is
+              receiving, how much, what it will cost. It hands that form to you. You sign it in your
+              own wallet, where your key lives. Think of it as a very well-informed assistant who
+              prepares the cheque but can never sign it.
+            </span>
+          </div>
+
+          <p>
+            The practical consequence: the worst thing a bug in this tool can do is give you a wrong
+            answer. It cannot lose your funds, because it was never able to reach them.
+          </p>
         </div>
       </div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-console" data-name="console" data-title="Try it live"
+             role="tabpanel" aria-labelledby="tick-console" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">04</span><span class="kind">the console</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Run it without installing it.</h1>
+      <div class="cols">
+        <p>
+          This is not a video of a terminal. In <strong>Live</strong> mode every command you type
+          really runs — any address, any of the thirty-two chains — through the same read-only
+          service the installed tool uses. Type something wrong and it will tell you what it needed,
+          the way the real thing does.
+        </p>
+        <p>
+          <strong>Replay</strong> mode exists for when a free public node is having a bad day, or you
+          are reading this on a train. It shows answers recorded from earlier real runs, and labels
+          them as recorded, because a stale number that looks current is the one failure this whole
+          project is arranged against.
+        </p>
+      </div>
+
+      <div class="console-slot" id="console-slot">
+        <div class="console-wrap" id="console-wrap">
+          <figure class="sim">
+                  <div class="term-bar">
+                    <span class="prompt">$</span>
+                    <code class="cmd">singularity</code>
+                    <button class="copy" type="button" id="sim-reset">Reset</button>
+                  </div>
+                  <div class="sim-screen" id="sim-screen" role="log" aria-live="polite" aria-label="Simulated terminal output"></div>
+                </figure>
+
+                <form class="sim-form" id="sim-form" autocomplete="off">
+                  <span class="sigil" aria-hidden="true">$</span>
+                  <label class="sr-only" for="sim-input">Type a command</label>
+                  <input
+                    class="sim-input"
+                    id="sim-input"
+                    name="command"
+                    type="text"
+                    placeholder="type a command, or tap one below — try: help"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocorrect="off">
+                </form>
+
+                <div class="sim-chips" id="sim-chips"></div>
+
+                <figcaption class="sample">
+                  Arrow keys walk back through what you have typed. <code>help</code> lists every command
+                  that really runs; <code>clear</code> wipes the screen. Try <code>tx</code> with any
+                  transaction hash and watch it work out which chain the thing is on.
+                </figcaption>
+        </div>
+      </div>
+
+      <p class="hints">
+        <button class="ghost-btn" type="button" data-dock>Pop the console into the dock</button>
+        It follows you to every other panel, keeping its history — so you can try a command while
+        reading how it works. <kbd>`</kbd> opens and closes it from anywhere.
+      </p>
 
       <div class="callout">
-        <strong>What "unsigned" means</strong>
-        <span>
-          Singularity can fill out the paperwork for a payment — who is sending, who is
-          receiving, how much, what it will cost. It hands that form to you. You sign it in your
-          own wallet, where your key lives. Think of it as a very well-informed assistant who
-          prepares the cheque but can never sign it.
-        </span>
+              <strong>The two that say no are the point</strong>
+              <span>
+                Ask for Ethereum history without an indexer key and it tells you it has no answer,
+                rather than handing back an empty list that reads as "this wallet has done nothing".
+                Ask Stride for a token whose decimals the chain never declares and it gives you base
+                units instead of a number scaled by a guess. Both are real, and both are the reason
+                the rest of the output is worth trusting.
+              </span>
+            </div>
       </div>
-
-      <p>
-        The practical consequence: the worst thing a bug in this tool can do is give you a wrong
-        answer. It cannot lose your funds, because it was never able to reach them.
-      </p>
     </section>
 
-    <hr class="rule">
-
-    <!-- ====================================================== install -->
-    <section id="install">
-      <p class="eyebrow">Setup</p>
-      <h2>Install it</h2>
+    <section class="scene" id="scene-install" data-name="install" data-title="Install"
+             role="tabpanel" aria-labelledby="tick-install" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">05</span><span class="kind">setup</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Put it on your machine.</h1>
+      <div id="install">
       <p>This takes about two minutes. You'll be typing into a terminal — Terminal on macOS, PowerShell or Git Bash on Windows, or any shell on Linux.</p>
 
       <ol class="steps">
@@ -1522,13 +2427,10 @@
           </div>
         </li>
       </ol>
-    </section>
+      </div>
 
-    <hr class="rule">
+      <hr style="height:1px;background:var(--line);border:0;margin:1rem 0 0">
 
-    <!-- ================================================ first command -->
-    <section id="first">
-      <p class="eyebrow">Getting started</p>
       <h2>Your first real command</h2>
       <p>
         Let's look inside a wallet. This one belongs to Vitalik Buterin, a co-founder of
@@ -1587,76 +2489,14 @@
       </div>
 
       <p>Add <code>--json</code> to any command to get machine-readable output instead of a table.</p>
-    </section>
-
-    <hr class="rule">
-
-    <section id="try">
-      <p class="eyebrow">Try it here</p>
-      <h2>Run it without installing it</h2>
-      <p>
-        This is not a video of a terminal. In <strong>Live</strong> mode every command you type
-        really runs — any address, any of the thirty-two chains — through the same read-only
-        service the installed tool uses. Type something wrong and it will tell you what it needed,
-        the way the real thing does.
-      </p>
-      <p>
-        <strong>Replay</strong> mode exists for when a free public node is having a bad day, or you
-        are reading this on a train. It shows answers recorded from earlier real runs, and labels
-        them as recorded, because a stale number that looks current is the one failure this whole
-        project is arranged against.
-      </p>
-
-      <figure class="sim">
-        <div class="term-bar">
-          <span class="prompt">$</span>
-          <code class="cmd">singularity</code>
-          <button class="copy" type="button" id="sim-reset">Reset</button>
-        </div>
-        <div class="sim-screen" id="sim-screen" role="log" aria-live="polite" aria-label="Simulated terminal output"></div>
-      </figure>
-
-      <form class="sim-form" id="sim-form" autocomplete="off">
-        <span class="sigil" aria-hidden="true">$</span>
-        <label class="sr-only" for="sim-input">Type a command</label>
-        <input
-          class="sim-input"
-          id="sim-input"
-          name="command"
-          type="text"
-          placeholder="type a command, or tap one below — try: help"
-          spellcheck="false"
-          autocapitalize="off"
-          autocorrect="off">
-      </form>
-
-      <div class="sim-chips" id="sim-chips"></div>
-
-      <figcaption class="sample">
-        Arrow keys walk back through what you have typed. <code>help</code> lists every command
-        that really runs; <code>clear</code> wipes the screen. Try <code>tx</code> with any
-        transaction hash and watch it work out which chain the thing is on.
-      </figcaption>
-
-      <div class="callout">
-        <strong>The two that say no are the point</strong>
-        <span>
-          Ask for Ethereum history without an indexer key and it tells you it has no answer,
-          rather than handing back an empty list that reads as "this wallet has done nothing".
-          Ask Stride for a token whose decimals the chain never declares and it gives you base
-          units instead of a number scaled by a guess. Both are real, and both are the reason
-          the rest of the output is worth trusting.
-        </span>
       </div>
     </section>
 
-    <hr class="rule">
-
-
-    <!-- ======================================================= claude -->
-    <section id="claude">
-      <p class="eyebrow">The other way to use it</p>
-      <h2>Ask Claude instead of typing commands</h2>
+    <section class="scene" id="scene-ask" data-name="ask" data-title="Ask in English"
+             role="tabpanel" aria-labelledby="tick-ask" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">06</span><span class="kind">with claude</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Ask Claude instead of typing commands.</h1>
       <p>
         <strong>MCP</strong> (Model Context Protocol) is a standard way to give an AI assistant
         real tools. Without it, an assistant answering “what's in this wallet?” is recalling
@@ -1742,423 +2582,68 @@
         <li>“Prepare a transfer of 25 USDC on Base to this address.”</li>
       </ul>
 
-      <h3>The eighteen tools Claude gets</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
-          <tbody>
-            <tr><td><code>chains</code></td><td>List every supported network.</td></tr>
-            <tr><td><code>resolve</code></td><td>Identify what a piece of text is and which chains it belongs to.</td></tr>
-            <tr><td><code>balance</code></td><td>Holdings for one address on one chain.</td></tr>
-            <tr><td><code>portfolio</code></td><td>One address across many chains at once.</td></tr>
-            <tr><td><code>transaction</code></td><td>Look up and explain a transaction.</td></tr>
-            <tr><td><code>block</code></td><td>Fetch a block by height, hash, or latest.</td></tr>
-            <tr><td><code>fees</code></td><td>What a transfer costs right now.</td></tr>
-            <tr><td><code>read_contract</code></td><td>Read data out of a smart contract.</td></tr>
-            <tr><td><code>decode</code></td><td>Turn raw transaction data into a readable function call.</td></tr>
-            <tr><td><code>history</code></td><td>What an address has been doing, newest first.</td></tr>
-            <tr><td><code>mint_audit</code></td><td>What a Solana mint can still do to you — who can mint more, who can freeze.</td></tr>
-            <tr><td><code>token_identity</code></td><td>Whether a token is the one it claims to be.</td></tr>
-            <tr><td><code>verify_burn</code></td><td>Confirm a burn from its signature, at finalized commitment.</td></tr>
-            <tr><td><code>build_transfer</code></td><td>Prepare an <strong>unsigned</strong> payment.</td></tr>
-            <tr><td><code>build_burn</code></td><td>Prepare an <strong>unsigned</strong> burn.</td></tr>
-            <tr><td><code>chain_liveness</code></td><td>Whether a chain is still producing blocks, rather than merely answering.</td></tr>
-            <tr><td><code>inspect_exit</code></td><td>Before you buy: what could stop you selling it again.</td></tr>
-            <tr><td><code>receipt_art</code></td><td>What a payment receipt looks like, and whether an image is genuinely it.</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p style="font-size:.9375rem;color:var(--ink-2)">
-        Every one of them is marked read-only, and <code>build_transfer</code> returns a payload
-        plus a list of warnings that Claude is instructed to show you before you sign anything.
-        <code>history</code> on an Ethereum-style chain needs an indexer key; without one it says
-        so rather than returning an empty list that reads as "nothing ever happened here".
+      <h2>Eight questions worth stealing</h2>
+      <p>
+        Each is a real command with real output. Open one to read it in full, then copy it.
       </p>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ====================================================== recipes -->
-    <section id="do">
-      <p class="eyebrow">Recipes</p>
-      <h2>What you can ask it</h2>
-      <p>Each of these is a real command with real output. Copy any of them and run it.</p>
-
-      <div class="recipes">
-
-        <div class="recipe">
-          <h3><span class="q">“</span>What even is this thing I pasted?<span class="q">”</span></h3>
-          <p>
-            You have a string of characters and no idea whether it's a wallet, a transaction, or
-            a typo. <code>resolve</code> works it out — and if it's a name, looks up the address
-            behind it.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity resolve vitalik.eth</code>
-              <button class="copy" type="button" data-copy="singularity resolve vitalik.eth">Copy</button>
-            </div>
-            <pre><code>  Input    vitalik.eth
-  Kind     name
-  Address  <span class="acc">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</span>
-  Name     vitalik.eth
-  Family   evm
-  Chains   ethereum
-
-<span class="dim">  Resolves through ENS on Ethereum mainnet; the resulting address works on
-  every EVM chain.</span></code></pre>
-          </figure>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>Show me everything, everywhere<span class="q">”</span></h3>
-          <p>
-            <code>portfolio</code> checks one address across many chains at once. It only queries
-            chains where that address format is actually valid, so an Ethereum address doesn't
-            produce a pile of Solana errors.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity portfolio vitalik.eth</code>
-              <button class="copy" type="button" data-copy="singularity portfolio vitalik.eth">Copy</button>
-            </div>
-            <pre><code>Portfolio for 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-<span class="dim">──────────────────────────────────────────────────────</span>
-<span class="dim">  Queried 5 chain(s).</span>
-
-ethereum
-<span class="dim">────────</span>
-  6.71259795 ETH  <span class="dim">(native)</span>
-  37.192124   USDC
-
-base
-<span class="dim">────</span>
-  0.04182 ETH  <span class="dim">(native)</span>
-
-<span class="dim">  Empty on: arbitrum, optimism, polygon</span></code></pre>
-          </figure>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>What did this transaction do?<span class="q">”</span></h3>
-          <p>
-            Paste a transaction hash with no chain and it searches the likely ones in parallel. It
-            also decodes the raw data into a readable function call where it recognises it.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5</code>
-              <button class="copy" type="button" data-copy="singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5">Copy</button>
-            </div>
-            <pre><code>base  <span class="ok">success</span>
-<span class="dim">─────────────</span>
-  Hash      0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5
-  From      0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001
-  To        0x4200000000000000000000000000000000000015
-  Value     0 ETH
-  Block     51344342
-  Time      2026-09-15T13:13:51.000Z
-
-  0xdead…0001 -&gt; 0x4200…0015 on Base.
-
-<span class="dim">  https://basescan.org/tx/0xc29d744…</span></code></pre>
-          </figure>
-          <figcaption class="sample">You never told it this was on Base — it found it.</figcaption>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>Is it expensive to send right now?<span class="q">”</span></h3>
-          <p>
-            Fees work completely differently on each chain. <code>fees</code> normalises them to
-            one comparable number, then shows you the chain's own units underneath.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity fees --chain bitcoin</code>
-              <button class="copy" type="button" data-copy="singularity fees --chain bitcoin">Copy</button>
-            </div>
-            <pre><code>Fees on bitcoin
-<span class="dim">───────────────</span>
-  Simple transfer  <span class="acc">~0.00000054 BTC</span>
-
-  nextBlock      1.1 sat/vB
-  within6Blocks  0.4 sat/vB
-  within24Hours  0.3 sat/vB
-  assumedTxSize  141 vB <span class="dim">(1 input, 2 outputs, P2WPKH)</span>
-
-<span class="dim">  Bitcoin fees are per-vbyte, so cost depends on how many UTXOs you spend,
-  not on the amount sent.</span></code></pre>
-          </figure>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>What is this wall of hex?<span class="q">”</span></h3>
-          <p>
-            When a wallet asks you to approve something, it often shows an unreadable blob.
-            <code>decode</code> tells you what it actually calls and with what arguments — worth
-            doing <em>before</em> you approve, not after.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity decode 0xa9059cbb000000000000000000000000d8da…0f4240</code>
-              <button class="copy" type="button" data-copy="singularity decode 0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f4240">Copy</button>
-            </div>
-            <pre><code>{
-  <span class="acc">"selector"</span>: "0xa9059cbb",
-  <span class="acc">"signature"</span>: "function transfer(address to, uint256 amount) returns (bool)",
-  <span class="acc">"name"</span>: "transfer",
-  <span class="acc">"args"</span>: [
-    { "name": "to",     "type": "address", "value": "0xd8dA6BF2…aA96045" },
-    { "name": "amount", "type": "uint256", "value": "1000000" }
-  ]
-}</code></pre>
-          </figure>
-          <figcaption class="sample">Translation: send 1,000,000 base units — 1 USDC, which has 6 decimals — to that address.</figcaption>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>Prepare a payment for me<span class="q">”</span></h3>
-          <p>
-            This is the one command that produces something you could eventually sign. Note that
-            nothing is sent, and no key is involved.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC</code>
-              <button class="copy" type="button" data-copy="singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC">Copy</button>
-            </div>
-            <pre><code>Unsigned transaction — base
-<span class="dim">───────────────────────────</span>
-  Send 25.5 USDC (0x8335…2913) to 0xd8dA…6045 on Base.
-
-  Payload
-    {
-      "to":      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      "value":   "0x0",
-      "data":    "0xa9059cbb000000000000000000000000d8da…01851960",
-      "chainId": 8453
-    }
-
-  How to sign
-    This calls transfer() on the token contract. `to` is the TOKEN address, not
-    the recipient — the recipient is encoded in `data`. Sign with your own wallet.
-
-  <span class="bad">Warnings</span>
-    <span class="bad">!</span> This transaction is unsigned. Review every field before signing.
-    <span class="bad">!</span> Verify the token address belongs to the asset you mean. Fake tokens
-      reuse real symbols.
-
-<span class="dim">  Singularity holds no keys and has not signed or broadcast anything.</span></code></pre>
-          </figure>
-          <div class="callout caution">
-            <strong>Read the warnings, every time</strong>
-            <span>
-              That second warning is not boilerplate. Anyone can create a token called “USDC”.
-              The only thing that identifies a real one is its contract address — which is why
-              the tool prints it and asks you to check.
-            </span>
-          </div>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>Why is everything slow?<span class="q">”</span></h3>
-          <p>
-            Singularity talks to public servers that are free and therefore heavily rate-limited.
-            <code>doctor</code> tells you which ones are actually responding.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity doctor</code>
-              <button class="copy" type="button" data-copy="singularity doctor">Copy</button>
-            </div>
-            <pre><code>Endpoint health
-<span class="dim">───────────────</span>
-  <span class="ok">ok</span>  ethereum   <span class="num">440ms</span>
-  <span class="ok">ok</span>  base       <span class="num">216ms</span>
-  <span class="ok">ok</span>  arbitrum   <span class="num">212ms</span>
-  <span class="ok">ok</span>  solana     <span class="num">190ms</span>
-  <span class="ok">ok</span>  bitcoin    <span class="num">21403ms</span>
-  <span class="ok">ok</span>  cosmoshub  <span class="num">516ms</span>
-  <span class="ok">ok</span>  osmosis    <span class="num">513ms</span>
-  <span class="ok">ok</span>  celestia   <span class="num">723ms</span>
-
-  <span class="ok">All endpoints reachable.</span></code></pre>
-          </figure>
-          <figcaption class="sample">That 21-second Bitcoin result is a slow public server, not a broken one. <a href="#config">Configuration</a> shows how to use a faster one.</figcaption>
-        </div>
-
-        <div class="recipe">
-          <h3><span class="q">“</span>Tell me when this changes<span class="q">”</span></h3>
-          <p>
-            <code>watch</code> keeps asking and prints only what moved. It works on a balance, a
-            chain's head, one transaction until it's confirmed, or the health of several chains
-            at once.
-          </p>
-          <figure class="term">
-            <div class="term-bar">
-              <span class="prompt">$</span>
-              <code class="cmd">singularity watch tip -c solana -i 2</code>
-              <button class="copy" type="button" data-copy="singularity watch tip -c solana -i 2">Copy</button>
-            </div>
-            <pre><code>Watching solana
-<span class="dim">───────────────</span>
-  <span class="dim">Polling. Ctrl-C to stop.</span>
-
-<span class="dim">18:44:23</span>  #448546031  <span class="dim">(first reading)</span>
-<span class="dim">18:44:25</span>  #448546039  <span class="dim">+8</span>
-<span class="dim">18:44:27</span>  #448546047  <span class="dim">+8</span></code></pre>
-          </figure>
-          <figcaption class="sample">Real output. <code>-i</code> is seconds between checks; add <code>-n 3</code> to stop after three changes.</figcaption>
-
-          <div class="callout">
-            <strong>It asks repeatedly — it doesn't get pushed to</strong>
-            <span>
-              There's no live feed underneath this. It checks on a timer, so something that
-              changed and changed back between two checks is something it never saw. That's a
-              real limit and it's printed in <code>singularity watch --help</code> rather than
-              left for you to discover.
-            </span>
-          </div>
-        </div>
-
+      <div class="openers">
+        <button class="opener" type="button" data-opens="r1">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">What even is this thing I pasted?</span>
+          <span class="od">You have a string of characters and no idea whether it's a wallet, a transaction, or a typo. resolve works it out — an</span>
+          <span class="om">singularity resolve vitalik.eth</span>
+        </button>
+        <button class="opener" type="button" data-opens="r2">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Show me everything, everywhere</span>
+          <span class="od">portfolio checks one address across many chains at once. It only queries chains where that address format is actually </span>
+          <span class="om">singularity portfolio vitalik.eth</span>
+        </button>
+        <button class="opener" type="button" data-opens="r3">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">What did this transaction do?</span>
+          <span class="od">Paste a transaction hash with no chain and it searches the likely ones in parallel. It also decodes the raw data into </span>
+          <span class="om">singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5</span>
+        </button>
+        <button class="opener" type="button" data-opens="r4">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Is it expensive to send right now?</span>
+          <span class="od">Fees work completely differently on each chain. fees normalises them to one comparable number, then shows you the chai</span>
+          <span class="om">singularity fees --chain bitcoin</span>
+        </button>
+        <button class="opener" type="button" data-opens="r5">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">What is this wall of hex?</span>
+          <span class="od">When a wallet asks you to approve something, it often shows an unreadable blob. decode tells you what it actually call</span>
+          <span class="om">singularity decode 0xa9059cbb000000000000000000000000d8da…0f4240</span>
+        </button>
+        <button class="opener" type="button" data-opens="r6">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Prepare a payment for me</span>
+          <span class="od">This is the one command that produces something you could eventually sign. Note that nothing is sent, and no key is in</span>
+          <span class="om">singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC</span>
+        </button>
+        <button class="opener" type="button" data-opens="r7">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Why is everything slow?</span>
+          <span class="od">Singularity talks to public servers that are free and therefore heavily rate-limited. doctor tells you which ones are </span>
+          <span class="om">singularity doctor</span>
+        </button>
+        <button class="opener" type="button" data-opens="r8">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Tell me when this changes</span>
+          <span class="od">watch keeps asking and prints only what moved. It works on a balance, a chain's head, one transaction until it's confi</span>
+          <span class="om">singularity watch tip -c solana -i 2</span>
+        </button>
+      </div>
       </div>
     </section>
 
-    <hr class="rule">
-
-    <!-- ======================================================== pay -->
-    <section id="pay">
-      <p class="eyebrow">New in v0.2.0</p>
-      <h2>Getting paid, and proving it</h2>
-      <p>
-        Every payment tool answers one question — <em>did a transaction land</em> — and hands
-        back <code>paid: true</code>. That single word hides three things you need to know
-        before you ship anything, so Singularity Pay keeps them apart.
-      </p>
-
-      <div class="split">
-        <div>
-          <h3>How settled is it? <span class="sr-only">— finality</span></h3>
-          <p>
-            Four answers, not two. <strong>Confirmed</strong> and <strong>finalized</strong>
-            are different claims on Solana, and only one of them cannot be reversed. A tool
-            that calls both of those "paid" is asking you to hand over goods against a
-            transaction that can still vanish.
-          </p>
-        </div>
-        <div>
-          <h3>Were you paid what you asked?</h3>
-          <p>
-            A transaction that lands is not a transaction that paid <em>you</em>, in
-            <em>that</em> token, for <em>that</em> amount. Anyone can make a token called
-            USDC, and a payment in the fake one arrives just as smoothly. Every mismatch is
-            named.
-          </p>
-        </div>
-        <div>
-          <h3>Can it be taken back?</h3>
-          <p>
-            Some tokens let whoever issued them freeze your balance, or move it out of your
-            wallet without you signing anything. That gets checked <em>before</em> the payment
-            link is ever shown to anybody.
-          </p>
-        </div>
-      </div>
-
-      <figure class="term">
-        <div class="term-bar">
-          <span class="prompt">TG</span>
-          <code class="cmd">/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM</code>
-          <button class="copy" type="button" data-copy="/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM">Copy</button>
-        </div>
-        <pre><code><span class="ok">✓</span> Payment request for <span class="num">0.25 SOL</span>
-
-  To        7xKX...gAsU
-  Sender    9WzD...AWWM <span class="dim">— balance 1.84 SOL, enough</span>
-  Reference 695xPtsS...  <span class="dim">— how this payment is found on chain</span>
-
-<span class="dim">[ a QR code image follows, in this payment's own colours ]</span>
-
-Scan it with Phantom. Singularity holds no keys and cannot sign.</code></pre>
-      </figure>
-      <figcaption class="sample">
-        The sender's balance is read before the code is shown, so a wallet that cannot cover
-        the payment fails here rather than on your customer's approval screen.
-      </figcaption>
-
-      <h3>The code is a picture of that one payment</h3>
-      <p>
-        Every payment carries a <strong>reference</strong> — a one-off value attached to the
-        transfer so it can be found on chain. The artwork is calculated from it. Nothing is
-        stored, which is the whole point: two payments can never look alike, the same payment
-        always looks identical, and anyone holding the reference can redraw it and compare.
-      </p>
-      <p>
-        Colour varies. Contrast does not. Every palette is measured against the background
-        and darkened until it clears the threshold a scanner needs — because
-        <em>lightness is not brightness</em>, and a sweep of 400 colour schemes found one
-        that looked perfectly good and sat well below what a cheap camera can read.
-      </p>
-
-      <h3>A receipt you can check, not just keep</h3>
-      <p>
-        Once a payment is finalized it can be minted as an NFT of that same picture. It
-        refuses to mint for a payment that is merely confirmed, or that does not match what
-        was asked for — a receipt is evidence, and evidence built from a request rather than
-        a result is just a nicely formatted claim.
-      </p>
-      <p>
-        <strong>The image is not stored on the blockchain, and we are not going to pretend it
-        is.</strong> There is room for 200 characters; the picture is about 30,000. So the
-        <em>seed</em> goes on chain instead, and the picture is calculated from it. If whoever
-        hosts the image swaps it for a different one, the swap simply fails to verify — ask
-        Claude, or the bot, and it will tell you.
-      </p>
-
-      <figure class="term">
-        <div class="term-bar">
-          <span class="prompt">TG</span>
-          <code class="cmd">/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB</code>
-          <button class="copy" type="button" data-copy="/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB">Copy</button>
-        </div>
-        <pre><code><span class="ok">Receipt 695xPtsS</span>
-
-  Palette   moss/indigo
-  Modules   dot
-  Finders   rounded
-  Contrast  12.6:1 ink, 8.9:1 accent
-
-<span class="dim">Derived from the reference alone, so anyone holding it gets this
-same answer without trusting a server.</span></code></pre>
-      </figure>
-      <figcaption class="sample">
-        A mismatch means the image is not <em>evidence</em> of the payment. It does not
-        mean the payment was bad, and the tool says so rather than letting anyone imply
-        otherwise.
-      </figcaption>
-
-      <p style="font-size:.9375rem;color:var(--ink-2)">
-        One honest footnote. Creating any new token on Solana requires that token's own key to
-        sign for its creation — there is no way around it. So a throwaway key is made, used for
-        that one signature, and thrown away. It never holds funds, and once the receipt exists
-        it can do nothing at all. <strong>Your wallet is still the only thing that signs for
-        anything of value</strong>, and it is still the only thing holding your money.
-      </p>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ======================================================== sdk -->
-    <section id="sdk">
-      <p class="eyebrow">For developers</p>
-      <h2>Build something on it — the SDK</h2>
+    <section class="scene" id="scene-build" data-name="build" data-title="Build on it"
+             role="tabpanel" aria-labelledby="tick-build" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">07</span><span class="kind">for developers</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Build something on it.</h1>
       <p>
         Everything above asks one question and reads one answer. An <em>application</em> is
         different: it runs for weeks, asks the same question hundreds of times an hour, and
@@ -2260,305 +2745,74 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
         Full documentation, the signer guide and four runnable examples:
         <a href="https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-sdk">singularity-sdk on GitHub</a>.
       </p>
-    </section>
 
-    <hr class="rule">
-
-    <!-- ======================================================== chains -->
-    <section id="chains">
-      <p class="eyebrow">Coverage</p>
-      <h2>32 chains, four families</h2>
-      <p>
-        A <em>family</em> is a group of chains that work the same way underneath. Learn one member
-        and you have effectively learned the rest. You can add any chain that isn't listed here
-        yourself — see <a href="#config">Configuration</a>.
-      </p>
-
-      <div class="families">
-        <div class="family">
-          <span class="kind">evm</span>
-          <h3>Ethereum &amp; friends</h3>
-          <p>Addresses start <code>0x</code>. Hundreds of chains share this design.</p>
-          <ul>
-            <li><span class="chip">ethereum</span></li><li><span class="chip">base</span></li>
-            <li><span class="chip">arbitrum</span></li><li><span class="chip">optimism</span></li>
-            <li><span class="chip">polygon</span></li><li><span class="chip">bsc</span></li>
-            <li><span class="chip">avalanche</span></li><li><span class="chip">gnosis</span></li>
-            <li><span class="chip">scroll</span></li><li><span class="chip">linea</span></li>
-            <li><span class="chip">zksync</span></li><li><span class="chip">sepolia</span></li>
-            <li><span class="chip">base-sepolia</span></li>
-          </ul>
-        </div>
-        <div class="family">
-          <span class="kind">svm</span>
-          <h3>Solana</h3>
-          <p>Addresses are base58 text with no prefix. Token holdings can be listed in full.</p>
-          <ul>
-            <li><span class="chip">solana</span></li><li><span class="chip">solana-devnet</span></li>
-          </ul>
-        </div>
-        <div class="family">
-          <span class="kind">utxo</span>
-          <h3>Bitcoin &amp; kin</h3>
-          <p>Addresses start <code>bc1</code>, <code>1</code> or <code>3</code>. No tokens — just coins.</p>
-          <ul>
-            <li><span class="chip">bitcoin</span></li><li><span class="chip">bitcoin-testnet</span></li>
-            <li><span class="chip">litecoin</span></li>
-          </ul>
-        </div>
-        <div class="family">
-          <span class="kind">cosmos</span>
-          <h3>Cosmos</h3>
-          <p>Each chain has its own address prefix, which makes them self-identifying.</p>
-          <ul>
-            <li><span class="chip">cosmoshub</span></li><li><span class="chip">osmosis</span></li>
-            <li><span class="chip">celestia</span></li><li><span class="chip">injective</span></li>
-            <li><span class="chip">dydx</span></li>
-          </ul>
-        </div>
+      <div class="openers">
+        <button class="opener" type="button" data-opens="payments">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Getting paid, and proving it</span>
+          <span class="od">Finality, exact amounts, and a receipt anyone can re-derive from the chain rather than take your word for.</span>
+          <span class="om">new in v0.2.0</span>
+        </button>
+        <button class="opener" type="button" data-opens="tools">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">The eighteen tools Claude gets</span>
+          <span class="od">Every tool on the MCP surface, what it answers, and which of them refuse rather than guess.</span>
+          <span class="om">reference</span>
+        </button>
       </div>
-
-      <p>
-        You can refer to a chain by its id, a nickname, or its numeric id — <code>eth</code>,
-        <code>ethereum</code>, <code>mainnet</code> and <code>1</code> all mean the same thing.
-        Get it wrong and it suggests what you probably meant.
-      </p>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ==================================================== vocabulary -->
-    <section id="words">
-      <p class="eyebrow">Plain English</p>
-      <h2>Words you'll see</h2>
-      <p>
-        Crypto has a lot of jargon. Here is the subset you actually need to use this tool — and
-        this list is also where every underlined word on this page gets its definition, so the
-        two can never drift apart.
-      </p>
-
-      <dl class="glossary">
-        <div>
-          <dt>Address</dt>
-          <dd>A public account identifier — like a bank account number. Safe to share; that is what it is for. Every chain family writes them differently.</dd>
-        </div>
-        <div>
-          <dt>Private key</dt>
-          <dd>The secret that controls an address. Never share it, never type it into anything.
-          Singularity never asks for one.</dd>
-        </div>
-        <div>
-          <dt>Transaction hash <span class="alt">txid · signature</span></dt>
-          <dd>The receipt number for something that happened on-chain. Paste one into <code>tx</code> to see what it did.</dd>
-        </div>
-        <div>
-          <dt>Native token</dt>
-          <dd>The coin a chain runs on, used to pay fees — ETH on Ethereum, SOL on Solana, BTC on Bitcoin, ATOM on Cosmos Hub.</dd>
-        </div>
-        <div>
-          <dt>Token</dt>
-          <dd>Anything else living on that chain, like USDC. Identified by a contract address, which differs on every chain — the same-named token has a different address on Ethereum and Base.</dd>
-        </div>
-        <div>
-          <dt>Base units <span class="alt">wei · satoshi · lamport</span></dt>
-          <dd>Chains store whole numbers only, so amounts are held in tiny units. 1 ETH is 10<sup>18</sup> wei; 1 BTC is 100,000,000 satoshi. Singularity shows you both, and refuses to quietly round.</dd>
-        </div>
-        <div>
-          <dt>Gas / fee <span class="alt">gwei · sat/vB</span></dt>
-          <dd>What you pay the network to process your transaction. It fluctuates with demand, which is why <code>fees</code> exists.</dd>
-        </div>
-        <div>
-          <dt>Block</dt>
-          <dd>A batch of transactions, numbered in order. Chains add one every few seconds to
-          minutes, and the newest block is the chain's "right now" — which is why the four numbers
-          at the top of this page keep moving.</dd>
-        </div>
-        <div>
-          <dt>Finality <span class="alt">confirmations · reorg</span></dt>
-          <dd>Whether something can still be undone. A brand-new block can be discarded and
-          rebuilt without it; after enough blocks on top, it cannot. Singularity always says which
-          of the two you are looking at rather than reporting both as "done".</dd>
-        </div>
-        <div>
-          <dt>Indexer</dt>
-          <dd>A separate service that keeps a searchable copy of a chain's past. Ethereum nodes
-          cannot answer "what has this address done", so history there needs one — and without a
-          key, Singularity says it has no answer instead of returning an empty list.</dd>
-        </div>
-        <div>
-          <dt>Mint <span class="alt">mint address</span></dt>
-          <dd>On Solana, the address that <em>is</em> a token's identity. A name and a ticker can
-          be copied onto any token by anyone; the mint address cannot be.</dd>
-        </div>
-        <div>
-          <dt>RPC endpoint</dt>
-          <dd>The server Singularity asks for data. Free public ones are included; they are slow and rate-limited. See <a href="#config">Configuration</a>.</dd>
-        </div>
-        <div>
-          <dt>ENS name</dt>
-          <dd>A human-readable name for an Ethereum address, like <code>vitalik.eth</code>. Use it anywhere an address is accepted.</dd>
-        </div>
-        <div>
-          <dt>Unsigned transaction</dt>
-          <dd>A prepared but unsigned instruction. Harmless on its own — it does nothing until a private key signs it, which happens in your wallet, not here.</dd>
-        </div>
-        <div>
-          <dt>Smart contract</dt>
-          <dd>A program stored on a chain. <code>read_contract</code> reads data out of one; it never writes to one.</dd>
-        </div>
-      </dl>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ================================================= configuration -->
-    <section id="config">
-      <p class="eyebrow">Going further</p>
-      <h2>Configuration</h2>
-
-      <h3>Faster connections</h3>
-      <p>
-        The bundled public servers need no signup, which is why they're the default — but they
-        are throttled and sometimes just disappear. Providers like Alchemy and Infura give free
-        API keys with far better limits. Point Singularity at one:
-      </p>
-      <figure class="term">
-        <div class="term-bar">
-          <span class="prompt">$</span>
-          <code class="cmd">export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY</code>
-          <button class="copy" type="button" data-copy="export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY">Copy</button>
-        </div>
-        <pre><code><span class="dim"># The name is SINGULARITY_RPC_ + the chain id, uppercased, with - becoming _
-# So base-sepolia becomes SINGULARITY_RPC_BASE_SEPOLIA
-# Comma-separate several for automatic failover.</span></code></pre>
-      </figure>
-
-      <h3>Nicknames and custom chains</h3>
-      <p>Create <code>~/.singularity/config.json</code> to save addresses under names you'll remember, and to add chains that aren't built in:</p>
-      <figure class="term">
-        <div class="term-bar">
-          <span class="prompt">{}</span>
-          <code class="cmd">~/.singularity/config.json</code>
-          <button class="copy" type="button" data-copy='{"addressBook":{"savings":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"},"portfolioChains":["ethereum","base","solana"]}'>Copy</button>
-        </div>
-        <pre><code>{
-  <span class="acc">"addressBook"</span>: {
-    <span class="acc">"savings"</span>: <span class="dim">"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"</span>
-  },
-  <span class="acc">"portfolioChains"</span>: [<span class="dim">"ethereum"</span>, <span class="dim">"base"</span>, <span class="dim">"solana"</span>],
-  <span class="acc">"chains"</span>: [
-    {
-      <span class="acc">"id"</span>: <span class="dim">"my-rollup"</span>,
-      <span class="acc">"family"</span>: <span class="dim">"evm"</span>,
-      <span class="acc">"chainId"</span>: 123456,
-      <span class="acc">"nativeCurrency"</span>: { "name": "Ether", "symbol": "ETH", "decimals": 18 },
-      <span class="acc">"rpc"</span>: [<span class="dim">"https://rpc.my-rollup.example"</span>]
-    }
-  ]
-}</code></pre>
-      </figure>
-      <p>Now <code>singularity balance savings -c base</code> works, and <code>my-rollup</code> is a chain like any other.</p>
-    </section>
-
-    <hr class="rule">
-
-    <!-- ================================================ troubleshooting -->
-    <section id="help">
-      <p class="eyebrow">Troubleshooting</p>
-      <h2>If something goes wrong</h2>
-      <p>Errors from this tool carry a code and a hint. The hint is usually the fix.</p>
-
-      <div class="qa">
-        <details>
-          <summary>“singularity: command not found”</summary>
-          <div class="answer">
-            <p>Step 4 of the install didn't take. Run <code>npm link</code> again inside the project folder. If that fails, you can always run it directly:</p>
-            <figure class="term">
-              <div class="term-bar">
-                <span class="prompt">$</span>
-                <code class="cmd">node dist/cli/index.js chains</code>
-                <button class="copy" type="button" data-copy="node dist/cli/index.js chains">Copy</button>
-              </div>
-            </figure>
-          </div>
-        </details>
-
-        <details>
-          <summary>“RPC call failed”, or everything is very slow</summary>
-          <div class="answer">
-            <p>A public server is rate-limiting you. Check which ones are alive with <code>singularity doctor</code>, then set your own endpoint — see <a href="#config">Configuration</a>. This is the single most common problem, and the fix is free.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>“is not a valid address on Osmosis”</summary>
-          <div class="answer">
-            <p>Cosmos chains each use their own address prefix, but they're all the same underlying account. The tool does the conversion for you rather than just complaining:</p>
-            <figure class="term">
-              <div class="term-bar">
-                <span class="prompt">$</span>
-                <code class="cmd">singularity balance cosmos1qypqx…lzv7xu -c osmosis</code>
-                <button class="copy" type="button" data-copy="singularity balance cosmos1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5lzv7xu -c osmosis">Copy</button>
-              </div>
-              <pre><code>  <span class="bad">INVALID_ADDRESS</span>  "cosmos1qypqx…lzv7xu" is not a valid address on Osmosis.
-  <span class="dim">That is a "cosmos" address. It is the same account on Osmosis, re-encoded:</span>
-  <span class="acc">osmo1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5helwsw</span></code></pre>
-            </figure>
-            <p>Copy the address it gives you. <code>singularity resolve</code> on any Cosmos address lists every equivalent at once.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>“Transaction was not found”</summary>
-          <div class="answer">
-            <p>Three likely reasons. It might be on a chain outside the default search set — name it with <code>--chain</code>. It might be too new and still pending. Or, on Solana, it might simply be too old: public Solana servers delete old history, and retrieving it needs an archival endpoint.</p>
-          </div>
-        </details>
-
-        <details>
-          <summary>A token I own isn't showing up</summary>
-          <div class="answer">
-            <p>Expected on Ethereum-style chains — see <a href="#limits">Limits</a>. Name the token explicitly by its contract address:</p>
-            <figure class="term">
-              <div class="term-bar">
-                <span class="prompt">$</span>
-                <code class="cmd">singularity balance 0xYourAddress -c base --token 0xTokenContractAddress</code>
-                <button class="copy" type="button" data-copy="singularity balance 0xYourAddress -c base --token 0xTokenContractAddress">Copy</button>
-              </div>
-            </figure>
-          </div>
-        </details>
-
-        <details>
-          <summary>“Unknown chain”</summary>
-          <div class="answer">
-            <p>Check the spelling against <code>singularity chains</code>. The error also guesses what you meant — typing <code>etherium</code> suggests <code>ethereum</code>.</p>
-          </div>
-        </details>
       </div>
     </section>
 
-    <hr class="rule">
-
-    <!-- ======================================================== limits -->
-    <section id="limits">
-      <p class="eyebrow">Honesty</p>
-      <h2>What it deliberately won't do</h2>
-      <p>
-        These are real boundaries, not bugs. They're listed here, and in the tool's own output,
-        because a confident wrong answer is worse than a clear “I can't”.
+    <section class="scene" id="scene-learn" data-name="learn" data-title="Reference"
+             role="tabpanel" aria-labelledby="tick-learn" tabindex="-1">
+      <div class="scene-in">
+      <p class="plate"><span class="num">08</span><span class="kind">look it up</span><span class="line" aria-hidden="true"></span></p>
+      <h1>Everything else, when you need it.</h1>
+      <p class="lede">
+        The long material does not belong in your way. Each of these slides in over whatever panel
+        you are on, and <kbd>Esc</kbd> puts it back.
       </p>
-      <ul>
-        <li><strong>Ethereum token lists aren't complete.</strong> Listing every token an address holds requires a paid indexing service. Without one, the tool checks a curated set of major tokens and says so. Solana and Cosmos <em>can</em> list everything, and do.</li>
-        <li><strong>No prices.</strong> It reports quantities, not dollar values.</li>
-        <li><strong>IBC tokens show as hashes.</strong> On Cosmos, a transferred token appears as <code>ibc/3EF74C…</code>. Identifying it needs a per-token lookup, so it shows the hash rather than guessing.</li>
-        <li><strong>Cosmos fees are an estimate.</strong> Gas prices there are set by individual validators, not the chain. Your wallet will usually re-quote.</li>
-        <li><strong>No CosmWasm contract queries.</strong> Contract reads cover Ethereum-style chains and Solana.</li>
-        <li><strong>It cannot send anything.</strong> By design, permanently.</li>
-      </ul>
-    </section>
 
-    <footer>
+      <div class="openers">
+        <button class="opener" type="button" data-opens="chains">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">32 chains, four families</span>
+          <span class="od">Which networks it speaks to, and what each family can and cannot tell you about itself.</span>
+          <span class="om">coverage</span>
+        </button>
+        <button class="opener" type="button" data-opens="vocab">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Words you'll see</span>
+          <span class="od">The subset of crypto jargon you actually need — and the source of every underlined word on this site.</span>
+          <span class="om">plain english</span>
+        </button>
+        <button class="opener" type="button" data-opens="config">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">Configuration</span>
+          <span class="od">Your own RPC endpoints before you hit the free ones' rate limits, plus nicknames and custom chains.</span>
+          <span class="om">going further</span>
+        </button>
+        <button class="opener" type="button" data-opens="trouble">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">If something goes wrong</span>
+          <span class="od">The failures people actually hit on the first day, and what each one means.</span>
+          <span class="om">troubleshooting</span>
+        </button>
+        <button class="opener" type="button" data-opens="limits">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">What it deliberately won't do</span>
+          <span class="od">The refusals are a feature. Here is the list, so none of them is a surprise.</span>
+          <span class="om">honesty</span>
+        </button>
+        <button class="opener" type="button" data-opens="tools">
+          <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+          <span class="ot">The eighteen tools</span>
+          <span class="od">Every tool on the MCP surface, and what each one answers.</span>
+          <span class="om">reference</span>
+        </button>
+      </div>
+
+      <div class="footnote">
       <span class="mark-sm">
         <picture>
           <source srcset="/assets/mark.webp" type="image/webp">
@@ -2567,12 +2821,800 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       </span>
       <span>Singularity-Agent — MIT licensed</span>
       <span>Read-only. No keys, ever.</span>
-    </footer>
+    
+      </div>
+      </div>
+    </section>
+  </div>
+</main>
 
-  </main>
-</div>
+<nav class="rail" role="tablist" aria-label="Panels">
+  <span class="meter" id="meter" aria-hidden="true"></span>
+
+  <button class="step-btn" type="button" id="go-prev" aria-label="Previous panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+
+  <div class="ticks" id="ticks">
+    <span class="marker" id="marker" aria-hidden="true"></span>
+  </div>
+
+  <button class="next-btn" type="button" id="go-next">
+    <span class="lbl">Next</span>
+    <span class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span>
+  </button>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+
+  <aside class="drawer" data-drawer="r1" role="dialog" aria-modal="true" aria-label="What even is this thing I pasted?" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 1 of 8</span>
+      <h2>What even is this thing I pasted?</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        You have a string of characters and no idea whether it's a wallet, a transaction, or
+        a typo. <code>resolve</code> works it out — and if it's a name, looks up the address
+        behind it.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity resolve vitalik.eth</code>
+          <button class="copy" type="button" data-copy="singularity resolve vitalik.eth">Copy</button>
+        </div>
+        <pre><code>  Input    vitalik.eth
+        Kind     name
+        Address  <span class="acc">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</span>
+        Name     vitalik.eth
+        Family   evm
+        Chains   ethereum
+
+      <span class="dim">  Resolves through ENS on Ethereum mainnet; the resulting address works on
+        every EVM chain.</span></code></pre>
+      </figure>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r2" role="dialog" aria-modal="true" aria-label="Show me everything, everywhere" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 2 of 8</span>
+      <h2>Show me everything, everywhere</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        <code>portfolio</code> checks one address across many chains at once. It only queries
+        chains where that address format is actually valid, so an Ethereum address doesn't
+        produce a pile of Solana errors.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity portfolio vitalik.eth</code>
+          <button class="copy" type="button" data-copy="singularity portfolio vitalik.eth">Copy</button>
+        </div>
+        <pre><code>Portfolio for 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+      <span class="dim">──────────────────────────────────────────────────────</span>
+      <span class="dim">  Queried 5 chain(s).</span>
+
+      ethereum
+      <span class="dim">────────</span>
+        6.71259795 ETH  <span class="dim">(native)</span>
+        37.192124   USDC
+
+      base
+      <span class="dim">────</span>
+        0.04182 ETH  <span class="dim">(native)</span>
+
+      <span class="dim">  Empty on: arbitrum, optimism, polygon</span></code></pre>
+      </figure>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r3" role="dialog" aria-modal="true" aria-label="What did this transaction do?" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 3 of 8</span>
+      <h2>What did this transaction do?</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        Paste a transaction hash with no chain and it searches the likely ones in parallel. It
+        also decodes the raw data into a readable function call where it recognises it.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5</code>
+          <button class="copy" type="button" data-copy="singularity tx 0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5">Copy</button>
+        </div>
+        <pre><code>base  <span class="ok">success</span>
+      <span class="dim">─────────────</span>
+        Hash      0xc29d74412da1bec4e662a7978c3ef993beed7833219d3362a2abca09700fdaa5
+        From      0xdeaddeaddeaddeaddeaddeaddeaddeaddead0001
+        To        0x4200000000000000000000000000000000000015
+        Value     0 ETH
+        Block     51344342
+        Time      2026-09-15T13:13:51.000Z
+
+        0xdead…0001 -&gt; 0x4200…0015 on Base.
+
+      <span class="dim">  https://basescan.org/tx/0xc29d744…</span></code></pre>
+      </figure>
+      <figcaption class="sample">You never told it this was on Base — it found it.</figcaption>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r4" role="dialog" aria-modal="true" aria-label="Is it expensive to send right now?" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 4 of 8</span>
+      <h2>Is it expensive to send right now?</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        Fees work completely differently on each chain. <code>fees</code> normalises them to
+        one comparable number, then shows you the chain's own units underneath.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity fees --chain bitcoin</code>
+          <button class="copy" type="button" data-copy="singularity fees --chain bitcoin">Copy</button>
+        </div>
+        <pre><code>Fees on bitcoin
+      <span class="dim">───────────────</span>
+        Simple transfer  <span class="acc">~0.00000054 BTC</span>
+
+        nextBlock      1.1 sat/vB
+        within6Blocks  0.4 sat/vB
+        within24Hours  0.3 sat/vB
+        assumedTxSize  141 vB <span class="dim">(1 input, 2 outputs, P2WPKH)</span>
+
+      <span class="dim">  Bitcoin fees are per-vbyte, so cost depends on how many UTXOs you spend,
+        not on the amount sent.</span></code></pre>
+      </figure>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r5" role="dialog" aria-modal="true" aria-label="What is this wall of hex?" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 5 of 8</span>
+      <h2>What is this wall of hex?</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        When a wallet asks you to approve something, it often shows an unreadable blob.
+        <code>decode</code> tells you what it actually calls and with what arguments — worth
+        doing <em>before</em> you approve, not after.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity decode 0xa9059cbb000000000000000000000000d8da…0f4240</code>
+          <button class="copy" type="button" data-copy="singularity decode 0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f4240">Copy</button>
+        </div>
+        <pre><code>{
+        <span class="acc">"selector"</span>: "0xa9059cbb",
+        <span class="acc">"signature"</span>: "function transfer(address to, uint256 amount) returns (bool)",
+        <span class="acc">"name"</span>: "transfer",
+        <span class="acc">"args"</span>: [
+          { "name": "to",     "type": "address", "value": "0xd8dA6BF2…aA96045" },
+          { "name": "amount", "type": "uint256", "value": "1000000" }
+        ]
+      }</code></pre>
+      </figure>
+      <figcaption class="sample">Translation: send 1,000,000 base units — 1 USDC, which has 6 decimals — to that address.</figcaption>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r6" role="dialog" aria-modal="true" aria-label="Prepare a payment for me" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 6 of 8</span>
+      <h2>Prepare a payment for me</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        This is the one command that produces something you could eventually sign. Note that
+        nothing is sent, and no key is involved.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC</code>
+          <button class="copy" type="button" data-copy="singularity build --chain base --to vitalik.eth --amount 25.5 --token USDC">Copy</button>
+        </div>
+        <pre><code>Unsigned transaction — base
+      <span class="dim">───────────────────────────</span>
+        Send 25.5 USDC (0x8335…2913) to 0xd8dA…6045 on Base.
+
+        Payload
+          {
+            "to":      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "value":   "0x0",
+            "data":    "0xa9059cbb000000000000000000000000d8da…01851960",
+            "chainId": 8453
+          }
+
+        How to sign
+          This calls transfer() on the token contract. `to` is the TOKEN address, not
+          the recipient — the recipient is encoded in `data`. Sign with your own wallet.
+
+        <span class="bad">Warnings</span>
+          <span class="bad">!</span> This transaction is unsigned. Review every field before signing.
+          <span class="bad">!</span> Verify the token address belongs to the asset you mean. Fake tokens
+            reuse real symbols.
+
+      <span class="dim">  Singularity holds no keys and has not signed or broadcast anything.</span></code></pre>
+      </figure>
+      <div class="callout caution">
+        <strong>Read the warnings, every time</strong>
+        <span>
+          That second warning is not boilerplate. Anyone can create a token called “USDC”.
+          The only thing that identifies a real one is its contract address — which is why
+          the tool prints it and asks you to check.
+        </span>
+      </div>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r7" role="dialog" aria-modal="true" aria-label="Why is everything slow?" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 7 of 8</span>
+      <h2>Why is everything slow?</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        Singularity talks to public servers that are free and therefore heavily rate-limited.
+        <code>doctor</code> tells you which ones are actually responding.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity doctor</code>
+          <button class="copy" type="button" data-copy="singularity doctor">Copy</button>
+        </div>
+        <pre><code>Endpoint health
+      <span class="dim">───────────────</span>
+        <span class="ok">ok</span>  ethereum   <span class="num">440ms</span>
+        <span class="ok">ok</span>  base       <span class="num">216ms</span>
+        <span class="ok">ok</span>  arbitrum   <span class="num">212ms</span>
+        <span class="ok">ok</span>  solana     <span class="num">190ms</span>
+        <span class="ok">ok</span>  bitcoin    <span class="num">21403ms</span>
+        <span class="ok">ok</span>  cosmoshub  <span class="num">516ms</span>
+        <span class="ok">ok</span>  osmosis    <span class="num">513ms</span>
+        <span class="ok">ok</span>  celestia   <span class="num">723ms</span>
+
+        <span class="ok">All endpoints reachable.</span></code></pre>
+      </figure>
+      <figcaption class="sample">That 21-second Bitcoin result is a slow public server, not a broken one. <a href="#config">Configuration</a> shows how to use a faster one.</figcaption>
+    </div>
+  </aside>
+  <aside class="drawer" data-drawer="r8" role="dialog" aria-modal="true" aria-label="Tell me when this changes" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Question 8 of 8</span>
+      <h2>Tell me when this changes</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+      <p>
+        <code>watch</code> keeps asking and prints only what moved. It works on a balance, a
+        chain's head, one transaction until it's confirmed, or the health of several chains
+        at once.
+      </p>
+      <figure class="term">
+        <div class="term-bar">
+          <span class="prompt">$</span>
+          <code class="cmd">singularity watch tip -c solana -i 2</code>
+          <button class="copy" type="button" data-copy="singularity watch tip -c solana -i 2">Copy</button>
+        </div>
+        <pre><code>Watching solana
+      <span class="dim">───────────────</span>
+        <span class="dim">Polling. Ctrl-C to stop.</span>
+
+      <span class="dim">18:44:23</span>  #448546031  <span class="dim">(first reading)</span>
+      <span class="dim">18:44:25</span>  #448546039  <span class="dim">+8</span>
+      <span class="dim">18:44:27</span>  #448546047  <span class="dim">+8</span></code></pre>
+      </figure>
+      <figcaption class="sample">Real output. <code>-i</code> is seconds between checks; add <code>-n 3</code> to stop after three changes.</figcaption>
+
+      <div class="callout">
+        <strong>It asks repeatedly — it doesn't get pushed to</strong>
+        <span>
+          There's no live feed underneath this. It checks on a timer, so something that
+          changed and changed back between two checks is something it never saw. That's a
+          real limit and it's printed in <code>singularity watch --help</code> rather than
+          left for you to discover.
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="payments" role="dialog" aria-modal="true" aria-label="Getting paid, and proving it" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Build on it</span>
+      <h2>Getting paid, and proving it</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <p>
+              Every payment tool answers one question — <em>did a transaction land</em> — and hands
+              back <code>paid: true</code>. That single word hides three things you need to know
+              before you ship anything, so Singularity Pay keeps them apart.
+            </p>
+
+            <div class="split">
+              <div>
+                <h3>How settled is it? <span class="sr-only">— finality</span></h3>
+                <p>
+                  Four answers, not two. <strong>Confirmed</strong> and <strong>finalized</strong>
+                  are different claims on Solana, and only one of them cannot be reversed. A tool
+                  that calls both of those "paid" is asking you to hand over goods against a
+                  transaction that can still vanish.
+                </p>
+              </div>
+              <div>
+                <h3>Were you paid what you asked?</h3>
+                <p>
+                  A transaction that lands is not a transaction that paid <em>you</em>, in
+                  <em>that</em> token, for <em>that</em> amount. Anyone can make a token called
+                  USDC, and a payment in the fake one arrives just as smoothly. Every mismatch is
+                  named.
+                </p>
+              </div>
+              <div>
+                <h3>Can it be taken back?</h3>
+                <p>
+                  Some tokens let whoever issued them freeze your balance, or move it out of your
+                  wallet without you signing anything. That gets checked <em>before</em> the payment
+                  link is ever shown to anybody.
+                </p>
+              </div>
+            </div>
+
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">TG</span>
+                <code class="cmd">/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM</code>
+                <button class="copy" type="button" data-copy="/pay 0.25 --to 7xKX...gAsU --sender 9WzD...AWWM">Copy</button>
+              </div>
+              <pre><code><span class="ok">✓</span> Payment request for <span class="num">0.25 SOL</span>
+
+        To        7xKX...gAsU
+        Sender    9WzD...AWWM <span class="dim">— balance 1.84 SOL, enough</span>
+        Reference 695xPtsS...  <span class="dim">— how this payment is found on chain</span>
+
+      <span class="dim">[ a QR code image follows, in this payment's own colours ]</span>
+
+      Scan it with Phantom. Singularity holds no keys and cannot sign.</code></pre>
+            </figure>
+            <figcaption class="sample">
+              The sender's balance is read before the code is shown, so a wallet that cannot cover
+              the payment fails here rather than on your customer's approval screen.
+            </figcaption>
+
+            <h3>The code is a picture of that one payment</h3>
+            <p>
+              Every payment carries a <strong>reference</strong> — a one-off value attached to the
+              transfer so it can be found on chain. The artwork is calculated from it. Nothing is
+              stored, which is the whole point: two payments can never look alike, the same payment
+              always looks identical, and anyone holding the reference can redraw it and compare.
+            </p>
+            <p>
+              Colour varies. Contrast does not. Every palette is measured against the background
+              and darkened until it clears the threshold a scanner needs — because
+              <em>lightness is not brightness</em>, and a sweep of 400 colour schemes found one
+              that looked perfectly good and sat well below what a cheap camera can read.
+            </p>
+
+            <h3>A receipt you can check, not just keep</h3>
+            <p>
+              Once a payment is finalized it can be minted as an NFT of that same picture. It
+              refuses to mint for a payment that is merely confirmed, or that does not match what
+              was asked for — a receipt is evidence, and evidence built from a request rather than
+              a result is just a nicely formatted claim.
+            </p>
+            <p>
+              <strong>The image is not stored on the blockchain, and we are not going to pretend it
+              is.</strong> There is room for 200 characters; the picture is about 30,000. So the
+              <em>seed</em> goes on chain instead, and the picture is calculated from it. If whoever
+              hosts the image swaps it for a different one, the swap simply fails to verify — ask
+              Claude, or the bot, and it will tell you.
+            </p>
+
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">TG</span>
+                <code class="cmd">/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB</code>
+                <button class="copy" type="button" data-copy="/receipt 695xPtsSYaSALQdwgE6WxC4zX49zZrpVPwF2uiUGjCBB">Copy</button>
+              </div>
+              <pre><code><span class="ok">Receipt 695xPtsS</span>
+
+        Palette   moss/indigo
+        Modules   dot
+        Finders   rounded
+        Contrast  12.6:1 ink, 8.9:1 accent
+
+      <span class="dim">Derived from the reference alone, so anyone holding it gets this
+      same answer without trusting a server.</span></code></pre>
+            </figure>
+            <figcaption class="sample">
+              A mismatch means the image is not <em>evidence</em> of the payment. It does not
+              mean the payment was bad, and the tool says so rather than letting anyone imply
+              otherwise.
+            </figcaption>
+
+            <p style="font-size:.9375rem;color:var(--ink-2)">
+              One honest footnote. Creating any new token on Solana requires that token's own key to
+              sign for its creation — there is no way around it. So a throwaway key is made, used for
+              that one signature, and thrown away. It never holds funds, and once the receipt exists
+              it can do nothing at all. <strong>Your wallet is still the only thing that signs for
+              anything of value</strong>, and it is still the only thing holding your money.
+            </p>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="tools" role="dialog" aria-modal="true" aria-label="The eighteen tools Claude gets" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>The eighteen tools Claude gets</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td><code>chains</code></td><td>List every supported network.</td></tr>
+                  <tr><td><code>resolve</code></td><td>Identify what a piece of text is and which chains it belongs to.</td></tr>
+                  <tr><td><code>balance</code></td><td>Holdings for one address on one chain.</td></tr>
+                  <tr><td><code>portfolio</code></td><td>One address across many chains at once.</td></tr>
+                  <tr><td><code>transaction</code></td><td>Look up and explain a transaction.</td></tr>
+                  <tr><td><code>block</code></td><td>Fetch a block by height, hash, or latest.</td></tr>
+                  <tr><td><code>fees</code></td><td>What a transfer costs right now.</td></tr>
+                  <tr><td><code>read_contract</code></td><td>Read data out of a smart contract.</td></tr>
+                  <tr><td><code>decode</code></td><td>Turn raw transaction data into a readable function call.</td></tr>
+                  <tr><td><code>history</code></td><td>What an address has been doing, newest first.</td></tr>
+                  <tr><td><code>mint_audit</code></td><td>What a Solana mint can still do to you — who can mint more, who can freeze.</td></tr>
+                  <tr><td><code>token_identity</code></td><td>Whether a token is the one it claims to be.</td></tr>
+                  <tr><td><code>verify_burn</code></td><td>Confirm a burn from its signature, at finalized commitment.</td></tr>
+                  <tr><td><code>build_transfer</code></td><td>Prepare an <strong>unsigned</strong> payment.</td></tr>
+                  <tr><td><code>build_burn</code></td><td>Prepare an <strong>unsigned</strong> burn.</td></tr>
+                  <tr><td><code>chain_liveness</code></td><td>Whether a chain is still producing blocks, rather than merely answering.</td></tr>
+                  <tr><td><code>inspect_exit</code></td><td>Before you buy: what could stop you selling it again.</td></tr>
+                  <tr><td><code>receipt_art</code></td><td>What a payment receipt looks like, and whether an image is genuinely it.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size:.9375rem;color:var(--ink-2)">
+              Every one of them is marked read-only, and <code>build_transfer</code> returns a payload
+              plus a list of warnings that Claude is instructed to show you before you sign anything.
+              <code>history</code> on an Ethereum-style chain needs an indexer key; without one it says
+              so rather than returning an empty list that reads as "nothing ever happened here".
+            </p>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="chains" role="dialog" aria-modal="true" aria-label="32 chains, four families" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>32 chains, four families</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <p>
+              A <em>family</em> is a group of chains that work the same way underneath. Learn one member
+              and you have effectively learned the rest. You can add any chain that isn't listed here
+              yourself — see <a href="#config">Configuration</a>.
+            </p>
+
+            <div class="families">
+              <div class="family">
+                <span class="kind">evm</span>
+                <h3>Ethereum &amp; friends</h3>
+                <p>Addresses start <code>0x</code>. Hundreds of chains share this design.</p>
+                <ul>
+                  <li><span class="chip">ethereum</span></li><li><span class="chip">base</span></li>
+                  <li><span class="chip">arbitrum</span></li><li><span class="chip">optimism</span></li>
+                  <li><span class="chip">polygon</span></li><li><span class="chip">bsc</span></li>
+                  <li><span class="chip">avalanche</span></li><li><span class="chip">gnosis</span></li>
+                  <li><span class="chip">scroll</span></li><li><span class="chip">linea</span></li>
+                  <li><span class="chip">zksync</span></li><li><span class="chip">sepolia</span></li>
+                  <li><span class="chip">base-sepolia</span></li>
+                </ul>
+              </div>
+              <div class="family">
+                <span class="kind">svm</span>
+                <h3>Solana</h3>
+                <p>Addresses are base58 text with no prefix. Token holdings can be listed in full.</p>
+                <ul>
+                  <li><span class="chip">solana</span></li><li><span class="chip">solana-devnet</span></li>
+                </ul>
+              </div>
+              <div class="family">
+                <span class="kind">utxo</span>
+                <h3>Bitcoin &amp; kin</h3>
+                <p>Addresses start <code>bc1</code>, <code>1</code> or <code>3</code>. No tokens — just coins.</p>
+                <ul>
+                  <li><span class="chip">bitcoin</span></li><li><span class="chip">bitcoin-testnet</span></li>
+                  <li><span class="chip">litecoin</span></li>
+                </ul>
+              </div>
+              <div class="family">
+                <span class="kind">cosmos</span>
+                <h3>Cosmos</h3>
+                <p>Each chain has its own address prefix, which makes them self-identifying.</p>
+                <ul>
+                  <li><span class="chip">cosmoshub</span></li><li><span class="chip">osmosis</span></li>
+                  <li><span class="chip">celestia</span></li><li><span class="chip">injective</span></li>
+                  <li><span class="chip">dydx</span></li>
+                </ul>
+              </div>
+            </div>
+
+            <p>
+              You can refer to a chain by its id, a nickname, or its numeric id — <code>eth</code>,
+              <code>ethereum</code>, <code>mainnet</code> and <code>1</code> all mean the same thing.
+              Get it wrong and it suggests what you probably meant.
+            </p>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="vocab" role="dialog" aria-modal="true" aria-label="Words you'll see" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>Words you'll see</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <p>
+              Crypto has a lot of jargon. Here is the subset you actually need to use this tool — and
+              this list is also where every underlined word on this page gets its definition, so the
+              two can never drift apart.
+            </p>
+
+            <dl class="glossary">
+              <div>
+                <dt>Address</dt>
+                <dd>A public account identifier — like a bank account number. Safe to share; that is what it is for. Every chain family writes them differently.</dd>
+              </div>
+              <div>
+                <dt>Private key</dt>
+                <dd>The secret that controls an address. Never share it, never type it into anything.
+                Singularity never asks for one.</dd>
+              </div>
+              <div>
+                <dt>Transaction hash <span class="alt">txid · signature</span></dt>
+                <dd>The receipt number for something that happened on-chain. Paste one into <code>tx</code> to see what it did.</dd>
+              </div>
+              <div>
+                <dt>Native token</dt>
+                <dd>The coin a chain runs on, used to pay fees — ETH on Ethereum, SOL on Solana, BTC on Bitcoin, ATOM on Cosmos Hub.</dd>
+              </div>
+              <div>
+                <dt>Token</dt>
+                <dd>Anything else living on that chain, like USDC. Identified by a contract address, which differs on every chain — the same-named token has a different address on Ethereum and Base.</dd>
+              </div>
+              <div>
+                <dt>Base units <span class="alt">wei · satoshi · lamport</span></dt>
+                <dd>Chains store whole numbers only, so amounts are held in tiny units. 1 ETH is 10<sup>18</sup> wei; 1 BTC is 100,000,000 satoshi. Singularity shows you both, and refuses to quietly round.</dd>
+              </div>
+              <div>
+                <dt>Gas / fee <span class="alt">gwei · sat/vB</span></dt>
+                <dd>What you pay the network to process your transaction. It fluctuates with demand, which is why <code>fees</code> exists.</dd>
+              </div>
+              <div>
+                <dt>Block</dt>
+                <dd>A batch of transactions, numbered in order. Chains add one every few seconds to
+                minutes, and the newest block is the chain's "right now" — which is why the four numbers
+                at the top of this page keep moving.</dd>
+              </div>
+              <div>
+                <dt>Finality <span class="alt">confirmations · reorg</span></dt>
+                <dd>Whether something can still be undone. A brand-new block can be discarded and
+                rebuilt without it; after enough blocks on top, it cannot. Singularity always says which
+                of the two you are looking at rather than reporting both as "done".</dd>
+              </div>
+              <div>
+                <dt>Indexer</dt>
+                <dd>A separate service that keeps a searchable copy of a chain's past. Ethereum nodes
+                cannot answer "what has this address done", so history there needs one — and without a
+                key, Singularity says it has no answer instead of returning an empty list.</dd>
+              </div>
+              <div>
+                <dt>Mint <span class="alt">mint address</span></dt>
+                <dd>On Solana, the address that <em>is</em> a token's identity. A name and a ticker can
+                be copied onto any token by anyone; the mint address cannot be.</dd>
+              </div>
+              <div>
+                <dt>RPC endpoint</dt>
+                <dd>The server Singularity asks for data. Free public ones are included; they are slow and rate-limited. See <a href="#config">Configuration</a>.</dd>
+              </div>
+              <div>
+                <dt>ENS name</dt>
+                <dd>A human-readable name for an Ethereum address, like <code>vitalik.eth</code>. Use it anywhere an address is accepted.</dd>
+              </div>
+              <div>
+                <dt>Unsigned transaction</dt>
+                <dd>A prepared but unsigned instruction. Harmless on its own — it does nothing until a private key signs it, which happens in your wallet, not here.</dd>
+              </div>
+              <div>
+                <dt>Smart contract</dt>
+                <dd>A program stored on a chain. <code>read_contract</code> reads data out of one; it never writes to one.</dd>
+              </div>
+            </dl>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="config" role="dialog" aria-modal="true" aria-label="Configuration" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>Configuration</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <h3>Faster connections</h3>
+            <p>
+              The bundled public servers need no signup, which is why they're the default — but they
+              are throttled and sometimes just disappear. Providers like Alchemy and Infura give free
+              API keys with far better limits. Point Singularity at one:
+            </p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">$</span>
+                <code class="cmd">export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY</code>
+                <button class="copy" type="button" data-copy="export SINGULARITY_RPC_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY">Copy</button>
+              </div>
+              <pre><code><span class="dim"># The name is SINGULARITY_RPC_ + the chain id, uppercased, with - becoming _
+      # So base-sepolia becomes SINGULARITY_RPC_BASE_SEPOLIA
+      # Comma-separate several for automatic failover.</span></code></pre>
+            </figure>
+
+            <h3>Nicknames and custom chains</h3>
+            <p>Create <code>~/.singularity/config.json</code> to save addresses under names you'll remember, and to add chains that aren't built in:</p>
+            <figure class="term">
+              <div class="term-bar">
+                <span class="prompt">{}</span>
+                <code class="cmd">~/.singularity/config.json</code>
+                <button class="copy" type="button" data-copy='{"addressBook":{"savings":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"},"portfolioChains":["ethereum","base","solana"]}'>Copy</button>
+              </div>
+              <pre><code>{
+        <span class="acc">"addressBook"</span>: {
+          <span class="acc">"savings"</span>: <span class="dim">"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"</span>
+        },
+        <span class="acc">"portfolioChains"</span>: [<span class="dim">"ethereum"</span>, <span class="dim">"base"</span>, <span class="dim">"solana"</span>],
+        <span class="acc">"chains"</span>: [
+          {
+            <span class="acc">"id"</span>: <span class="dim">"my-rollup"</span>,
+            <span class="acc">"family"</span>: <span class="dim">"evm"</span>,
+            <span class="acc">"chainId"</span>: 123456,
+            <span class="acc">"nativeCurrency"</span>: { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+            <span class="acc">"rpc"</span>: [<span class="dim">"https://rpc.my-rollup.example"</span>]
+          }
+        ]
+      }</code></pre>
+            </figure>
+            <p>Now <code>singularity balance savings -c base</code> works, and <code>my-rollup</code> is a chain like any other.</p>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="trouble" role="dialog" aria-modal="true" aria-label="If something goes wrong" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>If something goes wrong</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <p>Errors from this tool carry a code and a hint. The hint is usually the fix.</p>
+
+            <div class="qa">
+              <details>
+                <summary>“singularity: command not found”</summary>
+                <div class="answer">
+                  <p>Step 4 of the install didn't take. Run <code>npm link</code> again inside the project folder. If that fails, you can always run it directly:</p>
+                  <figure class="term">
+                    <div class="term-bar">
+                      <span class="prompt">$</span>
+                      <code class="cmd">node dist/cli/index.js chains</code>
+                      <button class="copy" type="button" data-copy="node dist/cli/index.js chains">Copy</button>
+                    </div>
+                  </figure>
+                </div>
+              </details>
+
+              <details>
+                <summary>“RPC call failed”, or everything is very slow</summary>
+                <div class="answer">
+                  <p>A public server is rate-limiting you. Check which ones are alive with <code>singularity doctor</code>, then set your own endpoint — see <a href="#config">Configuration</a>. This is the single most common problem, and the fix is free.</p>
+                </div>
+              </details>
+
+              <details>
+                <summary>“is not a valid address on Osmosis”</summary>
+                <div class="answer">
+                  <p>Cosmos chains each use their own address prefix, but they're all the same underlying account. The tool does the conversion for you rather than just complaining:</p>
+                  <figure class="term">
+                    <div class="term-bar">
+                      <span class="prompt">$</span>
+                      <code class="cmd">singularity balance cosmos1qypqx…lzv7xu -c osmosis</code>
+                      <button class="copy" type="button" data-copy="singularity balance cosmos1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5lzv7xu -c osmosis">Copy</button>
+                    </div>
+                    <pre><code>  <span class="bad">INVALID_ADDRESS</span>  "cosmos1qypqx…lzv7xu" is not a valid address on Osmosis.
+        <span class="dim">That is a "cosmos" address. It is the same account on Osmosis, re-encoded:</span>
+        <span class="acc">osmo1qypqxpq9qcrsszg2pvxq6rs0zqg3yyc5helwsw</span></code></pre>
+                  </figure>
+                  <p>Copy the address it gives you. <code>singularity resolve</code> on any Cosmos address lists every equivalent at once.</p>
+                </div>
+              </details>
+
+              <details>
+                <summary>“Transaction was not found”</summary>
+                <div class="answer">
+                  <p>Three likely reasons. It might be on a chain outside the default search set — name it with <code>--chain</code>. It might be too new and still pending. Or, on Solana, it might simply be too old: public Solana servers delete old history, and retrieving it needs an archival endpoint.</p>
+                </div>
+              </details>
+
+              <details>
+                <summary>A token I own isn't showing up</summary>
+                <div class="answer">
+                  <p>Expected on Ethereum-style chains — see <a href="#limits">Limits</a>. Name the token explicitly by its contract address:</p>
+                  <figure class="term">
+                    <div class="term-bar">
+                      <span class="prompt">$</span>
+                      <code class="cmd">singularity balance 0xYourAddress -c base --token 0xTokenContractAddress</code>
+                      <button class="copy" type="button" data-copy="singularity balance 0xYourAddress -c base --token 0xTokenContractAddress">Copy</button>
+                    </div>
+                  </figure>
+                </div>
+              </details>
+
+              <details>
+                <summary>“Unknown chain”</summary>
+                <div class="answer">
+                  <p>Check the spelling against <code>singularity chains</code>. The error also guesses what you meant — typing <code>etherium</code> suggests <code>ethereum</code>.</p>
+                </div>
+              </details>
+            </div>
+    </div>
+  </aside>
+
+  <aside class="drawer" data-drawer="limits" role="dialog" aria-modal="true" aria-label="What it deliberately won't do" inert aria-hidden="true">
+    <div class="drawer-head">
+      <span class="crumb">Reference</span>
+      <h2>What it deliberately won't do</h2>
+      <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="drawer-body">
+            <p>
+              These are real boundaries, not bugs. They're listed here, and in the tool's own output,
+              because a confident wrong answer is worse than a clear “I can't”.
+            </p>
+            <ul>
+              <li><strong>Ethereum token lists aren't complete.</strong> Listing every token an address holds requires a paid indexing service. Without one, the tool checks a curated set of major tokens and says so. Solana and Cosmos <em>can</em> list everything, and do.</li>
+              <li><strong>No prices.</strong> It reports quantities, not dollar values.</li>
+              <li><strong>IBC tokens show as hashes.</strong> On Cosmos, a transferred token appears as <code>ibc/3EF74C…</code>. Identifying it needs a per-token lookup, so it shows the hash rather than guessing.</li>
+              <li><strong>Cosmos fees are an estimate.</strong> Gas prices there are set by individual validators, not the chain. Your wallet will usually re-quote.</li>
+              <li><strong>No CosmWasm contract queries.</strong> Contract reads cover Ethereum-style chains and Solana.</li>
+              <li><strong>It cannot send anything.</strong> By design, permanently.</li>
+            </ul>
+    </div>
+  </aside>
+
+<aside class="dock" id="dock" hidden aria-label="The live console">
+  <div class="dock-head">
+    <span class="live-dot" data-state="ok" aria-hidden="true"></span>
+    <span class="dt">Console</span>
+    <span class="dn">reads 32 chains &middot; holds no keys</span>
+    <span class="tail">
+      <button class="ghost-btn" type="button" id="dock-tall" aria-pressed="false" title="Make the console taller">Taller</button>
+      <button class="ghost-btn" type="button" id="dock-shut">Close <kbd>Esc</kbd></button>
+    </span>
+  </div>
+  <div class="dock-body" id="dock-body"></div>
+</aside>
 
 <script>
+
 
 /* =======================================================================
    The playable terminal.
@@ -2935,102 +3977,10 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
 
   banner();
 })();
-  (function () {
-    "use strict";
-
-    /* -------------------------------------------------- theme toggle */
-    var root = document.documentElement;
-    var toggle = document.getElementById("theme-toggle");
-
-    function systemPrefersDark() {
-      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    }
-    function currentlyDark() {
-      var set = root.getAttribute("data-theme");
-      if (set === "dark") return true;
-      if (set === "light") return false;
-      return systemPrefersDark();
-    }
-    function syncLabel() {
-      // The button offers the theme you'd switch TO, which is what people expect.
-      toggle.textContent = currentlyDark() ? "Light" : "Dark";
-    }
-
-    try {
-      var saved = localStorage.getItem("sa-theme");
-      if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
-    } catch (e) { /* private browsing — fall back to the system theme */ }
-
-    syncLabel();
-
-    toggle.addEventListener("click", function () {
-      var next = currentlyDark() ? "light" : "dark";
-      root.setAttribute("data-theme", next);
-      try { localStorage.setItem("sa-theme", next); } catch (e) { /* not fatal */ }
-      syncLabel();
-    });
-
-    /* -------------------------------------------------- copy buttons */
-    // Scoped to buttons that actually carry something to copy: the demo
-    // terminal's Reset button shares the class for its chrome, and was being
-    // relabelled "Copied" every time somebody cleared the screen.
-    document.querySelectorAll(".copy[data-copy]").forEach(function (button) {
-      button.addEventListener("click", function () {
-        var text = button.getAttribute("data-copy") || "";
-
-        function done(okay) {
-          button.textContent = okay ? "Copied" : "Press Ctrl+C";
-          button.setAttribute("data-done", okay ? "1" : "0");
-          setTimeout(function () {
-            button.textContent = "Copy";
-            button.removeAttribute("data-done");
-          }, 1600);
-        }
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
-        } else {
-          done(false);
-        }
-      });
-    });
-
-    /* ------------------------------------------- nav section tracking */
-    var links = Array.prototype.slice.call(document.querySelectorAll(".sidenav a"));
-    var sections = links
-      .map(function (link) { return document.querySelector(link.getAttribute("href")); })
-      .filter(Boolean);
-
-    if ("IntersectionObserver" in window && sections.length) {
-      var visible = Object.create(null);
-
-      var observer = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (entry.isIntersecting) visible[entry.target.id] = true;
-          else delete visible[entry.target.id];
-        });
-
-        // Highlight the topmost section currently on screen.
-        var active = null;
-        for (var i = 0; i < sections.length; i++) {
-          if (visible[sections[i].id]) { active = sections[i].id; break; }
-        }
-
-        links.forEach(function (link) {
-          if (active && link.getAttribute("href") === "#" + active) {
-            link.setAttribute("aria-current", "true");
-          } else {
-            link.removeAttribute("aria-current");
-          }
-        });
-      }, { rootMargin: "-88px 0px -55% 0px", threshold: 0 });
-
-      sections.forEach(function (section) { observer.observe(section); });
-    }
-  })();
 </script>
 
 <script>
+
 
 /* =========================================================================
    THE LIVE LAYER
@@ -3685,101 +4635,9 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       "Nothing asked yet. Paste something, or tap an example — the answer comes from the chain, not from this page."));
   });
 
-  /* ==================================================================
-     3. Route picker — three jobs, and permission to skip the other two.
-     ================================================================== */
-  safely("routes", function routes() {
-    var buttons = Array.prototype.slice.call(document.querySelectorAll(".route"));
-    var plan = document.getElementById("route-plan");
-    var navLinks = Array.prototype.slice.call(document.querySelectorAll(".sidenav a"));
-    if (!buttons.length || !plan) return;
-
-    var ROUTES = {
-      look: {
-        title: "Looking things up yourself",
-        steps: [
-          ["#install", "Install it — five steps, about four minutes"],
-          ["#first", "Run one real command and understand each part of it"],
-          ["#try", "Practise in the terminal on this page, no install needed"],
-          ["#words", "Keep the vocabulary list open while you do"]
-        ]
-      },
-      ask: {
-        title: "Asking in English through Claude",
-        steps: [
-          ["#claude", "Point Claude at the hosted endpoint — nothing to install"],
-          ["#do", "Steal one of the eight worked questions"],
-          ["#limits", "Know what it will refuse before you ask for it"]
-        ]
-      },
-      build: {
-        title: "Building on it",
-        steps: [
-          ["#sdk", "The SDK: same answers, typed, in your own code"],
-          ["#pay", "Payments and receipts you can verify rather than trust"],
-          ["#chains", "What each chain family can and cannot tell you"],
-          ["#config", "Your own RPC endpoints, before you hit rate limits"],
-          ["#limits", "The refusals, which are on purpose"]
-        ]
-      }
-    };
-
-    function apply(key) {
-      var route = ROUTES[key];
-
-      buttons.forEach(function (button) {
-        button.setAttribute("aria-pressed", String(button.getAttribute("data-route") === key));
-      });
-
-      if (!route) {
-        plan.hidden = true;
-        navLinks.forEach(function (link) { link.removeAttribute("data-route"); });
-        try { localStorage.removeItem("sa-route"); } catch (e) { /* fine */ }
-        return;
-      }
-
-      var keep = {};
-      route.steps.forEach(function (step) { keep[step[0]] = true; });
-      keep["#start"] = true;
-
-      navLinks.forEach(function (link) {
-        link.setAttribute("data-route", keep[link.getAttribute("href")] ? "on" : "off");
-      });
-
-      plan.textContent = "";
-      plan.appendChild(el("strong", null, route.title));
-
-      var list = el("ol");
-      route.steps.forEach(function (step) {
-        var li = el("li");
-        var link = el("a", null, step[1]);
-        link.href = step[0];
-        li.appendChild(link);
-        list.appendChild(li);
-      });
-      plan.appendChild(list);
-
-      var drop = el("button", "drop", "Show me everything instead");
-      drop.type = "button";
-      drop.addEventListener("click", function () { apply(null); });
-      plan.appendChild(drop);
-
-      plan.hidden = false;
-      try { localStorage.setItem("sa-route", key); } catch (e) { /* fine */ }
-    }
-
-    buttons.forEach(function (button) {
-      button.addEventListener("click", function () {
-        var key = button.getAttribute("data-route");
-        apply(button.getAttribute("aria-pressed") === "true" ? null : key);
-      });
-    });
-
-    try {
-      var saved = localStorage.getItem("sa-route");
-      if (saved && ROUTES[saved]) apply(saved);
-    } catch (e) { /* private browsing — no route remembered, no harm */ }
-  });
+  /* 3. The route picker used to live here. It belongs to the deck now — a
+        route is which panels Next walks through, which is a fact about
+        navigation and not about live data. See SADeck in the deck engine. */
 
   /* ==================================================================
      4. Install progress. Five steps is short enough to finish and long
@@ -3823,7 +4681,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       if (!body) return;
 
       var key = "step" + index;
-      var label = el("label", "tick");
+      var label = el("label", "step-tick");
       var box = document.createElement("input");
       box.type = "checkbox";
       box.checked = saved[key] === true;
@@ -3922,18 +4780,21 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       button.setAttribute("aria-expanded", "true");
       button.setAttribute("aria-describedby", pop.id);
 
+      // Positioned against the viewport, because the document does not
+      // scroll here — panels and drawers scroll inside themselves, and a
+      // definition placed by page coordinates would sit somewhere else
+      // entirely by the second panel.
       var box = button.getBoundingClientRect();
       var width = pop.offsetWidth;
-      var left = Math.min(
-        Math.max(12, box.left + window.scrollX),
-        window.scrollX + document.documentElement.clientWidth - width - 12
-      );
-      pop.style.left = left + "px";
+      pop.style.left = Math.min(
+        Math.max(12, box.left),
+        document.documentElement.clientWidth - width - 12
+      ) + "px";
 
       // Above the word when there is room, below when there is not, so the
       // definition never covers the sentence it is explaining.
       var above = box.top > pop.offsetHeight + 16;
-      pop.style.top = (above ? box.top + window.scrollY - pop.offsetHeight - 8 : box.bottom + window.scrollY + 8) + "px";
+      pop.style.top = (above ? box.top - pop.offsetHeight - 8 : box.bottom + 8) + "px";
     }
 
     Array.prototype.forEach.call(buttons, function (button) {
@@ -3959,7 +4820,9 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape") hide();
     });
-    window.addEventListener("scroll", hide, { passive: true });
+    // Capture, so a panel or drawer scrolling underneath counts too — those
+    // scrolls never reach window.
+    document.addEventListener("scroll", hide, { passive: true, capture: true });
   });
 })();
 
@@ -4476,6 +5339,708 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       }
     }, true);
   }
+})();
+</script>
+
+<script>
+
+/* =========================================================================
+   PAGE CHROME
+
+   The theme, the copy buttons, and the cross-fade between them. The old
+   scroll-spy that lit up a sidebar entry is gone: in a deck the rail already
+   knows exactly which panel is on screen, so there is nothing to infer.
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  var root = document.documentElement;
+  var toggle = document.getElementById("theme-toggle");
+
+  function systemPrefersDark() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function currentlyDark() {
+    var set = root.getAttribute("data-theme");
+    if (set === "dark") return true;
+    if (set === "light") return false;
+    return systemPrefersDark();
+  }
+
+  function syncLabel() {
+    // The button offers the theme you would switch TO, which is what people
+    // reach for it expecting.
+    if (toggle) toggle.textContent = currentlyDark() ? "Light" : "Dark";
+  }
+
+  try {
+    var saved = localStorage.getItem("sa-theme");
+    if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+  } catch (e) { /* private browsing — fall back to the system theme */ }
+
+  syncLabel();
+
+  if (toggle) {
+    toggle.addEventListener("click", function () {
+      var next = currentlyDark() ? "light" : "dark";
+
+      function apply() {
+        root.setAttribute("data-theme", next);
+        try { localStorage.setItem("sa-theme", next); } catch (e) { /* not fatal */ }
+        syncLabel();
+      }
+
+      // A whole page of panels repainting at once is a hard cut. Where the
+      // browser can cross-fade it for free, let it; everywhere else the swap
+      // is instant, which is what it always was.
+      var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!still && document.startViewTransition) document.startViewTransition(apply);
+      else apply();
+    });
+  }
+
+  /* ---------------------------------------------------- copy buttons */
+  // Scoped to buttons that actually carry something to copy: the console's
+  // Reset button shares the class for its chrome, and was being relabelled
+  // "Copied" every time somebody cleared the screen.
+  document.querySelectorAll(".copy[data-copy]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var text = button.getAttribute("data-copy") || "";
+
+      function done(okay) {
+        button.textContent = okay ? "Copied" : "Press Ctrl+C";
+        button.setAttribute("data-done", okay ? "1" : "0");
+        setTimeout(function () {
+          button.textContent = "Copy";
+          button.removeAttribute("data-done");
+        }, 1600);
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+      } else {
+        done(false);
+      }
+    });
+  });
+})();
+</script>
+
+<script>
+
+/* =========================================================================
+   THE DECK ENGINE
+
+   Three things move: the track (eight panels, one screen each), the drawers
+   (reference material, sliding in from the right and stackable), and the
+   dock (the live console, sliding up from the floor).
+
+   What holds it together is that none of them is the source of truth. The
+   URL is. `#/install` is a panel, `#/learn/chains` is a drawer over a panel,
+   and every navigation — button, key, swipe, link, back button — goes
+   through the same one function that sets the hash. Everything else is a
+   render of whatever the hash currently says.
+
+   That is why back and forward work, why a link into the middle of the site
+   works, and why a refresh lands where you were. It is also why the motion
+   can be deleted entirely under prefers-reduced-motion without breaking
+   anything: the animation is a consequence of the state changing, never the
+   mechanism by which it changes.
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  var root = document.documentElement;
+  var body = document.body;
+  var track = document.getElementById("track");
+  var ticksHost = document.getElementById("ticks");
+  var marker = document.getElementById("marker");
+  var meter = document.getElementById("meter");
+  var prevBtn = document.getElementById("go-prev");
+  var nextBtn = document.getElementById("go-next");
+  var whereEl = document.getElementById("where");
+  var scrim = document.getElementById("scrim");
+  if (!track || !ticksHost) return;
+
+  var scenes = Array.prototype.slice.call(track.querySelectorAll(".scene"));
+  var names = scenes.map(function (scene) { return scene.getAttribute("data-name"); });
+  var titles = scenes.map(function (scene) { return scene.getAttribute("data-title") || scene.getAttribute("data-name"); });
+
+  function still() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  /* ------------------------------------------------------------- routing */
+
+  var active = 0;
+  var openDrawers = [];
+  var seen = Object.create(null);
+
+  try {
+    var remembered = JSON.parse(localStorage.getItem("sa-seen") || "{}");
+    if (remembered && typeof remembered === "object") seen = remembered;
+  } catch (e) { /* private browsing; nothing is remembered and nothing breaks */ }
+
+  /** "#/install" or "#/learn/chains" -> { scene: index, drawer: id|null } */
+  function readHash() {
+    var raw = window.location.hash.replace(/^#\/?/, "");
+    var parts = raw.split("/").filter(Boolean);
+    var index = names.indexOf(parts[0]);
+
+    // An unknown or absent panel is the first one rather than an error page:
+    // a stale link should still land somewhere useful.
+    return { scene: index === -1 ? 0 : index, drawer: index === -1 ? null : parts[1] || null };
+  }
+
+  /**
+   * The single entry point. Everything that navigates calls this, and the
+   * hashchange handler is what actually renders — so a route taken by a
+   * button and the same route taken by the back button are the same code.
+   */
+  function go(sceneName, drawerId, replace) {
+    var hash = "#/" + sceneName + (drawerId ? "/" + drawerId : "");
+    if (window.location.hash === hash) { render(); return; }
+    if (replace) window.location.replace(hash);
+    else window.location.hash = hash;
+  }
+
+  /* -------------------------------------------------------- the ticks */
+
+  var tickButtons = scenes.map(function (scene, i) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "tick";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", "false");
+    button.setAttribute("aria-controls", scene.id);
+    button.id = "tick-" + names[i];
+
+    var dot = document.createElement("span");
+    dot.className = "dot";
+    button.appendChild(dot);
+    button.appendChild(document.createTextNode(titles[i]));
+
+    button.addEventListener("click", function () { go(names[i]); });
+    ticksHost.appendChild(button);
+    return button;
+  });
+
+  /** Slide the indicator onto the active tick and keep it in view. */
+  function placeMarker() {
+    var button = tickButtons[active];
+    if (!button || !marker) return;
+    marker.style.width = button.offsetWidth + "px";
+    marker.style.transform = "translateX(" + button.offsetLeft + "px)";
+
+    var left = button.offsetLeft;
+    var right = left + button.offsetWidth;
+    var view = ticksHost.scrollLeft;
+    var edge = view + ticksHost.clientWidth;
+    if (left < view + 8) ticksHost.scrollLeft = Math.max(0, left - 24);
+    else if (right > edge - 8) ticksHost.scrollLeft = right - ticksHost.clientWidth + 24;
+  }
+
+  /* ------------------------------------------------------------ the deck */
+
+  function render() {
+    var want = readHash();
+    var moved = want.scene !== active;
+    active = want.scene;
+
+    track.style.transform = "translate3d(" + (-active * 100) + "%, 0, 0)";
+
+    scenes.forEach(function (scene, i) {
+      var offset = i - active;
+      var here = offset === 0;
+      var inner = scene.querySelector(".scene-in");
+
+      if (here) scene.setAttribute("data-active", "");
+      else scene.removeAttribute("data-active");
+
+      // Only the panel on screen may be reached by tab or read aloud.
+      if (here) {
+        scene.removeAttribute("inert");
+        scene.removeAttribute("aria-hidden");
+      } else {
+        scene.setAttribute("inert", "");
+        scene.setAttribute("aria-hidden", "true");
+      }
+
+      if (inner) {
+        // Depth, from two numbers: the panel you are arriving at grows and
+        // brightens while the one you are leaving falls back behind it.
+        inner.style.transform = here ? "none" : "translateX(" + (offset * 13) + "%) scale(.93)";
+        inner.style.opacity = here ? "1" : ".45";
+      }
+
+      tickButtons[i].setAttribute("aria-selected", String(here));
+      tickButtons[i].setAttribute("tabindex", here ? "0" : "-1");
+    });
+
+    seen[names[active]] = true;
+    try { localStorage.setItem("sa-seen", JSON.stringify(seen)); } catch (e) { /* fine */ }
+    tickButtons.forEach(function (button, i) {
+      button.setAttribute("data-seen", seen[names[i]] ? "1" : "0");
+    });
+
+    placeMarker();
+
+    if (meter) meter.style.width = ((active + 1) / scenes.length) * 100 + "%";
+
+    if (whereEl) {
+      whereEl.querySelector(".n").textContent = (active + 1) + "/" + scenes.length;
+      whereEl.querySelector(".t").textContent = titles[active];
+      // Restarting the animation needs the attribute to actually change.
+      whereEl.removeAttribute("data-swap");
+      void whereEl.offsetWidth;
+      whereEl.setAttribute("data-swap", "");
+    }
+
+    updateStepButtons();
+
+    if (moved) {
+      // A new panel starts at its own top; returning to one you have read
+      // keeps its place, which is why this only runs on a real move.
+      var scene = scenes[active];
+      scene.scrollTop = 0;
+    }
+
+    syncDrawers(want.drawer);
+  }
+
+  function nextIndex() {
+    for (var i = active + 1; i < scenes.length; i += 1) if (inRoute(i)) return i;
+    return -1;
+  }
+  function prevIndex() {
+    for (var i = active - 1; i >= 0; i -= 1) if (inRoute(i)) return i;
+    return -1;
+  }
+
+  function updateStepButtons() {
+    var nxt = nextIndex();
+    var prv = prevIndex();
+
+    if (prevBtn) prevBtn.disabled = prv === -1;
+    if (nextBtn) {
+      nextBtn.disabled = nxt === -1;
+      var label = nextBtn.querySelector(".lbl");
+      if (label) label.textContent = nxt === -1 ? "That is all of it" : titles[nxt];
+      nextBtn.setAttribute("aria-label", nxt === -1 ? "You are on the last panel" : "Next: " + titles[nxt]);
+    }
+  }
+
+  if (prevBtn) prevBtn.addEventListener("click", function () {
+    var i = prevIndex();
+    if (i !== -1) go(names[i]);
+  });
+  if (nextBtn) nextBtn.addEventListener("click", function () {
+    var i = nextIndex();
+    if (i !== -1) go(names[i]);
+  });
+
+  /* ----------------------------------------------------------- drawers */
+
+  var drawers = Array.prototype.slice.call(document.querySelectorAll(".drawer"));
+  var returnFocus = null;
+
+  function syncDrawers(wanted) {
+    var opening = [];
+
+    drawers.forEach(function (drawer) {
+      var mine = drawer.getAttribute("data-drawer");
+      var on = mine === wanted;
+      if (on) opening.push(drawer);
+
+      if (on) {
+        drawer.setAttribute("data-open", "");
+        drawer.removeAttribute("inert");
+        drawer.removeAttribute("aria-hidden");
+      } else {
+        drawer.removeAttribute("data-open");
+        drawer.removeAttribute("data-behind");
+        drawer.setAttribute("inert", "");
+        drawer.setAttribute("aria-hidden", "true");
+      }
+    });
+
+    openDrawers = opening;
+    var any = opening.length > 0;
+
+    if (scrim) {
+      if (any) scrim.setAttribute("data-on", "");
+      else scrim.removeAttribute("data-on");
+    }
+    if (any) body.setAttribute("data-over", "");
+    else if (!dockOpen()) body.removeAttribute("data-over");
+
+    if (any) {
+      var drawer = opening[0];
+      var focusable = drawer.querySelector(".drawer-body a, .drawer-body button, .shut");
+      if (focusable && document.activeElement !== focusable) {
+        window.setTimeout(function () { focusable.focus(); }, still() ? 0 : 260);
+      }
+      drawer.querySelector(".drawer-body").scrollTop = 0;
+    } else if (returnFocus && document.contains(returnFocus)) {
+      returnFocus.focus();
+      returnFocus = null;
+    }
+  }
+
+  document.addEventListener("click", function (event) {
+    var opener = event.target.closest && event.target.closest("[data-opens]");
+    if (opener) {
+      returnFocus = opener;
+      go(names[active], opener.getAttribute("data-opens"));
+      return;
+    }
+
+    var shut = event.target.closest && event.target.closest("[data-shut]");
+    if (shut) {
+      go(names[active]);
+      return;
+    }
+
+    // An in-page link to another panel moves the deck instead of scrolling.
+    var jump = event.target.closest && event.target.closest("[data-goto]");
+    if (jump) {
+      event.preventDefault();
+      var target = jump.getAttribute("data-goto").split("/");
+      go(target[0], target[1] || null);
+    }
+  });
+
+  if (scrim) scrim.addEventListener("click", function () { go(names[active]); });
+
+  /* -------------------------------------------------------------- dock */
+
+  var dock = document.getElementById("dock");
+  var dockBody = document.getElementById("dock-body");
+  var dockSlot = document.getElementById("console-slot");
+  var consoleWrap = document.getElementById("console-wrap");
+  var dockToggle = document.getElementById("dock-toggle");
+  var dockTall = document.getElementById("dock-tall");
+  var dockShut = document.getElementById("dock-shut");
+
+  function dockOpen() { return dock && dock.hasAttribute("data-open"); }
+
+  /**
+   * Move the console between the panel and the dock, animated.
+   *
+   * There is one console, with one history, because two would be two
+   * different sessions wearing the same name. So it is genuinely moved —
+   * the same DOM node, keeping its listeners, its scrollback and whatever
+   * you had half-typed — and the jump between the two positions is covered
+   * by measuring before and after and playing the difference backwards.
+   */
+  function flip(node, move) {
+    if (!node || still()) { move(); return; }
+
+    var from = node.getBoundingClientRect();
+    move();
+    var to = node.getBoundingClientRect();
+
+    var dx = from.left - to.left;
+    var dy = from.top - to.top;
+    var sx = from.width / Math.max(1, to.width);
+    var sy = from.height / Math.max(1, to.height);
+
+    if (!dx && !dy && sx === 1 && sy === 1) return;
+
+    node.style.transformOrigin = "top left";
+    node.style.transition = "none";
+    node.style.transform = "translate(" + dx + "px, " + dy + "px) scale(" + sx + ", " + sy + ")";
+
+    requestAnimationFrame(function () {
+      node.style.transition = "transform 460ms cubic-bezier(.22, 1, .30, 1)";
+      node.style.transform = "none";
+
+      window.setTimeout(function () {
+        node.style.transition = "";
+        node.style.transform = "";
+        node.style.transformOrigin = "";
+      }, 500);
+    });
+  }
+
+  function setDock(open) {
+    if (!dock || !consoleWrap) return;
+
+    if (open) {
+      dock.removeAttribute("hidden");
+      // The dock has to be laid out before the console is measured into it.
+      void dock.offsetWidth;
+      dock.setAttribute("data-open", "");
+      flip(consoleWrap, function () { dockBody.appendChild(consoleWrap); });
+      if (dockSlot) dockSlot.setAttribute("data-empty", "");
+      body.setAttribute("data-over", "");
+    } else {
+      dock.removeAttribute("data-open");
+      if (dockSlot) dockSlot.removeAttribute("data-empty");
+      flip(consoleWrap, function () { dockSlot.appendChild(consoleWrap); });
+      if (!openDrawers.length) body.removeAttribute("data-over");
+      window.setTimeout(function () {
+        if (!dockOpen()) dock.setAttribute("hidden", "");
+      }, still() ? 0 : 460);
+    }
+
+    if (dockToggle) {
+      dockToggle.setAttribute("aria-pressed", String(open));
+      var label = dockToggle.querySelector(".lbl");
+      if (label) label.textContent = open ? "Close console" : "Console";
+    }
+    try { localStorage.setItem("sa-dock", open ? "1" : "0"); } catch (e) { /* fine */ }
+  }
+
+  if (dockToggle) {
+    dockToggle.addEventListener("click", function () { setDock(!dockOpen()); });
+  }
+  if (dockShut) dockShut.addEventListener("click", function () { setDock(false); });
+  if (dockTall) {
+    dockTall.addEventListener("click", function () {
+      var tall = dock.hasAttribute("data-tall");
+      if (tall) dock.removeAttribute("data-tall");
+      else dock.setAttribute("data-tall", "");
+      dockTall.setAttribute("aria-pressed", String(!tall));
+      dockTall.title = tall ? "Make the console taller" : "Make the console shorter";
+    });
+  }
+
+  // "Open it in the dock" from inside the console panel.
+  document.addEventListener("click", function (event) {
+    if (event.target.closest && event.target.closest("[data-dock]")) setDock(true);
+  });
+
+  /* ---------------------------------------------------------- keyboard */
+
+  document.addEventListener("keydown", function (event) {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+
+    var node = event.target;
+    var typing = node && (node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable);
+
+    if (event.key === "Escape") {
+      if (openDrawers.length) { go(names[active]); return; }
+      if (dockOpen()) { setDock(false); return; }
+      return;
+    }
+
+    // The backtick opens the console from anywhere, the way a console does.
+    if (!typing && (event.key === "`" || event.key === "~")) {
+      event.preventDefault();
+      setDock(!dockOpen());
+      return;
+    }
+
+    if (typing || openDrawers.length) return;
+
+    if (event.key === "ArrowRight") {
+      var nxt = nextIndex();
+      if (nxt !== -1) { event.preventDefault(); go(names[nxt]); }
+    } else if (event.key === "ArrowLeft") {
+      var prv = prevIndex();
+      if (prv !== -1) { event.preventDefault(); go(names[prv]); }
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      go(names[0]);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      go(names[scenes.length - 1]);
+    }
+  });
+
+  /* ------------------------------------------------------------- swipe */
+
+  // Only a deliberate, mostly-horizontal drag counts. Anything ambiguous is
+  // left to the panel, which is scrolling vertically and has the better
+  // claim on the gesture.
+  (function swipe() {
+    var x0 = 0, y0 = 0, t0 = 0, tracking = false;
+
+    track.addEventListener("touchstart", function (event) {
+      if (event.touches.length !== 1 || openDrawers.length) return;
+      x0 = event.touches[0].clientX;
+      y0 = event.touches[0].clientY;
+      t0 = Date.now();
+      tracking = true;
+    }, { passive: true });
+
+    track.addEventListener("touchend", function (event) {
+      if (!tracking) return;
+      tracking = false;
+
+      var touch = event.changedTouches[0];
+      var dx = touch.clientX - x0;
+      var dy = touch.clientY - y0;
+      var ms = Date.now() - t0;
+
+      if (ms > 700) return;
+      if (Math.abs(dx) < 60) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.7) return;
+
+      var i = dx < 0 ? nextIndex() : prevIndex();
+      if (i !== -1) go(names[i]);
+    }, { passive: true });
+  })();
+
+  /* ------------------------------------------------------------- routes */
+
+  // A route is a subset of the panels. Choosing one does not hide anything —
+  // every tick stays clickable — it changes what Next means, so the three
+  // jobs this tool does stop being one long queue.
+  var ROUTES = {
+    look:  ["open", "identify", "idea", "console", "install", "learn"],
+    ask:   ["open", "identify", "idea", "ask", "learn"],
+    build: ["open", "identify", "console", "build", "install", "learn"]
+  };
+  var route = null;
+
+  function inRoute(i) {
+    if (!route) return true;
+    return ROUTES[route].indexOf(names[i]) !== -1;
+  }
+
+  var routeButtons = Array.prototype.slice.call(document.querySelectorAll(".route"));
+  var routePlan = document.getElementById("route-plan");
+
+  function applyRoute(key, quiet) {
+    route = ROUTES[key] ? key : null;
+
+    routeButtons.forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.getAttribute("data-route") === route));
+    });
+    tickButtons.forEach(function (button, i) {
+      button.setAttribute("data-route", inRoute(i) ? "on" : "off");
+    });
+
+    if (routePlan) {
+      if (!route) {
+        routePlan.hidden = true;
+      } else {
+        routePlan.textContent = "";
+        var strong = document.createElement("strong");
+        strong.textContent = "Your route — " + ROUTES[route].length + " panels, and Next will follow it";
+        routePlan.appendChild(strong);
+
+        var list = document.createElement("ol");
+        ROUTES[route].forEach(function (name) {
+          var li = document.createElement("li");
+          var jump = document.createElement("button");
+          jump.type = "button";
+          jump.className = "jump";
+          jump.setAttribute("data-goto", name);
+          jump.textContent = titles[names.indexOf(name)];
+          li.appendChild(jump);
+          list.appendChild(li);
+        });
+        routePlan.appendChild(list);
+
+        var drop = document.createElement("button");
+        drop.type = "button";
+        drop.className = "drop";
+        drop.textContent = "Show me everything instead";
+        drop.addEventListener("click", function () { applyRoute(null); });
+        routePlan.appendChild(drop);
+        routePlan.hidden = false;
+      }
+    }
+
+    updateStepButtons();
+    try {
+      if (route) localStorage.setItem("sa-route", route);
+      else localStorage.removeItem("sa-route");
+    } catch (e) { /* fine */ }
+
+    if (!quiet && route) {
+      var first = ROUTES[route].indexOf(names[active]) === -1 ? ROUTES[route][1] || ROUTES[route][0] : null;
+      if (first) go(first);
+    }
+  }
+
+  routeButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      var key = button.getAttribute("data-route");
+      applyRoute(button.getAttribute("aria-pressed") === "true" ? null : key);
+    });
+  });
+
+  /* ------------------------------------------------------------- hints */
+
+  (function hints() {
+    var strip = document.getElementById("hints");
+    if (!strip) return;
+
+    var shown = null;
+    try { shown = localStorage.getItem("sa-hints"); } catch (e) { /* fine */ }
+    if (shown === "0") { strip.hidden = true; return; }
+
+    var dismiss = strip.querySelector(".dismiss");
+    if (dismiss) {
+      dismiss.addEventListener("click", function () {
+        strip.hidden = true;
+        try { localStorage.setItem("sa-hints", "0"); } catch (e) { /* fine */ }
+      });
+    }
+  })();
+
+  /* ------------------------------------------------------------ tallies */
+
+  // The three numbers on the opening panel count up once, when it is first
+  // shown. Decoration, so it is skipped entirely under reduced motion and
+  // the final value is simply present from the start.
+  (function tallies() {
+    var cells = Array.prototype.slice.call(document.querySelectorAll(".tally .v[data-to]"));
+    if (!cells.length) return;
+
+    if (still()) {
+      cells.forEach(function (cell) { cell.textContent = cell.getAttribute("data-to"); });
+      return;
+    }
+
+    cells.forEach(function (cell) {
+      var to = parseInt(cell.getAttribute("data-to"), 10);
+      var started = Date.now();
+      var span = 900;
+
+      (function step() {
+        var progress = Math.min(1, (Date.now() - started) / span);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        cell.textContent = String(Math.round(to * eased));
+        if (progress < 1) requestAnimationFrame(step);
+        else cell.textContent = cell.getAttribute("data-to");
+      })();
+    });
+  })();
+
+  /* ------------------------------------------------------------- start */
+
+  window.addEventListener("hashchange", render);
+  window.addEventListener("resize", placeMarker);
+
+  try {
+    var savedRoute = localStorage.getItem("sa-route");
+    if (savedRoute && ROUTES[savedRoute]) applyRoute(savedRoute, true);
+  } catch (e) { /* fine */ }
+
+  if (!window.location.hash) go(names[0], null, true);
+  render();
+
+  // Fonts land after first paint and change every tick's width, so the
+  // indicator is placed again once they have.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeMarker);
+  window.setTimeout(placeMarker, 400);
+
+  root.setAttribute("data-deck", "ready");
+
+  /* The rest of the page needs to move the deck too — the probe's next-step
+     buttons, an answer that suggests installing. One door, not several. */
+  window.SADeck = {
+    go: go,
+    open: function (drawer) { go(names[active], drawer); },
+    dock: setDock,
+    panel: function () { return names[active]; }
+  };
 })();
 </script>
 
