@@ -46,6 +46,7 @@ import {
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { checkImpersonation } from '../core/impersonation.js';
 import { finality } from '../core/finality.js';
+import { judgeDelivery, type SimulationOutcome } from '../core/simulation.js';
 import type {
   MintRisk,
   PaymentClaim,
@@ -2766,4 +2767,116 @@ export async function inspectPaymentDemand(
     ...(facts.risk ? { risk: facts.risk } : {}),
     note: demandNote(findings, verdict),
   } satisfies PaymentDemandReport;
+}
+
+/**
+ * Execute an unsigned transaction against the chain as it is now, and measure
+ * what the recipient actually receives.
+ *
+ * The reading half of `core/simulation.ts`. Two balances are taken — the
+ * destination before, and the destination as simulation leaves it — and the
+ * difference is what this payment delivers. Nothing about the mint is
+ * consulted to decide that: a transfer fee, a hook that skims, an extension
+ * nobody has heard of yet all show up the same way, as a subtraction that does
+ * not come out to the amount demanded.
+ *
+ * A destination that does not exist yet reads as zero before and is created
+ * during, which is the ordinary first-payment case and needs no special path.
+ *
+ * `sigVerify` is off and no signer is supplied. Nothing here signs; the
+ * transaction is executed against a simulated bank and discarded.
+ */
+export async function simulateUnsigned(
+  chain: ChainSpec,
+  params: {
+    /** Base64 wire-format transaction, as `build_transfer` and `buildPayment` return. */
+    transaction: string;
+    /** The account whose balance change is the delivery. */
+    destination: string;
+    /** Mint, for a token transfer. Omit for the native asset. */
+    mint?: string;
+    /** What the payment claims it delivers, as a human decimal string. */
+    expected?: string;
+  },
+): Promise<SimulationOutcome> {
+  const destination = requirePubkey(params.destination, 'destination');
+
+  return withConnection(chain, 'simulateUnsigned', async (connection) => {
+    const decimals = params.mint
+      ? (await readMintFacts(connection, requirePubkey(params.mint, 'mint'), chain)).decimals
+      : chain.nativeCurrency.decimals;
+
+    // This tool's own name for the mint where it has one, so a shortfall reads
+    // as "short by 0.05 USDC" rather than by an abbreviated address.
+    const symbol = params.mint
+      ? (knownTokens(chain.id).find((known) => known.address === params.mint)?.symbol ??
+        shortAddress(params.mint, 4, 4))
+      : chain.nativeCurrency.symbol;
+
+    /** A token account's amount, or its lamports. Absent account reads as zero. */
+    const readBalance = (info: { data: Buffer; lamports: number } | null): bigint => {
+      if (!info) return 0n;
+      if (!params.mint) return BigInt(info.lamports);
+      if (info.data.length < TOKEN_ACCOUNT_AMOUNT_OFFSET + 8) return 0n;
+      return info.data.readBigUInt64LE(TOKEN_ACCOUNT_AMOUNT_OFFSET);
+    };
+
+    const before = await connection.getAccountInfo(destination).catch(() => null);
+    const pre = readBalance(before ? { data: Buffer.from(before.data), lamports: before.lamports } : null);
+
+    const transaction = Transaction.from(Buffer.from(params.transaction, 'base64'));
+
+    // The blockhash inside a built transaction expires in about a minute, and a
+    // simulation refused for staleness would be indistinguishable from one that
+    // failed on its merits.
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+
+    const simulated = await connection.simulateTransaction(transaction, undefined, [destination]);
+    const value = simulated.value;
+
+    const expected = params.expected
+      ? amount(parseUnits(params.expected, decimals), decimals, symbol)
+      : undefined;
+
+    if (value.err) {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: false,
+        error: typeof value.err === 'string' ? value.err : JSON.stringify(value.err),
+        ...(value.unitsConsumed !== undefined ? { unitsConsumed: value.unitsConsumed } : {}),
+        ...(expected ? { expected } : {}),
+      });
+    }
+
+    const after = value.accounts?.[0];
+    if (!after) {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: true,
+        ...(value.unitsConsumed !== undefined ? { unitsConsumed: value.unitsConsumed } : {}),
+        ...(expected ? { expected } : {}),
+        unmeasuredReason:
+          'the endpoint executed the transaction but returned no post-state for the destination, so the delivered amount could not be read',
+      });
+    }
+
+    const encoded = Array.isArray(after.data) ? after.data[0] : after.data;
+    const post = readBalance({
+      data: Buffer.from(String(encoded), 'base64'),
+      lamports: after.lamports,
+    });
+
+    // A delivery cannot be negative. If the destination somehow lost value, say
+    // nothing was delivered rather than reporting a negative amount.
+    const delta = post > pre ? post - pre : 0n;
+
+    return judgeDelivery({
+      chain: chain.id,
+      succeeded: true,
+      ...(value.unitsConsumed !== undefined ? { unitsConsumed: value.unitsConsumed } : {}),
+      delivered: amount(delta, decimals, symbol),
+      ...(expected ? { expected } : {}),
+    });
+  });
 }

@@ -50,6 +50,7 @@ import {
   type DemandFacts,
 } from '../pay/demand.js';
 import { getChain } from '../core/registry.js';
+import { judgeDelivery, type SimulationOutcome } from '../core/simulation.js';
 
 /** 21000 gas — the cost of a bare ETH transfer, used for fee quotes. */
 /**
@@ -1120,4 +1121,176 @@ export async function inspectEvmPaymentDemand(
       : {}),
     note: demandNote(findings, verdict),
   } satisfies PaymentDemandReport;
+}
+
+/** `balanceOf(address)` — the selector, for reading a balance inside a simulation. */
+const BALANCE_OF_SELECTOR = '0x70a08231';
+
+function balanceOfCalldata(holder: `0x${string}`): `0x${string}` {
+  return `${BALANCE_OF_SELECTOR}${holder.slice(2).toLowerCase().padStart(64, '0')}` as `0x${string}`;
+}
+
+/**
+ * Execute an unsigned EVM transaction against current state and measure what
+ * the recipient actually receives.
+ *
+ * The measurement is three calls in one simulated block, executed in order
+ * against the same state: read the recipient's balance, perform the transfer,
+ * read it again. The difference is what this payment delivers, and it is
+ * arrived at without consulting anything the token says about itself — which
+ * is the entire point, because a fee-on-transfer ERC-20 says nothing about
+ * itself. There is no `transferFee()` to read; the behaviour is inside
+ * `transfer`, and the only way to see it is to run it.
+ *
+ * `eth_simulateV1` is what makes that possible and is not universal. Where the
+ * endpoint refuses it this falls back to `eth_call`, which still catches a
+ * revert but cannot measure a delta — and says so rather than reporting the
+ * amount as delivered. An unmeasured delivery reported as a successful one
+ * would be worse than no simulation at all, because it would carry the
+ * authority of one.
+ *
+ * Native transfers need no delta: ETH has no transfer hook and no fee
+ * mechanism, so what is sent is what arrives, and only the revert check is
+ * informative.
+ */
+export async function simulateUnsignedEvm(
+  chain: ChainSpec,
+  params: {
+    from: string;
+    /** The transaction's target — the token contract, or the payee for a native send. */
+    to: string;
+    data?: string;
+    value?: string;
+    /** Whose balance change is the delivery. */
+    destination: string;
+    /** Token contract. Omit for the native asset. */
+    token?: string;
+    /** What the payment claims it delivers, as a human decimal string. */
+    expected?: string;
+  },
+): Promise<SimulationOutcome> {
+  const client = clientFor(chain);
+  const from = getAddress(params.from) as `0x${string}`;
+  const to = getAddress(params.to) as `0x${string}`;
+  const destination = getAddress(params.destination) as `0x${string}`;
+
+  const decimals = params.token
+    ? Number(
+        await client.readContract({
+          address: getAddress(params.token),
+          abi: ERC20_ABI,
+          functionName: 'decimals',
+        }),
+      )
+    : chain.nativeCurrency.decimals;
+
+  const symbol = params.token
+    ? (knownTokens(chain.id).find((k) => getAddress(k.address) === getAddress(params.token!))?.symbol ??
+      shortAddress(params.token, 4, 4))
+    : chain.nativeCurrency.symbol;
+
+  const expected = params.expected
+    ? amount(parseUnits(params.expected, decimals), decimals, symbol)
+    : undefined;
+
+  // Two shapes of the same call. viem's `call` takes `value` as a bigint; the
+  // raw `eth_simulateV1` request takes it as hex, and mixing them silently
+  // sends a transfer of zero.
+  const sends = params.value && params.value !== '0x0' ? BigInt(params.value) : 0n;
+  const call = {
+    from,
+    to,
+    ...(params.data ? { data: params.data as `0x${string}` } : {}),
+    ...(sends > 0n ? { value: sends } : {}),
+  };
+  const rpcCall = {
+    from,
+    to,
+    ...(params.data ? { data: params.data as `0x${string}` } : {}),
+    ...(sends > 0n ? { value: `0x${sends.toString(16)}` } : {}),
+  };
+
+  // Native: nothing can skim it, so a revert check is the whole answer.
+  if (!params.token) {
+    try {
+      await client.call(call);
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: true,
+        ...(expected ? { delivered: expected, expected } : {}),
+        ...(expected ? {} : { unmeasuredReason: 'no amount was claimed to compare against' }),
+      });
+    } catch (error) {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: false,
+        error: error instanceof Error ? error.message.split('\n')[0] : String(error),
+        ...(expected ? { expected } : {}),
+      });
+    }
+  }
+
+  const readBalance = { from, to, data: balanceOfCalldata(destination) };
+
+  try {
+    const simulated = (await client.request({
+      method: 'eth_simulateV1' as never,
+      params: [
+        { blockStateCalls: [{ calls: [readBalance, rpcCall, readBalance] }], validation: false },
+        'latest',
+      ] as never,
+    })) as Array<{ calls: Array<{ status: string; returnData: string; error?: { message?: string } }> }>;
+
+    const calls = simulated?.[0]?.calls ?? [];
+    const [pre, transfer, post] = calls;
+
+    if (!transfer || transfer.status !== '0x1') {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: false,
+        error: transfer?.error?.message ?? 'the transfer reverted',
+        ...(expected ? { expected } : {}),
+      });
+    }
+
+    if (!pre?.returnData || !post?.returnData) {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: true,
+        ...(expected ? { expected } : {}),
+        unmeasuredReason:
+          'the endpoint executed the transfer but would not return the recipient balance either side of it',
+      });
+    }
+
+    const before = BigInt(pre.returnData);
+    const after = BigInt(post.returnData);
+    const delta = after > before ? after - before : 0n;
+
+    return judgeDelivery({
+      chain: chain.id,
+      succeeded: true,
+      delivered: amount(delta, decimals, symbol),
+      ...(expected ? { expected } : {}),
+    });
+  } catch {
+    // No eth_simulateV1 here. Fall back to the revert check alone, and be
+    // explicit that the delivered amount is unknown rather than assumed.
+    try {
+      await client.call(call);
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: true,
+        ...(expected ? { expected } : {}),
+        unmeasuredReason: `${chain.name} endpoint does not support eth_simulateV1, so the recipient's balance change could not be measured — a token that takes a cut on transfer would be invisible here`,
+      });
+    } catch (error) {
+      return judgeDelivery({
+        chain: chain.id,
+        succeeded: false,
+        error: error instanceof Error ? error.message.split('\n')[0] : String(error),
+        ...(expected ? { expected } : {}),
+      });
+    }
+  }
 }

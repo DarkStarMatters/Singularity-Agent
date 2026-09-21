@@ -445,7 +445,7 @@ export const TOOLS: ToolDefinition[] = [
     name: 'build_payment',
     title: 'Check a demand, then build the payment if it survives',
     description:
-      "Check a payment demand and build the UNSIGNED transaction for it, refusing to build at all when the demand does not check out. Same checks as `inspect_payment` — reach for that one when you only want the verdict, and this one when the payment is actually going to be made. The difference is that here `unpayable` is a refusal rather than advice: nothing is returned to sign. `unproven` refuses too, because a demand that could not be checked is not a demand that passed. On Solana the demand's `reference` is attached to the transfer as a read-only account, which is what lets the payee match the payment to the order without trusting the payer to quote anything. Warnings found during checking are carried into the transaction's own `warnings`, since that is the last text read before a signature. Singularity holds no keys: this returns an unsigned payload and the report that justified building it, and signing happens in the user's own wallet. Always show the summary, every warning and the verdict before they sign.",
+      "Check a payment demand and build the UNSIGNED transaction for it, refusing to build at all when the demand does not check out. Same checks as `inspect_payment` — reach for that one when you only want the verdict, and this one when the payment is actually going to be made. The difference is that here `unpayable` is a refusal rather than advice: nothing is returned to sign. `unproven` refuses too, because a demand that could not be checked is not a demand that passed. On Solana the demand's `reference` is attached to the transfer as a read-only account, which is what lets the payee match the payment to the order without trusting the payer to quote anything. Warnings found during checking are carried into the transaction's own `warnings`, since that is the last text read before a signature. It also executes the transaction against current state before returning it, and refuses a transaction that reverts — a demand whose facts check out can still produce a payment that cannot land, and signing that spends a fee to fail. Where the endpoint supports it, the recipient's actual balance change is measured and compared against the amount demanded, which is the only way to see a token that takes a cut on transfer: there is no field to read for that, the behaviour is inside `transfer`. A shortfall is a warning on the payload rather than a refusal, because the payment is real and the gap may be expected. Singularity holds no keys: this returns an unsigned payload and the report that justified building it, and signing happens in the user's own wallet. Always show the summary, every warning and the verdict before they sign.",
     shape: {
       from: z.string().describe('The wallet that will pay, and sign. Required — the transaction is built for it.'),
       to: z.string().optional().describe('The wallet the demand says will be paid.'),
@@ -463,6 +463,12 @@ export const TOOLS: ToolDefinition[] = [
       reference: z.string().optional().describe('The Solana Pay reference that makes the payment findable.'),
       expiresAt: z.string().optional().describe('When the demand stops being valid, ISO 8601.'),
       chain: z.string().optional().describe('Chain id or alias, EVM or Solana. Defaults to "solana".'),
+      simulate: z
+        .boolean()
+        .optional()
+        .describe(
+          'Execute the transaction against current state before returning it. On by default; turning it off gives up the only check that catches a token delivering less than it was sent.',
+        ),
     },
     run: (args) => ops.payDemand(args),
   }),

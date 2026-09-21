@@ -9,11 +9,13 @@ import {
   buildBurn as buildSolanaBurn,
   buildPayment as buildSolanaPayment,
   inspectPaymentDemand,
+  simulateUnsigned,
   inspectTokenExit,
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
 import type { PaymentDemandReport } from '../pay/types.js';
-import { inspectEvmPaymentDemand } from '../adapters/evm.js';
+import { inspectEvmPaymentDemand, simulateUnsignedEvm } from '../adapters/evm.js';
+import type { SimulationOutcome } from '../core/simulation.js';
 import type { TokenExitReport } from '../trade/types.js';
 import { fetchIdentityDocument, isContentAddressed } from '../core/identity.js';
 import {
@@ -1613,8 +1615,17 @@ export async function payDemand(options: {
   reference?: string;
   expiresAt?: string;
   chain?: string;
-}): Promise<{ report: PaymentDemandReport; transaction: UnsignedTx }> {
-  const { from, ...demand } = options;
+  /**
+   * Execute the built transaction against current state before returning it.
+   *
+   * On by default. Off is for a caller that has already simulated, or one that
+   * would rather have a payload than an answer — and it is worth being explicit
+   * that turning it off gives up the only check that catches a token delivering
+   * less than it was sent.
+   */
+  simulate?: boolean;
+}): Promise<{ report: PaymentDemandReport; transaction: UnsignedTx; simulation?: SimulationOutcome }> {
+  const { from, simulate, ...demand } = options;
   const report = await inspectPayment(demand);
 
   if (report.verdict !== 'payable') {
@@ -1653,7 +1664,17 @@ export async function payDemand(options: {
       ...(demand.reference ? { references: [demand.reference] } : {}),
     });
 
-    return { report, transaction: withDemandWarnings(built, report) };
+    const outcome =
+      simulate === false
+        ? undefined
+        : await simulateUnsigned(chain, {
+            transaction: built.payload.transaction as string,
+            destination: report.destination.address,
+            ...(named ? { mint: named } : {}),
+            expected: demand.amount,
+          }).catch(() => undefined);
+
+    return finish(report, built, outcome);
   }
 
   const built = await buildTransfer({
@@ -1664,7 +1685,62 @@ export async function payDemand(options: {
     ...(named ? { token: named } : {}),
   });
 
-  return { report, transaction: withDemandWarnings(built, report) };
+  const outcome =
+    simulate === false
+      ? undefined
+      : await simulateUnsignedEvm(chain, {
+          from,
+          to: built.payload.to as string,
+          ...(built.payload.data ? { data: built.payload.data as string } : {}),
+          ...(built.payload.value ? { value: built.payload.value as string } : {}),
+          destination: report.destination.address,
+          ...(named ? { token: named } : {}),
+          expected: demand.amount,
+        }).catch(() => undefined);
+
+  return finish(report, built, outcome);
+}
+
+/**
+ * Refuse a transaction that does not execute, and carry what was measured into
+ * the one that does.
+ *
+ * `build_payment` already refuses a demand whose facts do not check out. A
+ * transaction that reverts against current state is the same refusal arriving
+ * one step later: there is no version of handing that back which helps, since
+ * signing it spends a fee to fail.
+ *
+ * A shortfall is different and is not a refusal. The transaction executes and
+ * the payee is credited less than the demand asked for, which may be exactly
+ * what both parties expect of a fee-bearing token — so it becomes a warning on
+ * the payload, where a signer reads it.
+ */
+function finish(
+  report: PaymentDemandReport,
+  built: UnsignedTx,
+  simulation: SimulationOutcome | undefined,
+): { report: PaymentDemandReport; transaction: UnsignedTx; simulation?: SimulationOutcome } {
+  if (simulation && !simulation.succeeded) {
+    throw new SingularityError(
+      'DEMAND_DOES_NOT_EXECUTE',
+      simulation.note,
+      'Nothing was built. The demand checked out against the chain as facts, and the transaction it produces does not execute against the chain as it is right now.',
+    );
+  }
+
+  const carried = withDemandWarnings(built, report);
+
+  if (simulation?.shortfall) {
+    carried.warnings.push(`DELIVERS_LESS_THAN_ASKED: ${simulation.note}`);
+  } else if (simulation?.delivered) {
+    carried.warnings.push(
+      `Simulated against current state: delivers ${simulation.delivered.formatted} ${simulation.delivered.symbol} to ${report.destination?.address ?? 'the recipient'}.`,
+    );
+  } else if (simulation) {
+    carried.warnings.push(`Not simulated to a measured delivery: ${simulation.completeness.note}`);
+  }
+
+  return { report, transaction: carried, ...(simulation ? { simulation } : {}) };
 }
 
 /**
