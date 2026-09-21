@@ -318,6 +318,19 @@ export function checkEvmDestination(
     );
   }
 
+  if (demand.memo || demand.reference) {
+    // The demand says something must travel with the payment, and an ordinary
+    // transfer here carries nothing. The money lands and the order is not
+    // credited, which looks exactly like not having paid.
+    found.push(
+      finding(
+        'warning',
+        'MEMO_CANNOT_BE_CARRIED',
+        `This demand expects the payment to carry ${demand.memo ? `the memo "${demand.memo}"` : `the reference ${demand.reference}`}, and a plain transfer on ${chain.name} has no field to put it in. Paid as an ordinary transfer this will land and may not be credited to your order — ask the payee how they expect it to be attached.`,
+      ),
+    );
+  }
+
   if (!facts.destination) {
     found.push(
       finding(

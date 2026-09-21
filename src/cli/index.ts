@@ -777,6 +777,73 @@ program
   );
 
 /**
+ * `paydemand` — check an invoice, then build the payment if it survives.
+ *
+ * The paying half of `checkpay`. Exits non-zero and builds nothing when the
+ * demand does not check out, so a script can pipe straight from this into a
+ * signer and never reach one for a demand that was wrong.
+ */
+program
+  .command('paydemand')
+  .description('Check a payment demand, then build the unsigned payment for it.')
+  .requiredOption('--from <address>', 'The wallet that will pay, and sign.')
+  .option('--to <address>', 'The wallet the demand says will be paid.')
+  .option('--token-account <address>', 'The exact destination token account the demand names.')
+  .option('--mint <address>', 'Token address — the mint on Solana. Omit for the native asset.')
+  .option('--token <address>', 'Alias for --mint, for EVM chains where the token is a contract.')
+  .option('--asset <symbol>', 'The ticker the demand claims. Checked against the token address.')
+  .option('--amount <amount>', 'Whole tokens, as the demand displays it.')
+  .option('--base-units <amount>', 'The same amount in base units, where the demand states both.')
+  .option('--decimals <n>', 'The decimals the demand assumes.', (v: string) => Number(v))
+  .option('--memo <text>', 'Text the demand says the payment must carry.')
+  .option('--reference <pubkey>', 'The Solana Pay reference the demand names.')
+  .option('--expires-at <iso>', 'When the demand stops being valid.')
+  .option('-c, --chain <chain>', 'Chain id or alias, EVM or Solana. Defaults to "solana".')
+  .action(
+    async (options: {
+      from: string;
+      to?: string;
+      tokenAccount?: string;
+      mint?: string;
+      token?: string;
+      asset?: string;
+      amount?: string;
+      baseUnits?: string;
+      decimals?: number;
+      memo?: string;
+      reference?: string;
+      expiresAt?: string;
+      chain?: string;
+    }) => {
+      const { report, transaction } = await ops.payDemand({
+        from: options.from,
+        ...(options.to ? { to: options.to } : {}),
+        ...(options.tokenAccount ? { tokenAccount: options.tokenAccount } : {}),
+        ...(options.mint ? { mint: options.mint } : {}),
+        ...(options.token ? { token: options.token } : {}),
+        ...(options.asset ? { asset: options.asset } : {}),
+        ...(options.amount ? { amount: options.amount } : {}),
+        ...(options.baseUnits ? { amountBaseUnits: options.baseUnits } : {}),
+        ...(options.decimals !== undefined ? { decimals: options.decimals } : {}),
+        ...(options.memo ? { memo: options.memo } : {}),
+        ...(options.reference ? { reference: options.reference } : {}),
+        ...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
+        ...(options.chain ? { chain: options.chain } : {}),
+      });
+
+      if (program.opts().json) {
+        console.log(toJson({ report, transaction }));
+        return;
+      }
+
+      console.log(render.heading('Payment check'));
+      console.log(render.renderPaymentDemand(report));
+      console.log(render.heading('Unsigned transaction'));
+      console.log(render.renderUnsignedTx(transaction));
+    },
+  );
+
+/**
  * `pay` — create a payment request somebody can scan.
  *
  * The whole loop from a terminal: name an amount and a recipient, get a QR in

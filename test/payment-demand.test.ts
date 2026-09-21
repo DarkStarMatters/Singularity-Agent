@@ -504,3 +504,52 @@ describe('the ticker check, across both spellings and both families', () => {
     expect(checkClaimedAsset(base, { token: USDC_BASE }, USDC_BASE)).toBeUndefined();
   });
 });
+
+describe('a memo the chain cannot carry', () => {
+  const token = { address: USDC_BASE, decimals: 6, curatedSymbol: 'USDC' };
+
+  it('warns on EVM, where a plain transfer has no memo field', () => {
+    // The money lands and the order is not credited, which looks exactly like
+    // not having paid — the worst shape a payment failure can take.
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, amount: '1', memo: 'ORDER-5512' },
+      { token, destination: { address: WALLET, exists: true } },
+    );
+
+    const memo = findings.find((f) => f.code === 'MEMO_CANNOT_BE_CARRIED');
+    expect(memo?.severity).toBe('warning');
+    expect(memo?.detail).toContain('ORDER-5512');
+  });
+
+  it('warns about a reference the same way', () => {
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, amount: '1', reference: 'Ref111' },
+      { token, destination: { address: WALLET, exists: true } },
+    );
+    expect(codes(findings)).toContain('MEMO_CANNOT_BE_CARRIED');
+  });
+
+  it('says nothing on Solana, where a memo and a reference both travel', () => {
+    const findings = classifyDemand(
+      solana,
+      { mint: USDC, to: TREASURY, amount: '1', memo: 'ORDER-5512', reference: 'Ref111' },
+      {
+        token: { address: USDC, decimals: 6 },
+        derivedAta: REAL_ATA,
+        destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
+      },
+    );
+    expect(codes(findings)).not.toContain('MEMO_CANNOT_BE_CARRIED');
+  });
+
+  it('does not refuse over it — the payment is real, the credit is the risk', () => {
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, amount: '1', memo: 'ORDER-5512' },
+      { token, destination: { address: WALLET, exists: true } },
+    );
+    expect(demandVerdict(findings, true)).toBe('payable');
+  });
+});

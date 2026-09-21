@@ -7,6 +7,7 @@ import type { TransactionHistory } from '../core/adapter.js';
 import {
   auditMint as auditSolanaMint,
   buildBurn as buildSolanaBurn,
+  buildPayment as buildSolanaPayment,
   inspectPaymentDemand,
   inspectTokenExit,
   verifyBurn as verifySolanaBurn,
@@ -1483,4 +1484,115 @@ export async function inspectPayment(options: {
     `Payment demands can be checked on EVM and Solana chains, and ${chain.name} is neither.`,
     'Bitcoin and Cosmos payments carry no token-contract layer to check a demand against, so there is nothing here that would not be guesswork.',
   );
+}
+
+/**
+ * Check a demand, and build the payment only if it survives.
+ *
+ * One operation rather than two, because a check whose result the caller is
+ * free to skip is a check nobody runs. Everything `inspect_payment` finds is
+ * reported either way; what changes here is that `unpayable` stops being advice
+ * and starts being a refusal — there is no transaction to sign at the end of
+ * it. That is the same decision `build_burn` already made: refuse rather than
+ * hand back something that cannot land.
+ *
+ * `unproven` refuses too. A demand that could not be checked is not a demand
+ * that passed, and the whole point of building here rather than through
+ * `build_transfer` is that the payload carries evidence it was checked.
+ *
+ * The warnings survive into the transaction. A signer reads `warnings`
+ * immediately before signing and reads nothing else, so a finding that stayed
+ * behind in the report would be a finding nobody sees at the moment it matters.
+ *
+ * It still signs nothing and sends nothing. The result is an unsigned payload
+ * and the report that justified building it.
+ */
+export async function payDemand(options: {
+  from: string;
+  to?: string;
+  tokenAccount?: string;
+  mint?: string;
+  token?: string;
+  asset?: string;
+  amount?: string;
+  amountBaseUnits?: string;
+  decimals?: number;
+  memo?: string;
+  reference?: string;
+  expiresAt?: string;
+  chain?: string;
+}): Promise<{ report: PaymentDemandReport; transaction: UnsignedTx }> {
+  const { from, ...demand } = options;
+  const report = await inspectPayment(demand);
+
+  if (report.verdict !== 'payable') {
+    const fatal = report.findings.filter((f) => f.severity === 'fatal');
+    throw new SingularityError(
+      'DEMAND_REFUSED',
+      report.note,
+      fatal.length
+        ? `Nothing was built. ${fatal.map((f) => `${f.code}: ${f.detail}`).join(' ')}`
+        : 'Nothing was built, because the demand could not be checked against the chain. That is not the same as it being wrong — retry, or pass an endpoint that answers.',
+    );
+  }
+
+  if (!report.destination || !demand.amount) {
+    throw new SingularityError(
+      'DEMAND_INCOMPLETE',
+      'This demand checked out, and it does not say enough to build a payment from.',
+      'A payment needs at least a payee and an amount. The demand supplied one or neither.',
+    );
+  }
+
+  const chain = getChain(demand.chain ?? 'solana');
+  const named = demand.token ?? demand.mint;
+
+  if (chain.family === 'svm') {
+    // Built through the payment path rather than the transfer path, because a
+    // demand's `reference` is what makes the payment findable by the payee —
+    // it is attached as a read-only account and is how the money is matched to
+    // the order without the payer being trusted to quote anything.
+    const built = await buildSolanaPayment(chain, {
+      payer: from,
+      to: demand.to ?? report.destination.owner ?? report.destination.address,
+      amount: demand.amount,
+      ...(named ? { mint: named } : {}),
+      ...(demand.memo ? { memo: demand.memo } : {}),
+      ...(demand.reference ? { references: [demand.reference] } : {}),
+    });
+
+    return { report, transaction: withDemandWarnings(built, report) };
+  }
+
+  const built = await buildTransfer({
+    chain: chain.id,
+    from,
+    to: report.destination.address,
+    amount: demand.amount,
+    ...(named ? { token: named } : {}),
+  });
+
+  return { report, transaction: withDemandWarnings(built, report) };
+}
+
+/**
+ * Carry the check into the thing that gets signed.
+ *
+ * `warnings` is the last text a signer reads. A demand that was accepted with
+ * reservations — a fee-bearing mint, a contract payee, a memo the chain cannot
+ * carry — has to say so here, not only in a report the signing step never sees.
+ */
+function withDemandWarnings(tx: UnsignedTx, report: PaymentDemandReport): UnsignedTx {
+  const carried = report.findings
+    .filter((f) => f.severity === 'warning')
+    .map((f) => `${f.code}: ${f.detail}`);
+
+  return {
+    ...tx,
+    warnings: [
+      ...tx.warnings,
+      ...carried,
+      `This demand was checked against ${report.chain} before building: ${report.note}`,
+    ],
+  };
 }

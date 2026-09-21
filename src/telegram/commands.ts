@@ -691,6 +691,7 @@ const DEMAND_FIELDS = [
   'reference',
   'expiresAt',
   'chain',
+  'from',
 ] as const;
 
 type DemandArgs = Parameters<typeof ops.inspectPayment>[0];
@@ -747,6 +748,42 @@ const checkpay: Command = {
     }
 
     return formatPaymentDemand(await ops.inspectPayment(demand));
+  },
+};
+
+/**
+ * Check a demand, then build the payment for it — or refuse.
+ *
+ * The paying half of `/checkpay`. Same arguments plus `from=`, because a
+ * transaction has to be built for a specific payer. Nothing comes back to sign
+ * unless the demand checked out.
+ */
+const paydemand: Command = {
+  name: 'paydemand',
+  aliases: ['build_payment'],
+  usage: '/paydemand from=<addr> token=<addr> to=<addr> amount=<n> [asset=USDC] [chain=base]',
+  summary: 'Check a payment demand, then build the unsigned payment',
+  async run(ctx) {
+    required(ctx, 0, 'an invoice, as key=value pairs or pasted JSON', paydemand);
+
+    let demand: DemandArgs & { from?: string };
+    try {
+      demand = parseDemand(ctx.args) as DemandArgs & { from?: string };
+    } catch {
+      return 'That did not parse as JSON. Paste the payment intent whole, or give <code>key=value</code> pairs.';
+    }
+
+    const { from } = demand;
+    if (!from) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        '/paydemand needs the wallet that will pay.',
+        `Usage: ${paydemand.usage}`,
+      );
+    }
+
+    const { transaction } = await ops.payDemand({ ...demand, from });
+    return formatUnsignedTx(transaction);
   },
 };
 
@@ -950,6 +987,7 @@ const COMMAND_LIST: Command[] = [
   identity,
   inspect,
   checkpay,
+  paydemand,
   receipt,
   qr,
   pay,

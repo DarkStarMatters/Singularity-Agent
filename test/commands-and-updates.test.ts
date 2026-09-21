@@ -37,6 +37,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   mint_audit: 'mint',
   build_transfer: 'transfer',
   build_burn: 'burn',
+  build_payment: 'paydemand',
   verify_burn: 'verifyburn',
   token_identity: 'identity',
   chain_liveness: 'health',

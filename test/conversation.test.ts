@@ -89,6 +89,7 @@ describe('tool catalogue', () => {
       'balance',
       'block',
       'build_burn',
+      'build_payment',
       'build_transfer',
       'chain_liveness',
       'chains',

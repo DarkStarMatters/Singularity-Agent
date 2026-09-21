@@ -1334,6 +1334,28 @@ The judging is split from the reading, as `inspect_exit` already does it, and fo
 
 ---
 
+### 2.5 The same question on EVM, and a refusal with teeth — **shipped**
+
+`inspect_payment` shipped Solana-only, which left out most of the invoices anyone actually receives. It now reads EVM too, and `build_payment` turns the check into something a payment cannot route around.
+
+**What ports, and what does not.** Everything about whether a demand is coherent *with itself* is the same question on any chain — ticker against address, displayed amount against base units against decimals, expiry — so it stays in `pay/demand.ts` and runs for both families. The destination does not port at all. There are no token accounts on EVM, every address is already a valid recipient, and the failures are different ones: the zero address (a burn wearing the shape of a payment), the token's own contract (one of the most common ways ERC-20s are permanently lost, and indistinguishable from an ordinary transfer in any wallet), and a contract payee that may be unable to move the token out again.
+
+Three things surfaced only by running it against mainnet rather than against its own tests, which is the habit this project keeps relearning:
+
+- **An address with code is not a contract.** A wallet that has delegated under EIP-7702 stores `0xef0100 || implementation` — 23 bytes — and is still key-controlled. The first version warned about it as a contract that might not be able to move tokens out, which would fire on an ordinary and increasingly common payee. The designator is read rather than the code length, and the delegate is named.
+- **The ticker check had silently stopped working.** Adding `token` as an alias for `mint` meant `checkClaimedAsset`, which only read `mint`, quietly did nothing for every caller using the new spelling — and a demand labelled USDC naming the USDT contract came back payable. The same class as §2.4's own subject: correct about what it did, wrong about what it claimed to cover.
+- **Addresses compare differently per family.** EVM addresses are case-insensitive and arrive in whatever casing the invoice used, so case is folded there. Base58 is case-sensitive and must not be folded, because two distinct pubkeys can differ only in case.
+
+**A memo is not always carryable.** A demand can say the payment must carry a memo or a reference, and a plain transfer on EVM has no field to put one in. Paid as an ordinary transfer it lands and is not credited — which looks exactly like not having paid, the worst shape a payment failure takes. Reported as a warning rather than a refusal: the payment is real, the credit is the risk.
+
+**`build_payment` makes the check unskippable.** It runs the same checks and returns an unsigned transaction only if they pass; `unpayable` stops being advice and becomes a refusal with nothing to sign, which is the decision `build_burn` already made. `unproven` refuses too, because a demand that could not be checked is not a demand that passed. Warnings found while checking are carried into the transaction's own `warnings`, since that is the last text a signer reads and a finding left behind in a report is a finding nobody sees at the moment it matters. On Solana the demand's `reference` is attached to the transfer as a read-only account, so the payee can match the payment to the order without trusting the payer to quote anything.
+
+**Stated rather than papered over:** a fee-on-transfer ERC-20 is not detectable from the standard interface. There is no `transferFee()` and no extension to inspect — the behaviour lives inside `transfer` itself. Such a demand is reported payable here and the payee may still receive less than was sent. On Solana the same thing is a declared mint extension and is reported. The asymmetry is real and is not hidden.
+
+It still signs nothing.
+
+---
+
 ## Phase 3 — Coverage
 
 *Goal: more chains, without diluting the guarantees above.*

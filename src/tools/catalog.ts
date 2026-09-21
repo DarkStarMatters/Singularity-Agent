@@ -435,6 +435,31 @@ export const TOOLS: ToolDefinition[] = [
     run: (args) => ops.inspectPayment(args),
   }),
   defineTool({
+    name: 'build_payment',
+    title: 'Check a demand, then build the payment if it survives',
+    description:
+      "Check a payment demand and build the UNSIGNED transaction for it, refusing to build at all when the demand does not check out. Same checks as `inspect_payment` — reach for that one when you only want the verdict, and this one when the payment is actually going to be made. The difference is that here `unpayable` is a refusal rather than advice: nothing is returned to sign. `unproven` refuses too, because a demand that could not be checked is not a demand that passed. On Solana the demand's `reference` is attached to the transfer as a read-only account, which is what lets the payee match the payment to the order without trusting the payer to quote anything. Warnings found during checking are carried into the transaction's own `warnings`, since that is the last text read before a signature. Singularity holds no keys: this returns an unsigned payload and the report that justified building it, and signing happens in the user's own wallet. Always show the summary, every warning and the verdict before they sign.",
+    shape: {
+      from: z.string().describe('The wallet that will pay, and sign. Required — the transaction is built for it.'),
+      to: z.string().optional().describe('The wallet the demand says will be paid.'),
+      tokenAccount: z
+        .string()
+        .optional()
+        .describe('The exact destination token account the demand names, where it names one.'),
+      mint: z.string().optional().describe('Token address — the mint on Solana. Omit for the native asset.'),
+      token: z.string().optional().describe('Alias for `mint`, for EVM chains where the token is a contract.'),
+      asset: z.string().optional().describe('The ticker the demand claims. Checked against the token address.'),
+      amount: z.string().optional().describe('Whole tokens as a decimal string, as the demand displays it.'),
+      amountBaseUnits: z.string().optional().describe('The same amount in base units, where the demand states both.'),
+      decimals: z.number().optional().describe('The decimals the demand assumes.'),
+      memo: z.string().optional().describe('Text the demand says the payment must carry.'),
+      reference: z.string().optional().describe('The Solana Pay reference that makes the payment findable.'),
+      expiresAt: z.string().optional().describe('When the demand stops being valid, ISO 8601.'),
+      chain: z.string().optional().describe('Chain id or alias, EVM or Solana. Defaults to "solana".'),
+    },
+    run: (args) => ops.payDemand(args),
+  }),
+  defineTool({
     name: 'receipt_art',
     title: 'What a payment receipt looks like, and whether an image is it',
     description:
