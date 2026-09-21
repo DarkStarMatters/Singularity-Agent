@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkAmounts,
+  checkClaimedAsset,
   checkExpiry,
   classifyDemand,
   demandNote,
@@ -28,7 +29,20 @@ const solana: DemandChain = {
   name: 'Solana',
   nativeSymbol: 'SOL',
   nativeDecimals: 9,
+  family: 'svm',
 };
+
+const base: DemandChain = {
+  id: 'base',
+  name: 'Base',
+  nativeSymbol: 'ETH',
+  nativeDecimals: 18,
+  family: 'evm',
+};
+
+const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const WALLET = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
+const ZERO = '0x0000000000000000000000000000000000000000';
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 /** The same address with one character missing. Still valid base58. */
@@ -67,8 +81,8 @@ describe('the invoice that prompted this', () => {
   });
 
   it('also refuses it for having no mint at that address', () => {
-    const findings = classifyDemand(solana, demand, { mintMissing: true }, USDC);
-    expect(codes(findings)).toContain('MINT_DOES_NOT_EXIST');
+    const findings = classifyDemand(solana, demand, { tokenMissing: true }, USDC);
+    expect(codes(findings)).toContain('TOKEN_DOES_NOT_EXIST');
     expect(demandVerdict(findings, true)).toBe('unpayable');
   });
 
@@ -76,13 +90,13 @@ describe('the invoice that prompted this', () => {
     // Everything downstream is measured against a mint. A validator that went
     // on to report the destination as "wrong" would be saying something it
     // cannot know.
-    const findings = classifyDemand(solana, demand, { mintMissing: true }, USDC);
+    const findings = classifyDemand(solana, demand, { tokenMissing: true }, USDC);
     expect(codes(findings)).not.toContain('DESTINATION_DOES_NOT_EXIST');
     expect(codes(findings)).not.toContain('AMOUNT_UNSTATED');
   });
 
   it('opens with "Do not pay this"', () => {
-    const findings = classifyDemand(solana, demand, { mintMissing: true }, USDC);
+    const findings = classifyDemand(solana, demand, { tokenMissing: true }, USDC);
     expect(demandNote(findings, 'unpayable')).toMatch(/^Do not pay this\./);
   });
 });
@@ -90,7 +104,7 @@ describe('the invoice that prompted this', () => {
 describe('a destination that does not exist', () => {
   const demand: PaymentDemand = { mint: USDC, to: TREASURY, tokenAccount: DEAD_ACCOUNT, amount: '0.01' };
   const facts: DemandFacts = {
-    mint: { address: USDC, decimals: 6, curatedSymbol: 'USDC' },
+    token: { address: USDC, decimals: 6, curatedSymbol: 'USDC' },
     derivedAta: REAL_ATA,
     destination: { address: DEAD_ACCOUNT, exists: false, isAssociated: false },
   };
@@ -112,7 +126,7 @@ describe('a destination that does not exist', () => {
     // created and that costs rent, which is a thing to know, not a refusal.
     const uncreated: PaymentDemand = { mint: USDC, to: TREASURY, amount: '0.01' };
     const findings = classifyDemand(solana, uncreated, {
-      mint: { address: USDC, decimals: 6 },
+      token: { address: USDC, decimals: 6 },
       derivedAta: REAL_ATA,
       destination: { address: REAL_ATA, exists: false, isAssociated: true },
     });
@@ -123,12 +137,12 @@ describe('a destination that does not exist', () => {
 });
 
 describe('a destination that exists but is not what was claimed', () => {
-  const base: DemandFacts = { mint: { address: USDC, decimals: 6 } };
+  const facts: DemandFacts = { token: { address: USDC, decimals: 6 } };
   const demand: PaymentDemand = { mint: USDC, to: TREASURY, tokenAccount: DEAD_ACCOUNT, amount: '1' };
 
   it('refuses an account holding a different mint', () => {
     const findings = classifyDemand(solana, demand, {
-      ...base,
+      ...facts,
       destination: { address: DEAD_ACCOUNT, exists: true, mint: NOT_USDC, owner: TREASURY },
     });
     expect(codes(findings)).toContain('DESTINATION_WRONG_MINT');
@@ -136,7 +150,7 @@ describe('a destination that exists but is not what was claimed', () => {
 
   it('refuses an account belonging to somebody other than the payee', () => {
     const findings = classifyDemand(solana, demand, {
-      ...base,
+      ...facts,
       destination: { address: DEAD_ACCOUNT, exists: true, mint: USDC, owner: REAL_ATA },
     });
     const wrong = findings.find((f) => f.code === 'DESTINATION_WRONG_OWNER');
@@ -148,7 +162,7 @@ describe('a destination that exists but is not what was claimed', () => {
 
   it('refuses a frozen account', () => {
     const findings = classifyDemand(solana, demand, {
-      ...base,
+      ...facts,
       destination: { address: DEAD_ACCOUNT, exists: true, mint: USDC, owner: TREASURY, frozen: true },
     });
     expect(codes(findings)).toContain('DESTINATION_FROZEN');
@@ -156,7 +170,7 @@ describe('a destination that exists but is not what was claimed', () => {
 
   it('accepts one that matches on every count', () => {
     const findings = classifyDemand(solana, demand, {
-      ...base,
+      ...facts,
       destination: { address: DEAD_ACCOUNT, exists: true, mint: USDC, owner: TREASURY, frozen: false },
     });
     expect(findings).toEqual([]);
@@ -211,7 +225,7 @@ describe('a mint that charges to be transferred', () => {
       solana,
       { mint: USDC, to: TREASURY, amount: '1' },
       {
-        mint: { address: USDC, decimals: 6 },
+        token: { address: USDC, decimals: 6 },
         derivedAta: REAL_ATA,
         destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
         transferFee: true,
@@ -230,7 +244,7 @@ describe('a mint that charges to be transferred', () => {
       solana,
       { mint: USDC, to: TREASURY, amount: '1' },
       {
-        mint: { address: USDC, decimals: 6 },
+        token: { address: USDC, decimals: 6 },
         derivedAta: REAL_ATA,
         destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
         transferFee: true,
@@ -244,7 +258,7 @@ describe('a mint that charges to be transferred', () => {
       solana,
       { mint: USDC, to: TREASURY, amount: '1' },
       {
-        mint: { address: USDC, decimals: 6 },
+        token: { address: USDC, decimals: 6 },
         derivedAta: REAL_ATA,
         destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
       },
@@ -349,7 +363,7 @@ describe('ordering and summary', () => {
       solana,
       { mint: USDC, to: TREASURY, tokenAccount: DEAD_ACCOUNT, amount: '0.01', amountBaseUnits: '999' },
       {
-        mint: { address: USDC, decimals: 6 },
+        token: { address: USDC, decimals: 6 },
         derivedAta: REAL_ATA,
         destination: { address: DEAD_ACCOUNT, exists: false, isAssociated: false },
         risk: { mint: USDC, freezeAuthority: 'Freeze111', custodyIsYours: false, warnings: [] },
@@ -366,10 +380,127 @@ describe('ordering and summary', () => {
       solana,
       { mint: USDC, to: TREASURY, tokenAccount: DEAD_ACCOUNT, amount: '0.01', amountBaseUnits: '999' },
       {
-        mint: { address: USDC, decimals: 6 },
+        token: { address: USDC, decimals: 6 },
         destination: { address: DEAD_ACCOUNT, exists: true, mint: NOT_USDC, owner: REAL_ATA },
       },
     );
     expect(demandNote(findings, 'unpayable')).toMatch(/3 things make it unpayable/);
+  });
+});
+
+/**
+ * EVM demands, where the destination rules are different ones.
+ *
+ * There are no token accounts here and every address is a valid recipient, so
+ * the questions worth asking are about what happens once the money lands.
+ */
+describe('EVM destinations', () => {
+  const token = { address: USDC_BASE, decimals: 6, curatedSymbol: 'USDC' };
+
+  it('refuses the zero address, which is a burn wearing the shape of a payment', () => {
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: ZERO, amount: '1' },
+      { token, destination: { address: ZERO, exists: true }, destinationIsZero: true },
+    );
+    expect(codes(findings)).toContain('DESTINATION_IS_ZERO_ADDRESS');
+    expect(demandVerdict(findings, true)).toBe('unpayable');
+  });
+
+  it("refuses paying the token's own contract", () => {
+    // One of the most common ways ERC-20s are permanently lost, and it looks
+    // like an ordinary transfer in every wallet that will show it to you.
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: USDC_BASE, amount: '1' },
+      { token, destination: { address: USDC_BASE, exists: true }, destinationIsTheToken: true },
+    );
+    expect(codes(findings)).toContain('DESTINATION_IS_THE_TOKEN');
+    expect(demandVerdict(findings, true)).toBe('unpayable');
+  });
+
+  it('warns, but does not refuse, when the payee is a contract', () => {
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, amount: '1' },
+      { token, destination: { address: WALLET, exists: true, isContract: true }, destinationIsContract: true },
+    );
+    const contract = findings.find((f) => f.code === 'DESTINATION_IS_A_CONTRACT');
+    expect(contract?.severity).toBe('warning');
+    expect(demandVerdict(findings, true)).toBe('payable');
+  });
+
+  it('does not call an EIP-7702 wallet a contract', () => {
+    // It has code at it and is still key-controlled. Warning about it would
+    // fire on an ordinary and increasingly common payee.
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, amount: '1' },
+      {
+        token,
+        destination: { address: WALLET, exists: true, isContract: false },
+        destinationDelegate: '0x5A7FC11397E9a8AD41BF10bf13F22B0a63f96f6d',
+      },
+    );
+
+    const note = findings.find((f) => f.code === 'DESTINATION_IS_A_DELEGATED_WALLET');
+    expect(note?.severity).toBe('note');
+    expect(note?.detail).toContain('0x5A7FC11397E9a8AD41BF10bf13F22B0a63f96f6d');
+    expect(codes(findings)).not.toContain('DESTINATION_IS_A_CONTRACT');
+    expect(demandVerdict(findings, true)).toBe('payable');
+  });
+
+  it('flags a demand carrying a token account, because EVM has none', () => {
+    // Usually means the invoice was built for a different chain than it names.
+    const findings = classifyDemand(
+      base,
+      { token: USDC_BASE, to: WALLET, tokenAccount: 'L2iAzRuZZrub', amount: '1' },
+      { token, destination: { address: WALLET, exists: true } },
+    );
+    expect(codes(findings)).toContain('TOKEN_ACCOUNT_ON_EVM');
+  });
+
+  it('says ERC-20 rather than SPL mint when nothing is deployed there', () => {
+    const findings = classifyDemand(base, { token: USDC_BASE, to: WALLET }, { tokenMissing: true });
+    const missing = findings.find((f) => f.code === 'TOKEN_DOES_NOT_EXIST');
+    expect(missing?.detail).toMatch(/answers as an ERC-20/);
+    expect(missing?.detail).not.toMatch(/base58/);
+  });
+});
+
+describe('the ticker check, across both spellings and both families', () => {
+  it('fires when the demand uses `token` rather than `mint`', () => {
+    // Regression: adding the `token` alias silently disabled this check, and a
+    // demand labelled USDC that named the USDT contract came back payable.
+    const finding = checkClaimedAsset(
+      base,
+      { asset: 'USDC', token: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
+      USDC_BASE,
+    );
+    expect(finding?.code).toBe('ASSET_NOT_WHAT_IT_CLAIMS');
+  });
+
+  it('still fires on the `mint` spelling', () => {
+    expect(checkClaimedAsset(solana, { asset: 'USDC', mint: NOT_USDC }, USDC)?.code).toBe(
+      'ASSET_NOT_WHAT_IT_CLAIMS',
+    );
+  });
+
+  it('folds case on EVM, where an address is case-insensitive', () => {
+    // Condemning the correct contract for arriving lowercased would be worse
+    // than not checking at all.
+    expect(checkClaimedAsset(base, { asset: 'USDC', token: USDC_BASE.toLowerCase() }, USDC_BASE)).toBeUndefined();
+  });
+
+  it('does NOT fold case on Solana, where base58 is case-sensitive', () => {
+    // Two different pubkeys can differ only in case, so folding would let a
+    // genuine lookalike through.
+    expect(
+      checkClaimedAsset(solana, { asset: 'USDC', mint: USDC.toLowerCase() }, USDC)?.code,
+    ).toBe('ASSET_NOT_WHAT_IT_CLAIMS');
+  });
+
+  it('says nothing when the demand names no ticker to check against', () => {
+    expect(checkClaimedAsset(base, { token: USDC_BASE }, USDC_BASE)).toBeUndefined();
   });
 });

@@ -41,6 +41,14 @@ import { decodeCalldata, decodeLogs, ERC20_ABI } from '../core/abi.js';
 import { knownTokens, tokenBySymbol } from '../core/tokens.js';
 import { completeness, sanitizeOnchainText } from '../core/envelope.js';
 import { checkImpersonation } from '../core/impersonation.js';
+import type { PaymentDemand, PaymentDemandReport } from '../pay/types.js';
+import {
+  classifyDemand,
+  demandNote,
+  demandVerdict,
+  type DemandChain,
+  type DemandFacts,
+} from '../pay/demand.js';
 import { getChain } from '../core/registry.js';
 
 /** 21000 gas — the cost of a bare ETH transfer, used for fee quotes. */
@@ -955,4 +963,161 @@ function recipientWarnings(
     warnings.push('Sender and recipient are the same address — this transfer does nothing but cost gas.');
   }
   return warnings;
+}
+
+/**
+ * EIP-7702's delegation designator. An EOA that has delegated stores
+ * `0xef0100 || implementation` as its code, and nothing else ever does.
+ */
+const DELEGATION_DESIGNATOR = '0xef0100';
+
+/**
+ * Whether an EVM payment demand can be paid, read rather than assumed.
+ *
+ * The EVM half of `inspect_payment`. The questions that transfer from Solana
+ * unchanged are the ones about the demand's own coherence — does the ticker
+ * match the address, do the amount, base units and decimals agree — and those
+ * live in `pay/demand.ts` for both families. What differs is the destination,
+ * and it differs completely: there are no token accounts here, every address is
+ * a valid recipient, and the ways a payment goes wrong are about what happens
+ * once it lands.
+ *
+ * Three of those are worth reading for:
+ *
+ * - **The zero address.** A burn wearing the shape of a payment.
+ * - **The token's own contract.** One of the most common ways ERC-20s are
+ *   permanently lost, and indistinguishable from an ordinary transfer in every
+ *   wallet that will show it to you.
+ * - **A contract that is not a wallet.** Not fatal — plenty of payees are
+ *   contracts — but one that was not written to hold this token cannot move it
+ *   out again, and nothing on chain says which kind it is.
+ *
+ * **What this cannot tell you**, stated because the Solana side can: a
+ * fee-on-transfer ERC-20 is not detectable from the standard interface. There
+ * is no `transferFee()` to read and no extension to inspect — the behaviour
+ * lives inside `transfer` itself. So a demand denominated in one is reported
+ * payable here, and the payee may still receive less than was sent. On Solana
+ * that is a declared mint extension and is reported; here it is not knowable
+ * without simulating, which this does not do.
+ */
+export async function inspectEvmPaymentDemand(
+  chain: ChainSpec,
+  demand: PaymentDemand,
+): Promise<PaymentDemandReport> {
+  const malformed: string[] = [];
+
+  const parse = (value: string | undefined, label: string): `0x${string}` | undefined => {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    if (!isAddress(trimmed)) {
+      malformed.push(label);
+      return undefined;
+    }
+    return getAddress(trimmed);
+  };
+
+  const named = demand.token ?? demand.mint;
+  const token = parse(named, 'token contract');
+  const to = parse(demand.to, 'recipient');
+
+  const facts: DemandFacts = { ...(malformed.length > 0 ? { malformed } : {}) };
+
+  try {
+    const client = clientFor(chain);
+
+    if (named && !token) {
+      // Named but unparseable: nothing to read, and treating it as a native
+      // payment would answer a different question than the one asked.
+    } else if (token) {
+      const code = await client.getCode({ address: token });
+
+      if (!code || code === '0x') {
+        facts.tokenMissing = true;
+      } else {
+        // An address with code that does not answer `decimals()` is not a
+        // token, whatever else it may be, and a payment denominated in it
+        // cannot be scaled.
+        const [decimals, symbol] = await Promise.all([
+          client.readContract({ address: token, abi: ERC20_ABI, functionName: 'decimals' }) as Promise<number>,
+          (
+            client.readContract({ address: token, abi: ERC20_ABI, functionName: 'symbol' }) as Promise<string>
+          ).catch(() => undefined),
+        ]).catch(() => [undefined, undefined] as const);
+
+        if (decimals === undefined) {
+          facts.tokenMissing = true;
+        } else {
+          const curated = knownTokens(chain.id).find(
+            (known) => getAddress(known.address) === token,
+          )?.symbol;
+
+          facts.token = {
+            address: token,
+            decimals: Number(decimals),
+            // A curated entry carries this tool's own text; anything else was
+            // written by whoever deployed the contract.
+            ...(curated
+              ? { curatedSymbol: curated }
+              : symbol
+                ? { curatedSymbol: sanitizeOnchainText(symbol, shortAddress(token, 6, 4)) }
+                : {}),
+          };
+        }
+      }
+    }
+
+    if (to) {
+      const isZero = /^0x0{40}$/i.test(to);
+      const code = isZero ? undefined : await client.getCode({ address: to });
+
+      // EIP-7702: an EOA that has delegated to a smart-account implementation
+      // carries exactly `0xef0100 || address` as its code — 23 bytes. It is a
+      // wallet, controlled by its key, and reading "has code" as "is a
+      // contract" would warn about an ordinary and increasingly common payee.
+      const delegated = code?.toLowerCase().startsWith(DELEGATION_DESIGNATOR) && code.length === 48;
+      const delegate = delegated && code ? getAddress(`0x${code.slice(8)}`) : undefined;
+
+      facts.destinationIsZero = isZero;
+      facts.destinationIsTheToken = Boolean(token && to === token);
+      facts.destinationIsContract = Boolean(code && code !== '0x') && !delegated;
+      if (delegate) facts.destinationDelegate = delegate;
+      const isContract = facts.destinationIsContract;
+
+      // `exists` is always true here and says so: on EVM an address that has
+      // never been touched is still a valid recipient, unlike a Solana token
+      // account, which has to have been created before anything can arrive.
+      facts.destination = { address: to, exists: true, isContract };
+    }
+  } catch (error) {
+    facts.unreadable = error instanceof Error ? error.message : String(error);
+  }
+
+  const context: DemandChain = {
+    id: chain.id,
+    name: chain.name,
+    nativeSymbol: chain.nativeCurrency.symbol,
+    nativeDecimals: chain.nativeCurrency.decimals,
+    family: 'evm',
+  };
+
+  const authentic = demand.asset ? tokenBySymbol(chain.id, demand.asset)?.address : undefined;
+  const findings = classifyDemand(context, demand, facts, authentic);
+  const verdict = demandVerdict(findings, !facts.unreadable);
+
+  return {
+    chain: chain.id,
+    verdict,
+    findings,
+    ...(facts.destination ? { destination: facts.destination } : {}),
+    ...(facts.token
+      ? {
+          token: {
+            mint: facts.token.address,
+            decimals: facts.token.decimals,
+            ...(facts.token.curatedSymbol ? { symbol: facts.token.curatedSymbol } : {}),
+          },
+        }
+      : {}),
+    note: demandNote(findings, verdict),
+  } satisfies PaymentDemandReport;
 }

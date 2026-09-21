@@ -2634,7 +2634,7 @@ export async function inspectPaymentDemand(
       try {
         mintFacts = await readMintFacts(connection, mint, chain);
       } catch {
-        facts.mintMissing = true;
+        facts.tokenMissing = true;
         return;
       }
 
@@ -2643,7 +2643,7 @@ export async function inspectPaymentDemand(
       facts.transferFee = mintFacts.extensions.has(EXT_TRANSFER_FEE_CONFIG);
 
       const curated = knownTokens(chain.id).find((known) => known.address === mint.toBase58())?.symbol;
-      facts.mint = {
+      facts.token = {
         address: mint.toBase58(),
         decimals: mintFacts.decimals,
         ...(curated ? { curatedSymbol: curated } : {}),
@@ -2688,8 +2688,8 @@ export async function inspectPaymentDemand(
     facts.unreadable = error instanceof Error ? error.message : String(error);
   }
 
-  if (facts.mint) {
-    const risk = await assessMintRisk(chain, facts.mint.address).catch(() => undefined);
+  if (facts.token) {
+    const risk = await assessMintRisk(chain, facts.token.address).catch(() => undefined);
     if (risk) facts.risk = risk;
   }
 
@@ -2698,6 +2698,7 @@ export async function inspectPaymentDemand(
     name: chain.name,
     nativeSymbol: chain.nativeCurrency.symbol,
     nativeDecimals: chain.nativeCurrency.decimals,
+    family: 'svm',
   };
 
   const authentic = demand.asset ? tokenBySymbol(chain.id, demand.asset)?.address : undefined;
@@ -2709,12 +2710,12 @@ export async function inspectPaymentDemand(
     verdict,
     findings,
     ...(facts.destination ? { destination: facts.destination } : {}),
-    ...(facts.mint
+    ...(facts.token
       ? {
           token: {
-            mint: facts.mint.address,
-            decimals: facts.mint.decimals,
-            ...(facts.mint.curatedSymbol ? { symbol: facts.mint.curatedSymbol } : {}),
+            mint: facts.token.address,
+            decimals: facts.token.decimals,
+            ...(facts.token.curatedSymbol ? { symbol: facts.token.curatedSymbol } : {}),
           },
         }
       : {}),

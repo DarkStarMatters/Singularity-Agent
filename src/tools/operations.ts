@@ -12,6 +12,7 @@ import {
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
 import type { PaymentDemandReport } from '../pay/types.js';
+import { inspectEvmPaymentDemand } from '../adapters/evm.js';
 import type { TokenExitReport } from '../trade/types.js';
 import { fetchIdentityDocument, isContentAddressed } from '../core/identity.js';
 import {
@@ -1456,6 +1457,7 @@ export async function inspectPayment(options: {
   to?: string;
   tokenAccount?: string;
   mint?: string;
+  token?: string;
   asset?: string;
   amount?: string;
   amountBaseUnits?: string;
@@ -1466,5 +1468,19 @@ export async function inspectPayment(options: {
   chain?: string;
 }): Promise<PaymentDemandReport> {
   const { chain: named, ...demand } = options;
-  return inspectPaymentDemand(solanaChain(named, 'Payment inspection'), demand);
+  const chain = getChain(named ?? 'solana');
+
+  // Two readers, one set of rules. What a destination *is* differs completely
+  // between the families — a token account that must already exist, against an
+  // address that always does — so each family reads its own facts. Everything
+  // about whether the demand is coherent with itself is shared, in
+  // `pay/demand.ts`, because those questions do not change with the chain.
+  if (chain.family === 'evm') return inspectEvmPaymentDemand(chain, demand);
+  if (chain.family === 'svm') return inspectPaymentDemand(chain, demand);
+
+  throw new SingularityError(
+    'PAY_UNSUPPORTED',
+    `Payment demands can be checked on EVM and Solana chains, and ${chain.name} is neither.`,
+    'Bitcoin and Cosmos payments carry no token-contract layer to check a demand against, so there is nothing here that would not be guesswork.',
+  );
 }

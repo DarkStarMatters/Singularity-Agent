@@ -402,14 +402,21 @@ export const TOOLS: ToolDefinition[] = [
     name: 'inspect_payment',
     title: 'Whether a payment you were asked to make can actually be paid',
     description:
-      "Before signing a payment somebody else asked you to make, find out whether it can be paid at all. Takes an invoice or payment intent in the shape it arrived — payee, destination token account, mint, claimed ticker, amount, base units, decimals, expiry — and checks each claim against the chain instead of against the rest of the invoice. It catches what a wallet cannot show: a mint address that is valid base58 with no token at it, a destination token account that does not exist, holds a different mint, is frozen, or belongs to somebody other than the payee named, a displayed amount and a base-unit amount that disagree, decimals that do not match the mint, a ticker naming one token while the mint names another, and an expiry already passed. Reach for it whenever a payment demand arrives from anywhere you do not control — an exchange, an API, a marketplace, another agent — and before building or signing anything against it. `verdict` is `unpayable` when at least one finding means signing cannot do what the demand says, `payable` when every stated claim checked out, and `unproven` when the chain could not be read, which is not the same as cleared. Read `findings` before `verdict`. Solana only. This reads: it builds nothing, signs nothing and sends nothing, and `unpayable` means the demand is wrong rather than that the counterparty is dishonest — a typo in somebody else's configuration produces exactly this.",
+      "Before signing a payment somebody else asked you to make, find out whether it can be paid at all. Takes an invoice or payment intent in the shape it arrived — payee, token, claimed ticker, amount, base units, decimals, expiry — and checks each claim against the chain instead of against the rest of the invoice. Works on Solana and on EVM chains, reading each family's own failure modes. Everywhere: a token address that is well-formed with no token at it, a displayed amount and a base-unit amount that disagree, decimals that do not match the token, a ticker naming one token while the address names another, and an expiry already passed. On Solana it also reads the destination token account — whether it exists, holds that mint, is frozen, or belongs to somebody other than the payee named — and whether the mint charges a transfer fee, which makes the payee receive less than you send. On EVM it reads whether the payee is the zero address, the token's own contract (one of the most common ways ERC-20s are permanently lost), or a contract that may be unable to move the token out again. Reach for it whenever a payment demand arrives from anywhere you do not control — an exchange, an API, a marketplace, another agent — and before building or signing anything against it. `verdict` is `unpayable` when at least one finding means signing cannot do what the demand says, `payable` when every stated claim checked out, and `unproven` when the chain could not be read, which is not the same as cleared. Read `findings` before `verdict`. This reads: it builds nothing, signs nothing and sends nothing, and `unpayable` means the demand is wrong rather than that the counterparty is dishonest — a typo in somebody else's configuration produces exactly this.",
     shape: {
       to: z.string().optional().describe('The wallet the demand says will be paid.'),
       tokenAccount: z
         .string()
         .optional()
         .describe('The exact destination token account the demand names, where it names one.'),
-      mint: z.string().optional().describe('Mint address. Omit for native SOL. Never a ticker.'),
+      mint: z
+        .string()
+        .optional()
+        .describe('Token address — the mint on Solana. Omit for the native asset. Never a ticker.'),
+      token: z
+        .string()
+        .optional()
+        .describe('Alias for `mint`, for EVM chains where the token is a contract rather than a mint.'),
       asset: z
         .string()
         .optional()
@@ -423,7 +430,7 @@ export const TOOLS: ToolDefinition[] = [
       memo: z.string().optional().describe('Text the demand says the payment must carry.'),
       reference: z.string().optional().describe('The Solana Pay reference that would make the payment findable.'),
       expiresAt: z.string().optional().describe('When the demand stops being valid, ISO 8601.'),
-      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+      chain: z.string().optional().describe('Chain id or alias, EVM or Solana. Defaults to "solana".'),
     },
     run: (args) => ops.inspectPayment(args),
   }),

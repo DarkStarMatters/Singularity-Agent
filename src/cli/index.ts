@@ -720,7 +720,8 @@ program
   .description('Before signing: whether a payment demand can actually be paid.')
   .option('--to <address>', 'The wallet the demand says will be paid.')
   .option('--token-account <address>', 'The exact destination token account the demand names.')
-  .option('--mint <address>', 'Mint address. Omit for native SOL. Never a ticker.')
+  .option('--mint <address>', 'Token address — the mint on Solana. Omit for the native asset.')
+  .option('--token <address>', 'Alias for --mint, for EVM chains where the token is a contract.')
   .option('--asset <symbol>', 'The ticker the demand claims, e.g. USDC. Checked against --mint.')
   .option('--amount <amount>', 'Whole tokens, as the demand displays it.')
   .option('--base-units <amount>', 'The same amount in base units, where the demand states both.')
@@ -728,12 +729,13 @@ program
   .option('--memo <text>', 'Text the demand says the payment must carry.')
   .option('--reference <pubkey>', 'The Solana Pay reference the demand names.')
   .option('--expires-at <iso>', 'When the demand stops being valid.')
-  .option('-c, --chain <chain>', 'Solana chain id or alias. Defaults to "solana".')
+  .option('-c, --chain <chain>', 'Chain id or alias, EVM or Solana. Defaults to "solana".')
   .action(
     async (options: {
       to?: string;
       tokenAccount?: string;
       mint?: string;
+      token?: string;
       asset?: string;
       amount?: string;
       baseUnits?: string;
@@ -747,6 +749,7 @@ program
         ...(options.to ? { to: options.to } : {}),
         ...(options.tokenAccount ? { tokenAccount: options.tokenAccount } : {}),
         ...(options.mint ? { mint: options.mint } : {}),
+        ...(options.token ? { token: options.token } : {}),
         ...(options.asset ? { asset: options.asset } : {}),
         ...(options.amount ? { amount: options.amount } : {}),
         ...(options.baseUnits ? { amountBaseUnits: options.baseUnits } : {}),

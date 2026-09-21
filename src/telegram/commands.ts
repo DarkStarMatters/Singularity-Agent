@@ -682,6 +682,7 @@ const DEMAND_FIELDS = [
   'to',
   'tokenAccount',
   'mint',
+  'token',
   'asset',
   'amount',
   'amountBaseUnits',
@@ -725,7 +726,7 @@ function parseDemand(args: string[]): DemandArgs {
 const checkpay: Command = {
   name: 'checkpay',
   aliases: ['inspect_payment', 'invoice'],
-  usage: '/checkpay mint=<addr> to=<addr> amount=<n> [asset=USDC] [tokenAccount=<addr>]',
+  usage: '/checkpay token=<addr> to=<addr> amount=<n> [asset=USDC] [chain=base]',
   summary: 'Before you sign: whether a payment demand can be paid at all',
   async run(ctx) {
     required(ctx, 0, 'an invoice, as key=value pairs or pasted JSON', checkpay);

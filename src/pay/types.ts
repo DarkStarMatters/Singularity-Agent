@@ -217,6 +217,14 @@ export interface PaymentDemand {
   /** Mint address. Absent means native SOL. Never a ticker. */
   mint?: string;
   /**
+   * The token, named the way the chain names it.
+   *
+   * An alias for {@link mint}, because "mint" is a Solana word and an EVM
+   * invoice names a contract. Whichever arrives is resolved to one value before
+   * anything is checked.
+   */
+  token?: string;
+  /**
    * The ticker the demand claims to be denominated in, e.g. `"USDC"`.
    *
    * Checked *against* {@link mint}, never used in place of it. A demand that
@@ -288,6 +296,8 @@ export interface DemandDestination {
   owner?: string;
   /** True when it is the associated token account for `owner` and `mint`. */
   isAssociated?: boolean;
+  /** EVM: the recipient has code at it, so it is a contract rather than a wallet. */
+  isContract?: boolean;
   /** True when the account is frozen and cannot receive. */
   frozen?: boolean;
 }

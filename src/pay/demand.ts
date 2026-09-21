@@ -33,16 +33,38 @@ import { formatUnits, parseUnits } from '../core/format.js';
  * one people learn to ignore.
  */
 export interface DemandFacts {
-  /** Named in the demand, exists, and is a mint. */
-  mint?: { address: string; decimals: number; curatedSymbol?: string };
-  /** A mint was named and there is no mint at that address. */
-  mintMissing?: boolean;
+  /** The token named in the demand, as read: a mint on Solana, a contract on EVM. */
+  token?: { address: string; decimals: number; curatedSymbol?: string };
+  /** A token was named and there is nothing at that address that is one. */
+  tokenMissing?: boolean;
   /** Where the money would land, as read rather than as claimed. */
   destination?: DemandDestination;
   /** The associated token account for the payee and mint, where both are known. */
   derivedAta?: string;
-  /** A native payment aimed at something owned by a token program. */
+  /** Solana: a native payment aimed at something owned by a token program. */
   recipientIsTokenAccount?: boolean;
+  /**
+   * EVM: the recipient address has code at it.
+   *
+   * Not fatal on its own — plenty of payees are contracts — but a contract
+   * that was not written to hold ERC-20s cannot move them out again, and
+   * nothing on chain distinguishes the two.
+   */
+  destinationIsContract?: boolean;
+  /** EVM: the recipient *is* the token contract, which almost always strands it. */
+  destinationIsTheToken?: boolean;
+  /** EVM: the recipient is the zero address, so this is a burn. */
+  destinationIsZero?: boolean;
+  /**
+   * EVM: the recipient is an EOA carrying an EIP-7702 delegation, and this is
+   * the address it points at.
+   *
+   * It has code, and it is still a wallet — key-controlled, able to move tokens
+   * out like any other. Reading "has code" as "is a contract" would warn on an
+   * ordinary and increasingly common wallet, so the designator is read rather
+   * than the code length.
+   */
+  destinationDelegate?: string;
   /** Labels of fields whose address would not parse at all. */
   malformed?: string[];
   /** What holding this token afterwards exposes the payee to. */
@@ -67,6 +89,8 @@ export interface DemandChain {
   name: string;
   nativeSymbol: string;
   nativeDecimals: number;
+  /** Which family's destination rules apply. Solana has token accounts; EVM does not. */
+  family: 'svm' | 'evm';
 }
 
 const finding = (severity: DemandSeverity, code: string, detail: string): DemandFinding => ({
@@ -89,13 +113,23 @@ export function checkClaimedAsset(
   demand: PaymentDemand,
   authentic: string | undefined,
 ): DemandFinding | undefined {
-  if (!demand.asset || !demand.mint || !authentic) return undefined;
-  if (authentic === demand.mint.trim()) return undefined;
+  // Both spellings, or this check silently does nothing for whichever the
+  // caller happened to use — which is how it came to pass a demand labelled
+  // USDC that named the USDT contract.
+  const named = (demand.token ?? demand.mint)?.trim();
+  if (!demand.asset || !named || !authentic) return undefined;
+
+  // EVM addresses are case-insensitive and arrive in whatever casing the
+  // invoice used; comparing them literally would condemn the correct address
+  // for being lowercase. Base58 is case-sensitive and must not be folded.
+  const same =
+    chain.family === 'evm' ? named.toLowerCase() === authentic.toLowerCase() : named === authentic;
+  if (same) return undefined;
 
   return finding(
     'fatal',
     'ASSET_NOT_WHAT_IT_CLAIMS',
-    `This demand calls itself ${demand.asset}, but ${demand.asset} on ${chain.name} is ${authentic} and the mint it names is ${demand.mint}. Those are different tokens. A ticker is not an identity — anyone can create a mint with any name, and one wrong character produces an address that is still valid base58.`,
+    `This demand calls itself ${demand.asset}, but ${demand.asset} on ${chain.name} is ${authentic} and the token it names is ${named}. Those are different tokens. A ticker is not an identity — anyone can deploy a token with any name, and one wrong character produces an address that is still well-formed.`,
   );
 }
 
@@ -236,8 +270,116 @@ export function checkAmounts(demand: PaymentDemand, decimals: number): DemandFin
   return found;
 }
 
-/** What the destination turned out to be, judged against what was claimed. */
+/**
+ * What the destination turned out to be, judged against what was claimed.
+ *
+ * Dispatches on family because this is the one part of a demand whose rules
+ * genuinely differ. Solana pays into a token account that must exist, hold the
+ * right mint and belong to the right owner; EVM pays an address that always
+ * "exists" and where the dangerous cases are different ones — the zero address,
+ * the token's own contract, a contract that cannot move ERC-20s out again.
+ * Ticker, amounts and expiry are the same questions on both, so they are not
+ * split.
+ */
 export function checkDestination(
+  chain: DemandChain,
+  demand: PaymentDemand,
+  facts: DemandFacts,
+): DemandFinding[] {
+  return chain.family === 'evm'
+    ? checkEvmDestination(chain, demand, facts)
+    : checkSolanaDestination(chain, demand, facts);
+}
+
+/**
+ * EVM: an address is always a valid recipient, so the checks are about what
+ * happens *after* it arrives.
+ *
+ * None of these are exotic. Sending ERC-20s to the token's own contract is one
+ * of the most common ways tokens are permanently lost, and it looks like an
+ * ordinary transfer in every wallet.
+ */
+export function checkEvmDestination(
+  chain: DemandChain,
+  demand: PaymentDemand,
+  facts: DemandFacts,
+): DemandFinding[] {
+  const found: DemandFinding[] = [];
+
+  if (demand.tokenAccount) {
+    // There is no such thing here. A demand carrying one was almost certainly
+    // built for a different chain than the one it names.
+    found.push(
+      finding(
+        'warning',
+        'TOKEN_ACCOUNT_ON_EVM',
+        `This demand names a destination token account, and ${chain.name} has no such thing — balances live in the token contract against the holder's address. The demand was probably built for a different chain than the one it names.`,
+      ),
+    );
+  }
+
+  if (!facts.destination) {
+    found.push(
+      finding(
+        'note',
+        'DESTINATION_UNSTATED',
+        'This demand names no payee, so where the money would go cannot be checked at all.',
+      ),
+    );
+    return found;
+  }
+
+  const { address } = facts.destination;
+
+  if (facts.destinationIsZero) {
+    found.push(
+      finding(
+        'fatal',
+        'DESTINATION_IS_ZERO_ADDRESS',
+        `This demand pays the zero address (${address}). That destroys the funds — it is a burn, not a payment, and no payee is credited.`,
+      ),
+    );
+    return found;
+  }
+
+  if (facts.destinationIsTheToken) {
+    found.push(
+      finding(
+        'fatal',
+        'DESTINATION_IS_THE_TOKEN',
+        `This demand pays the token's own contract (${address}). Tokens sent to their own contract are recoverable only if that contract was written to release them, and almost none are. This is one of the most common ways ERC-20s are permanently lost.`,
+      ),
+    );
+    return found;
+  }
+
+  if (facts.destinationDelegate) {
+    // Has code, is not a contract. Worth recording because an explorer will
+    // show bytecode at this address and invite exactly the wrong conclusion.
+    found.push(
+      finding(
+        'note',
+        'DESTINATION_IS_A_DELEGATED_WALLET',
+        `The payee (${address}) is a wallet carrying an EIP-7702 delegation to ${facts.destinationDelegate}. It has code at it and is still key-controlled, so this is an ordinary payee — not a contract that might be unable to move the token out.`,
+      ),
+    );
+  } else if (facts.destinationIsContract) {
+    found.push(
+      finding(
+        'warning',
+        'DESTINATION_IS_A_CONTRACT',
+        demand.mint || demand.token
+          ? `The payee (${address}) is a contract, not a wallet. A contract that was not written to hold this token cannot move it out again, and nothing readable on chain says which kind it is.`
+          : `The payee (${address}) is a contract. A plain ${chain.nativeSymbol} transfer to a contract with no payable fallback reverts, so this payment may simply fail.`,
+      ),
+    );
+  }
+
+  return found;
+}
+
+/** Solana: the destination is a token account, and all three of its facts matter. */
+export function checkSolanaDestination(
   chain: DemandChain,
   demand: PaymentDemand,
   facts: DemandFacts,
@@ -257,7 +399,7 @@ export function checkDestination(
   }
 
   // Native payments: the recipient need not exist, the transfer creates it.
-  if (!facts.mint && !facts.mintMissing) {
+  if (!facts.token && !facts.tokenMissing) {
     if (facts.recipientIsTokenAccount) {
       found.push(
         finding(
@@ -300,12 +442,12 @@ export function checkDestination(
     return found;
   }
 
-  if (facts.mint && destination.mint && destination.mint !== facts.mint.address) {
+  if (facts.token && destination.mint && destination.mint !== facts.token.address) {
     found.push(
       finding(
         'fatal',
         'DESTINATION_WRONG_MINT',
-        `The destination account holds mint ${destination.mint}, and this demand is denominated in ${facts.mint.address}. The token program rejects a transfer of one mint into an account opened for another.`,
+        `The destination account holds mint ${destination.mint}, and this demand is denominated in ${facts.token.address}. The token program rejects a transfer of one mint into an account opened for another.`,
       ),
     );
   }
@@ -421,12 +563,15 @@ export function classifyDemand(
     return found.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
   }
 
-  if (facts.mintMissing) {
+  if (facts.tokenMissing) {
+    const named = demand.token ?? demand.mint;
     found.push(
       finding(
         'fatal',
-        'MINT_DOES_NOT_EXIST',
-        `No SPL mint exists at ${demand.mint} on ${chain.name}. The address is valid base58 — which is why nothing upstream rejected it — but there is no token there, so this demand cannot be paid in the asset it names.`,
+        'TOKEN_DOES_NOT_EXIST',
+        chain.family === 'evm'
+          ? `Nothing at ${named} on ${chain.name} answers as an ERC-20. The address is well-formed — which is why nothing upstream rejected it — but there is either no contract there or one that does not implement the token interface, so this demand cannot be paid in the asset it names.`
+          : `No SPL mint exists at ${named} on ${chain.name}. The address is valid base58 — which is why nothing upstream rejected it — but there is no token there, so this demand cannot be paid in the asset it names.`,
       ),
     );
     // Everything downstream is measured against a mint, so there is nothing
@@ -434,7 +579,7 @@ export function classifyDemand(
     return found.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
   }
 
-  found.push(...checkAmounts(demand, facts.mint?.decimals ?? chain.nativeDecimals));
+  found.push(...checkAmounts(demand, facts.token?.decimals ?? chain.nativeDecimals));
   found.push(...checkDestination(chain, demand, facts));
   found.push(...checkTokenRisk(facts));
 
