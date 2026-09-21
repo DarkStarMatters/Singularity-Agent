@@ -19,6 +19,10 @@ enforcement, where they are not optional.
 One constraint holds across every phase below: **no signing, ever.** See "Explicit
 non-goals."
 
+Phases 1 through 4 are shipped. Phases 5 through 8 are not, and the quarters attached to
+them are horizons rather than commitments — see "Horizons", which says why this document
+declines to pretend it knows what a year from now contains.
+
 ---
 
 ## Shipped — v0.2.0, a payment that proves itself
@@ -1629,6 +1633,275 @@ is a question about change over time. "Is this chain live" is answerable now; "w
 stop", "how often does this endpoint lag", and "has the endpoint list decayed since the
 last release" are not. Those want history, which is what 4.3 is, and what the snapshot in
 Phase 3 would be a crude first version of.
+
+---
+
+## Horizons
+
+Everything above this line is shipped. What follows is not, and the quarters attached to
+it are **horizons rather than commitments** — an ordering with a rough sense of distance,
+not a set of dates anybody should hold this project to.
+
+The reason for saying so plainly: this repository is six days old. It went from the
+initial commit to v0.2.0 in five of them, across four phases and a hundred and ten
+commits, and every numbered item written down as future work so far has shipped within
+days of being written. A roadmap that claimed to know what Q3 2027 contains would be
+making exactly the kind of confident, unfalsifiable statement the rest of this document
+exists to argue against.
+
+So the bands mean: Phase 5 is next, Phase 8 is furthest, and the gap between them is
+larger than the gap within them. If the cadence holds they will arrive far earlier than
+their labels, and the labels are the part that should be corrected rather than the work
+reordered to fit them.
+
+The ordering principle from the top still governs, and it is why coverage does not own a
+quarter below. **Response discipline before chain coverage.** Sui, Aptos, TON, Tron, and
+Dogecoin and Bitcoin Cash behind a Blockbook adapter are all linear work with a known
+shape; they continue as background across every phase here rather than displacing any of
+it. See Phase 3, "Still to come".
+
+---
+
+## Phase 5 — Answers grounded in execution
+
+*Horizon: Q4 2026. Goal: stop reporting facts about a transaction and start reporting what
+it will do.*
+
+Every check this project makes is a reading: what a mint declares, what an account holds,
+who owns which token account. That is enough to catch the whole class of demand that is
+inconsistent with the chain — and §2.5 documents, in writing, the case it cannot reach.
+
+A fee-on-transfer ERC-20 is not detectable from the standard interface. There is no
+`transferFee()` to read and no extension to inspect, because the behaviour lives inside
+`transfer` itself. `inspect_payment` reports such a demand as `payable`, the payer sends
+the amount demanded, and the payee receives less than the amount demanded. Every fact
+checked out and the payment was still short.
+
+The only thing that closes that is executing the transaction against current state instead
+of reasoning about its parts.
+
+### 5.1 Simulate before returning a payload
+
+`build_payment` refuses to build a demand that does not check out. It should also refuse
+one that does not *execute*. Simulation is one call, it costs nothing, and this project
+has never made it anywhere — which is worth stating as the gap it is, because the mechanism
+was proven by hand before this phase was written: the PrivateDAO payment of 21 September
+simulated at `err: null`, 45,681 compute units, with the associated token account created,
+the transfer executed and the memo logged, and it then landed exactly as simulated.
+
+The claim this upgrades is the central one. `build_payment` currently says the facts check
+out. It should say the transaction was executed against the chain as it is right now and
+did not revert.
+
+### 5.2 The delivered amount, not the sent amount
+
+Simulation's real prize is not the revert check but the arithmetic. On Solana,
+`simulateTransaction` returns post-state for named accounts, so the recipient's token
+account can be decoded afterwards and the **delivered** amount compared against the
+**demanded** amount. A transfer fee, a skimming transfer hook, a rounding surprise — all
+of them show up as a shortfall in a subtraction, without anyone having to anticipate the
+mechanism that caused it.
+
+That is a different kind of check from everything in Phase 2. Those name mechanisms this
+tool knows about; this one catches mechanisms nobody has thought of yet, because it
+measures the outcome rather than enumerating the causes.
+
+### 5.3 What simulation still will not tell you, said out loud
+
+EVM is weaker here and the asymmetry must be reported rather than smoothed over. Plain
+`eth_call` catches reverts and hooks that reject outright, but a fee-on-transfer ERC-20
+returns `true` and still takes its cut. Recovering the real delta needs `eth_simulateV1`,
+which not every public endpoint serves.
+
+So the EVM answer is: revert-checking always, delivered-amount checking where the node
+supports it, and an explicit statement when it could not be done — the same `completeness`
+discipline every list in this project already follows. A simulation that silently skipped
+the part that mattered would be worse than no simulation, because it would carry the
+authority of one.
+
+Two further limits, stated now so they are not discovered as disappointments. Simulation
+is against *current* state, and a transaction signed a minute later executes against a
+different one. And a simulated transaction is not a signed one: nothing here moves the
+no-signing line, which is where it has always been.
+
+---
+
+## Phase 6 — State over time
+
+*Horizon: Q1 2027. Goal: answer questions about change, not only questions about now.*
+
+Phase 4 closed with `chain_liveness` and an admission that is the whole of this phase:
+
+> liveness is a *point* measurement, and every interesting question about it is a question
+> about change over time. "Is this chain live" is answerable now; "when did it stop", "how
+> often does this endpoint lag", and "has the endpoint list decayed since the last release"
+> are not.
+
+Every one of those is a question somebody actually has, and none of them can be answered
+by a tool that holds nothing between calls.
+
+### 6.1 The first real persistence question
+
+This is the architectural step, and it deserves more care than the features on top of it.
+Singularity holds almost no state: a burn ledger to stop a signature being redeemed twice,
+and an intent store that the library deliberately refuses to implement for production
+because *"a library that quietly owns your payment records is a library that loses them."*
+That reticence was correct and has to extend here.
+
+So the shape is a port, as `IntentStore` is a port: the application owns the database, the
+retention policy and the backup story, and this project ships an in-memory implementation
+that says what it is in its name. A roadmap item that quietly turned a read-only client
+into something with a data directory would be the same category of mistake as a guarantee
+that lives in prose.
+
+### 6.2 Endpoint history, and decay
+
+Once there is somewhere to put it: how often each endpoint answered, how far behind it was
+when it did, and when it stopped. That makes three questions answerable that are currently
+guesses — which endpoint in a failover list is load-bearing, which has been dead long
+enough to remove, and whether a chain's configured endpoints have rotted since the release
+that added them.
+
+The last one has teeth. Phase 3 already ships "endpoints that answer, rather than endpoints
+that are listed," checked at the moment a chain is added. Nothing re-checks it afterwards,
+so a chain admitted on two healthy providers can decay to one, or to none, and the config
+will keep asserting failover it no longer has.
+
+### 6.3 Balances over time, carefully
+
+`atBlock` already reads past state, one block at a time. A series is the obvious next
+thing and the easiest one to get wrong: a chart of a balance implies the gaps between
+points are known, and on a non-archive endpoint they are not. Any series here has to carry
+its own `completeness` per point, or it will be read as continuous when it is a handful of
+readings with unknown holes.
+
+---
+
+## Phase 7 — Guarantees that cannot be merged away
+
+*Horizon: Q2 2027. Goal: make response discipline a property of the build rather than of
+whoever happened to review.*
+
+This phase is the one the top of this document is about:
+
+> **a guarantee that lives in prose gets violated by code that type-checks.**
+
+That was written after three violations. There have since been five, and the additions are
+not old news — two of them happened during the week this phase was written.
+
+### 7.1 The five, and what they have in common
+
+1. **Solana dust truncation** — a balance list cut without saying it had been cut.
+2. **An EVM historical scan whose dropped failures came back as `[]`** — an absence of
+   evidence reported as evidence of absence.
+3. **An X filter that dropped three quarters of the genuine questions put to it.**
+4. **`getTransaction` dropping rejected chains**, then reporting the hash "not found on
+   any of" every chain in the list — including the ones whose RPC had just failed.
+   Corrected in `28d391c`.
+5. **`checkClaimedAsset` silently disabled by its own alias** — adding `token` as a
+   spelling of `mint` meant a check that only read `mint` quietly stopped running, and a
+   demand labelled USDC that named the USDT contract came back `payable`. Corrected in
+   `aac5efc`, hours after the file it lived in was written.
+
+What they share is more useful than the count. **Every one was code that was correct about
+what it did and wrong about what it claimed.** None was a crash, none failed a type check,
+none produced a visible symptom, and every single one was caught by a human noticing rather
+than by anything in the repository. Number five was caught only because a real invoice was
+run through it by hand.
+
+Review does not catch this class. It is not a discipline problem.
+
+### 7.2 The invariants, written as code
+
+The claims this project makes are small in number and mostly mechanical:
+
+- A list that was cut says so, with both counts.
+- A failed read never becomes an empty result.
+- A chain is never reported as searched unless it answered.
+- A total exists only where the units are identical.
+- An absence is never reported as fact without a `completeness` that supports it.
+- Every unsigned payload states that it is unsigned.
+
+Each is checkable. None is checked today except by the tests that happen to have been
+written for the specific function that once broke.
+
+### 7.3 Property tests across adapters, not examples within them
+
+The shape that fits is property-based: generate adapter responses — empty, partial,
+throwing, half-throwing — and assert the invariants hold for *every* tool, rather than
+writing one example test per function after each bug. A new adapter should inherit the
+whole suite by existing, and a tool that swallows a rejection should fail to merge without
+anyone having thought to check for that particular swallow.
+
+The measure of this phase is not a number of tests. It is whether violation number six is
+caught by CI instead of by a person reading output and finding it odd.
+
+---
+
+## Phase 8 — The machine-payable edge
+
+*Horizon: Q3 2027. Goal: close the distance between a payment that lands and a payment that
+counts.*
+
+The seed for this phase is a single afternoon in September 2026, and it is worth recording
+because every claim in it is evidenced rather than projected.
+
+We paid a live agent marketplace 0.01 USDC for a machine-priced service. `inspect_payment`
+checked the demand and passed it. The transaction simulated clean, landed, and finalized:
+the correct amount, to the exact token account named, carrying the job reference as a memo.
+The treasury's balance confirms receipt to this day.
+
+The job was never credited. The signature was rejected as `quote expired` — for a payment
+that landed three seconds after the quote was issued, against a job whose own `expires_at`
+was fifteen minutes out. And creating any further job then began failing outright, because
+the intent builder read the treasury token account with `encoding: "base58"`, which works
+only while that account does not exist. Our payment created it. An SPL token account is 165
+bytes and base58 refuses anything over 128, so the first successful payment to that
+treasury disabled paid-job creation for every caller, permanently, with no path back.
+
+### 8.1 Landed is not credited
+
+Everything this project checks is on one side of that story. `inspect_payment` verifies a
+payment **can land**; it landed. What the payer needed was for it to **count**, and those
+two came apart completely.
+
+This is not a bug to fix so much as a category the tooling does not yet have. A demand
+carries obligations beyond the transfer — a memo that must arrive, a window that must be
+met, an acknowledgement that must be collected — and none of those are readable from the
+chain. What can be built is the part that is: state the obligations a demand imposes,
+check the ones that are checkable, and name the ones that are not, so a payer knows before
+signing which parts of the deal are enforceable by inspection and which rest entirely on
+the counterparty's word.
+
+The contradictory expiry is the concrete first instance. That intent stated five minutes in
+one field and fifteen in another, and both were visible before a signature.
+
+### 8.2 Proof a payer can hand over
+
+`findPayment` answers "was I paid what I claimed" for the merchant. There is no payer-side
+equivalent, and September is exactly when one was wanted: given a signature and the demand,
+produce the evidence that the payment satisfied it — destination, mint, amount, memo,
+finality, slot. Not a receipt the payee issues, which is precisely what a payee who has
+taken your money and credited nothing will not issue, but evidence assembled from the chain
+by the party who paid.
+
+Most of the machinery exists. `receipt_art` already makes the case that evidence must be
+re-derivable rather than served by whoever benefits from it.
+
+### 8.3 Selling, not only buying
+
+The other half, and the one with a standing blocker that is nobody's fault but ours to
+notice. Singularity is registered on that exchange, healthy, with all eighteen tools
+introspected — and its registry entry carries `allowed_tools: ["chains"]` and
+`pricing: {}`. One of eighteen capabilities is reachable and nothing has a price, so even a
+working payment rail would have nothing to sell.
+
+The work is the honest version of that: declare what is sellable, price it, and — the part
+this project is actually positioned for — make the *quality* of an answer part of what is
+being sold. Everything here already states its own limits. A market in machine answers will
+eventually need a way to tell a bounded, source-named, completeness-carrying answer from a
+confident guess, and that distinction is the thing this repository has spent every phase
+building.
 
 ---
 
