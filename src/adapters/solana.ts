@@ -2070,6 +2070,37 @@ export async function assessMintRisk(chain: ChainSpec, mintAddress: string): Pro
 }
 
 /**
+ * Create a recipient's associated token account, idempotently.
+ *
+ * The idempotent variant (discriminator 1) rather than plain create (0), for a
+ * reason that is not theoretical: minutes pass between building a transaction
+ * and signing it, and anyone at all may create this account in between —
+ * creating an ATA needs no permission from its owner. Plain create fails in
+ * that window and takes the payment down with it; idempotent create succeeds
+ * either way.
+ */
+function createAtaIdempotent(params: {
+  payer: PublicKey;
+  account: PublicKey;
+  owner: PublicKey;
+  mint: PublicKey;
+  programId: PublicKey;
+}): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: params.payer, isSigner: true, isWritable: true },
+      { pubkey: params.account, isSigner: false, isWritable: true },
+      { pubkey: params.owner, isSigner: false, isWritable: false },
+      { pubkey: params.mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: params.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  });
+}
+
+/**
  * A payment built for one specific order.
  *
  * Structurally a transfer, with one addition that changes what it is for: the
@@ -2138,8 +2169,21 @@ export async function buildPayment(
 
       const destinationExists = await connection.getAccountInfo(destination).catch(() => null);
       if (!destinationExists) {
+        // Create it, rather than warning that the transfer will fail. Warning
+        // alone hands back a transaction that cannot land, which is the thing
+        // this whole path exists not to do — and a payee who has never held
+        // the token is the ordinary case for a first payment, not an error.
+        transaction.add(
+          createAtaIdempotent({
+            payer,
+            account: destination,
+            owner: to,
+            mint,
+            programId: facts.programId,
+          }),
+        );
         warnings.push(
-          `The recipient has no token account for this mint yet (${destination.toBase58()}). This transfer fails unless that account is created first, which costs ~0.002 SOL of rent.`,
+          `The recipient had no token account for this mint (${destination.toBase58()}), so this transaction creates it before paying. That costs you about 0.002 SOL of rent, which goes to the account itself and is recoverable only by its owner.`,
         );
       }
 
