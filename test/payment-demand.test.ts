@@ -205,6 +205,54 @@ describe('numbers that disagree', () => {
   });
 });
 
+describe('a mint that charges to be transferred', () => {
+  it('warns that the payee receives less than is sent', () => {
+    const findings = classifyDemand(
+      solana,
+      { mint: USDC, to: TREASURY, amount: '1' },
+      {
+        mint: { address: USDC, decimals: 6 },
+        derivedAta: REAL_ATA,
+        destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
+        transferFee: true,
+      },
+    );
+
+    const fee = findings.find((f) => f.code === 'TRANSFER_FEE');
+    expect(fee?.severity).toBe('warning');
+    expect(fee?.detail).toMatch(/receives less than you send/);
+  });
+
+  it('does not refuse over it, matching what inspect_exit decided', () => {
+    // A transfer fee is a reason to price differently, not to abort. What it
+    // must not be is invisible, which it was until this existed.
+    const findings = classifyDemand(
+      solana,
+      { mint: USDC, to: TREASURY, amount: '1' },
+      {
+        mint: { address: USDC, decimals: 6 },
+        derivedAta: REAL_ATA,
+        destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
+        transferFee: true,
+      },
+    );
+    expect(demandVerdict(findings, true)).toBe('payable');
+  });
+
+  it('says nothing when the mint charges no fee', () => {
+    const findings = classifyDemand(
+      solana,
+      { mint: USDC, to: TREASURY, amount: '1' },
+      {
+        mint: { address: USDC, decimals: 6 },
+        derivedAta: REAL_ATA,
+        destination: { address: REAL_ATA, exists: true, mint: USDC, owner: TREASURY },
+      },
+    );
+    expect(codes(findings)).not.toContain('TRANSFER_FEE');
+  });
+});
+
 describe('expiry', () => {
   const now = Date.parse('2026-09-21T10:00:00.000Z');
 

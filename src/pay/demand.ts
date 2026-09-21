@@ -47,6 +47,16 @@ export interface DemandFacts {
   malformed?: string[];
   /** What holding this token afterwards exposes the payee to. */
   risk?: MintRisk;
+  /**
+   * The mint charges a fee on every transfer, so the payee receives less than
+   * is sent.
+   *
+   * Read separately because {@link MintRisk} only carries this as prose in
+   * `warnings`, and a sentence is not something a check can branch on. It was
+   * invisible here until a demand for a fee-bearing mint came back `payable`
+   * and would have arrived short.
+   */
+  transferFee?: boolean;
   /** Set when the chain would not answer, with why. Nothing below was checked. */
   unreadable?: string;
 }
@@ -324,9 +334,26 @@ export function checkDestination(
 }
 
 /** What the mint's own powers mean for the party about to pay. */
-export function checkTokenRisk(risk: MintRisk | undefined): DemandFinding[] {
-  if (!risk) return [];
+export function checkTokenRisk(facts: DemandFacts): DemandFinding[] {
   const found: DemandFinding[] = [];
+
+  if (facts.transferFee) {
+    // A warning rather than a refusal, matching what `inspect_exit` already
+    // decided about the same extension: a transfer fee is a reason to price
+    // differently, not to abort. What it must not be is silent — paying the
+    // amount as demanded delivers less than the amount demanded, and the payee
+    // records it short.
+    found.push(
+      finding(
+        'warning',
+        'TRANSFER_FEE',
+        'This mint charges a fee on every transfer, so the payee receives less than you send. Paying exactly the amount demanded will be recorded as an underpayment — settle the gross amount, or agree the shortfall first.',
+      ),
+    );
+  }
+
+  const { risk } = facts;
+  if (!risk) return found;
 
   if (risk.transferHook) {
     found.push(
@@ -409,7 +436,7 @@ export function classifyDemand(
 
   found.push(...checkAmounts(demand, facts.mint?.decimals ?? chain.nativeDecimals));
   found.push(...checkDestination(chain, demand, facts));
-  found.push(...checkTokenRisk(facts.risk));
+  found.push(...checkTokenRisk(facts));
 
   return found.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }

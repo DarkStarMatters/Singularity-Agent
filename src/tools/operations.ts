@@ -538,13 +538,71 @@ export async function getHistory(options: {
 }
 
 /**
+ * Which chains actually answered, and which only appeared to be asked.
+ *
+ * Pure, and separated from the search for the reason the rest of this codebase
+ * separates judging from reading: the interesting case is every endpoint
+ * failing at once, which is not a thing you can arrange against live RPCs.
+ *
+ * The distinction it draws is the whole point. A chain that answers "not here"
+ * has been searched, and its silence is evidence. A chain whose endpoint threw
+ * has not been searched at all, and reporting it as though it had is how an
+ * absence gets asserted about somewhere nothing ever successfully looked.
+ * `TX_NOT_FOUND` is the adapters' way of saying the former; anything else is
+ * the latter.
+ */
+export function partitionSearch<T>(
+  chainIds: string[],
+  settled: PromiseSettledResult<T>[],
+): {
+  hits: T[];
+  searched: string[];
+  unreachable: Array<{ chain: string; error: string; hint?: string }>;
+} {
+  const hits: T[] = [];
+  const searched: string[] = [];
+  const unreachable: Array<{ chain: string; error: string; hint?: string }> = [];
+
+  settled.forEach((result, index) => {
+    const chain = chainIds[index] ?? `#${index}`;
+
+    if (result.status === 'fulfilled') {
+      hits.push(result.value);
+      searched.push(chain);
+      return;
+    }
+
+    const reason: unknown = result.reason;
+    if (reason instanceof SingularityError && reason.code === 'TX_NOT_FOUND') {
+      searched.push(chain);
+      return;
+    }
+
+    unreachable.push({
+      chain,
+      error: reason instanceof Error ? reason.message : String(reason),
+      ...(reason instanceof SingularityError && reason.hint ? { hint: reason.hint } : {}),
+    });
+  });
+
+  return { hits, searched, unreachable };
+}
+
+/**
  * Fetch a transaction. Without a chain hint, search the chains the hash format
  * allows, in parallel, and report every chain it was found on.
  */
 export async function getTransaction(options: {
   hash: string;
   chain?: string;
-}): Promise<{ found: NormalizedTx[]; searched: string[]; note?: string }> {
+}): Promise<{
+  found: NormalizedTx[];
+  /** Chains that actually answered — found it, or reported it absent. */
+  searched: string[];
+  /** Chains whose endpoint failed. Absence was NOT established on these. */
+  unreachable?: Array<{ chain: string; error: string; hint?: string }>;
+  note?: string;
+}> {
   const hash = options.hash.trim();
 
   if (options.chain) {
@@ -571,23 +629,44 @@ export async function getTransaction(options: {
     candidates.map((chain) => adapterFor(chain).getTransaction(chain, hash)),
   );
 
-  const found = await Promise.all(
-    settled
-      .filter((r): r is PromiseFulfilledResult<NormalizedTx> => r.status === 'fulfilled')
-      .map((r) => withFinality(getChain(r.value.chain), r.value)),
+  // A chain that answers "not here" has been searched. A chain whose endpoint
+  // failed has not, and the difference is the whole value of the answer: before
+  // this, every rejection was dropped and the error below then asserted the
+  // hash was absent from chains nothing had successfully asked. That is the
+  // same failure `getPortfolio` collects `errors` for and `evm.ts` counts
+  // unreachable contracts for — reported here rather than silently folded into
+  // an absence.
+  const { hits, searched, unreachable } = partitionSearch(
+    candidates.map((c) => c.id),
+    settled,
   );
 
+  const found = await Promise.all(hits.map((tx) => withFinality(getChain(tx.chain), tx)));
+
   if (!found.length) {
+    // Nothing answered at all. This is not an absence and must not be reported
+    // as one — there is no evidence about the hash either way.
+    if (searched.length === 0) {
+      throw new SingularityError(
+        'TX_SEARCH_UNAVAILABLE',
+        `None of the ${candidates.length} chain(s) that could hold ${shortAddress(hash, 12, 8)} would answer, so nothing is known about this transaction.`,
+        `Unreachable: ${unreachable.map((u) => `${u.chain} (${u.error})`).join('; ')}. This is not evidence the transaction does not exist. Pass \`chain\` to query one directly, or set your own endpoint.`,
+      );
+    }
+
     throw new SingularityError(
       'TX_NOT_FOUND',
-      `Transaction ${shortAddress(hash, 12, 8)} was not found on any of: ${candidates.map((c) => c.id).join(', ')}.`,
-      'Pass `chain` explicitly if it is on a chain outside the default search set, or the transaction may not exist.',
+      `Transaction ${shortAddress(hash, 12, 8)} was not found on any of: ${searched.join(', ')}.`,
+      unreachable.length
+        ? `${unreachable.length} further chain(s) did not answer and were not searched — ${unreachable.map((u) => u.chain).join(', ')} — so this is not evidence the transaction is absent from those.`
+        : 'Pass `chain` explicitly if it is on a chain outside the default search set, or the transaction may not exist.',
     );
   }
 
   return {
     found,
-    searched: candidates.map((c) => c.id),
+    searched,
+    ...(unreachable.length ? { unreachable } : {}),
     note:
       found.length > 1
         ? 'This hash exists on more than one chain. That is normal for deterministic deployments and replayed transactions — check the chain field on each.'

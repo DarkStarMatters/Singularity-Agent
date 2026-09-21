@@ -2638,6 +2638,10 @@ export async function inspectPaymentDemand(
         return;
       }
 
+      // Structural, not a warning string: a payer needs to branch on this, and
+      // `assessMintRisk` only states it in prose.
+      facts.transferFee = mintFacts.extensions.has(EXT_TRANSFER_FEE_CONFIG);
+
       const curated = knownTokens(chain.id).find((known) => known.address === mint.toBase58())?.symbol;
       facts.mint = {
         address: mint.toBase58(),

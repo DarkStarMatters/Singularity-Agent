@@ -157,13 +157,22 @@ export function formatTransaction(tx: NormalizedTx): string {
 export function formatTransactionSearch(result: {
   found: NormalizedTx[];
   searched: string[];
+  unreachable?: Array<{ chain: string; error: string }>;
   note?: string;
 }): string {
   if (!result.found.length) {
+    // `searched` must name only the chains that answered. A chain whose
+    // endpoint failed gets its own line, because listing it above would
+    // present an unreachable chain as one that looked and found nothing.
     return [
       '⚠️ Transaction not found.',
       '',
-      `<i>Searched: ${esc(result.searched.join(', '))}</i>`,
+      result.searched.length
+        ? `<i>Searched: ${esc(result.searched.join(', '))}</i>`
+        : '<i>No chain answered, so nothing was actually searched.</i>',
+      ...(result.unreachable?.length
+        ? [`<i>Did not answer: ${esc(result.unreachable.map((u) => u.chain).join(', '))} — not evidence it is absent there.</i>`]
+        : []),
       ...(result.note ? ['', `<i>${esc(result.note)}</i>`] : []),
     ].join('\n');
   }
