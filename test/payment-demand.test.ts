@@ -114,11 +114,40 @@ describe('a destination that does not exist', () => {
     expect(demandVerdict(classifyDemand(solana, demand, facts), true)).toBe('unpayable');
   });
 
-  it('points out that it is not the derived account either, and gives the one that is', () => {
-    const notDerived = classifyDemand(solana, demand, facts).find(
-      (f) => f.code === 'DESTINATION_NOT_DERIVED',
+  it('names the account that would have been derived, so the gap is visible', () => {
+    const fatal = classifyDemand(solana, demand, facts).find(
+      (f) => f.code === 'DESTINATION_DOES_NOT_EXIST',
     );
-    expect(notDerived?.detail).toContain(REAL_ATA);
+    expect(fatal?.detail).toContain(REAL_ATA);
+    expect(fatal?.detail).toMatch(/nobody is watching/);
+  });
+
+  it('is only a warning when the missing account IS the derived one', () => {
+    // The distinction that matters, and the one the first version missed: an
+    // invoice naming the payee's canonical account is honest even when that
+    // account has never been created. PrivateDAO's own corrected intent is
+    // exactly this shape, and refusing it would have blocked a real payment.
+    const findings = classifyDemand(solana, demand, {
+      ...facts,
+      destination: { address: REAL_ATA, exists: false, isAssociated: true },
+    });
+
+    expect(codes(findings)).toContain('DESTINATION_UNCREATED');
+    expect(codes(findings)).not.toContain('DESTINATION_DOES_NOT_EXIST');
+    expect(demandVerdict(findings, true)).toBe('payable');
+  });
+
+  it('still refuses an account that exists nowhere and derives from nothing', () => {
+    // No payee to derive from, so nothing ties the address to anyone.
+    const findings = classifyDemand(
+      solana,
+      { mint: USDC, tokenAccount: DEAD_ACCOUNT, amount: '1' },
+      {
+        token: { address: USDC, decimals: 6 },
+        destination: { address: DEAD_ACCOUNT, exists: false },
+      },
+    );
+    expect(codes(findings)).toContain('DESTINATION_DOES_NOT_EXIST');
   });
 
   it('is only a warning when nobody named it and it is simply uncreated', () => {

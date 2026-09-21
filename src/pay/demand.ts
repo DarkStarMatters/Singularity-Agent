@@ -426,32 +426,32 @@ export function checkSolanaDestination(
   }
 
   if (!destination.exists) {
-    if (demand.tokenAccount) {
-      found.push(
-        finding(
-          'fatal',
-          'DESTINATION_DOES_NOT_EXIST',
-          `The token account this demand names as the destination (${destination.address}) does not exist on ${chain.name}. A transfer to it fails rather than waiting, and a client that creates an account there instead would be paying rent on a destination the payee is not watching.`,
-        ),
-      );
-      if (derivedAta && derivedAta !== destination.address) {
-        found.push(
-          finding(
-            'warning',
-            'DESTINATION_NOT_DERIVED',
-            `It is not the associated token account for the payee and mint this demand names either — that would be ${derivedAta}. A destination that is neither an existing account nor the derived one usually means it was derived from different values than the ones you were shown.`,
-          ),
-        );
-      }
-    } else {
+    // Whether a missing destination is fatal turns entirely on one question:
+    // is this address derivable from the payee and mint the demand itself
+    // names? If it is, it is that payee's canonical account, creating it is
+    // what any wallet does, and the funds land where they are being watched
+    // for. If it is not, then nothing ties the address to the payee and
+    // creating an account there is how money reaches somewhere nobody is
+    // looking. The first version refused both, which condemned every honest
+    // invoice to a payee who had simply never held the token.
+    if (!demand.tokenAccount || destination.isAssociated) {
       found.push(
         finding(
           'warning',
           'DESTINATION_UNCREATED',
-          `The payee holds no token account for this mint yet (${destination.address}). The transfer fails unless that account is created in the same transaction, which costs the sender about 0.002 SOL of rent.`,
+          `The payee holds no token account for this mint yet (${destination.address}). It is the associated account derived from the payee and mint this demand names, so creating it pays them at their canonical address — but the transfer fails unless it is created in the same transaction, which costs the sender about 0.002 SOL of rent.`,
         ),
       );
+      return found;
     }
+
+    found.push(
+      finding(
+        'fatal',
+        'DESTINATION_DOES_NOT_EXIST',
+        `The token account this demand names as the destination (${destination.address}) does not exist on ${chain.name}, and it is not the associated account for the payee and mint the demand names${derivedAta ? ` — that would be ${derivedAta}` : ''}. Nothing ties this address to the payee, so creating an account there would put the money somewhere nobody is watching. A destination that is neither an existing account nor the derived one usually means it was computed from different values than the ones you were shown.`,
+      ),
+    );
     return found;
   }
 
