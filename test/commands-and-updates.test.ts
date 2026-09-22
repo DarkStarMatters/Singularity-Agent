@@ -44,6 +44,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   inspect_exit: 'inspect',
   inspect_payment: 'checkpay',
   receipt_art: 'receipt',
+  mesh: 'mesh',
 };
 
 describe('telegram command surface', () => {

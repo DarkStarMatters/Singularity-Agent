@@ -8,6 +8,7 @@ import { adapterFor } from '../adapters/index.js';
 import { VERSION } from '../version.js';
 import * as render from './render.js';
 import { parseBudget, type ResponseBudget } from '../core/budget.js';
+import type { Objective as MeshObjective } from '../mesh/moves.js';
 import { pollLoop } from '../core/watch.js';
 import { balanceIdentity } from '../tools/operations.js';
 import { FileIntentStore, requireAllowedRecipient } from '../pay/file-store.js';
@@ -705,6 +706,57 @@ program
     // a transfer fee is a reason to price differently, not to abort.
     process.exitCode = report.canExit ? 0 : 1;
   });
+
+
+/**
+ * `mesh` — the one command that is not a single call.
+ *
+ * Everything else here answers a question somebody already knew how to ask.
+ * This takes the question, works out which of the other commands would answer
+ * it, runs them in a cost-ordered order, and prints the search rather than
+ * only its conclusion — including what it could not prove, which is the part
+ * the other commands have no way to tell you.
+ *
+ * Exits non-zero when the objective was not fully answered, so a script can
+ * refuse to proceed on a partial picture rather than reading `facts` and
+ * assuming the gaps are zeroes.
+ */
+program
+  .command('mesh')
+  .description('Answer one question with several tools, searched, and say what it could not prove.')
+  .argument('<objective>', 'identify | holdings | activity | settlement | safety | liveness')
+  .argument('<subject>', 'An address, transaction hash, name, mint, alias, or a chain id for `liveness`.')
+  .option('-c, --chain <chain>', 'Chain id or alias, when you already know it.')
+  .option('--max-calls <n>', 'Hard ceiling on tool calls. Defaults to 8, capped at 16.')
+  .option('--beam <n>', 'How many moves may run at once. Defaults to 3, capped at 5.')
+  .option('--budget <size>', 'small | standard | full | a number, applied to the lists inside.')
+  .option('--plan', 'Print the order the moves would run in, without calling anything.')
+  .action(
+    async (
+      objective: string,
+      subject: string,
+      options: { chain?: string; maxCalls?: string; beam?: string; budget?: string; plan?: boolean },
+    ) => {
+      const result = await ops.mesh({
+        subject,
+        objective: objective as MeshObjective,
+        ...(options.chain ? { chain: options.chain } : {}),
+        ...(options.maxCalls ? { maxCalls: Number(options.maxCalls) } : {}),
+        ...(options.beam ? { beam: Number(options.beam) } : {}),
+        ...(cliBudget(options.budget) ? { budget: cliBudget(options.budget) } : {}),
+        ...(options.plan ? { plan: true } : {}),
+      });
+
+      if (program.opts().json) {
+        console.log(toJson(result));
+      } else {
+        console.log(render.heading(`Mesh: ${render.dim(objective)}`));
+        console.log(render.renderMesh(result));
+      }
+
+      process.exitCode = result.verdict === 'answered' || result.verdict === 'planned' ? 0 : 1;
+    },
+  );
 
 
 /**

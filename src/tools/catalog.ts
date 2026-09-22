@@ -497,6 +497,39 @@ export const TOOLS: ToolDefinition[] = [
     },
     run: (args) => ops.receiptArt(args),
   }),
+
+  defineTool({
+    name: 'mesh',
+    title: 'Answer a question with several tools, searched rather than guessed at',
+    description:
+      "Investigate one subject against a stated objective by calling several of these tools in a searched order, and come back with the facts, the path that proved them, and an explicit list of what could not be proved. Reach for it when a question needs more than one call and you do not already know which calls, in what order — \"is this token safe to buy\", \"what is this address\", \"did this transaction settle\", \"is this chain worth reading right now\". Reach for the individual tool instead when you already know exactly which one you want; this is strictly more expensive than one call. `objective` decides what counts as an answer: `identify` (what is this string, on which chain), `holdings` (native and token balances), `activity` (what the address has been doing), `settlement` (the transaction, and whether its block can still be discarded), `safety` (a Solana mint's authorities, its declared identity, and what could stop you selling it), `liveness` (whether a chain is producing blocks, and what a transfer costs on it). Each objective names the facts it wants; the search runs the cheapest moves that could prove the missing ones, several at a time, and stops as soon as they are all proved or the call budget is spent. Nothing is read twice — a fact proved by one move is available to every other. **The verdict is about evidence, not about the subject.** `answered` means every fact the objective asked for was established; `partial` means some were and the rest are named in `unproven`, each with the reason — a tool that does not apply on this chain, a prerequisite that was never proved, an endpoint that failed, or the budget running out. Read `unproven` before acting on `facts`. `facts` are summaries rather than the tools' full answers: each step records the tool and the exact arguments it was called with, so re-running one call gets the whole payload. `sigma` reports what the run earned against what those same calls could have earned, and every step's reward is arithmetic over what the call returned about itself — its completeness, whether it errored, what it proved. Nothing here judges how good a step looked, and there is no model in the loop: two runs against the same chain state produce the same path. Read-only throughout; it builds nothing and signs nothing. Pass `plan: true` to see the order and the cost without spending a call.",
+    shape: {
+      subject: z
+        .string()
+        .describe('What the question is about: an address, transaction hash, ENS/SNS name, Solana mint, alias, or — for the `liveness` objective — a chain id.'),
+      objective: z
+        .enum(['identify', 'holdings', 'activity', 'settlement', 'safety', 'liveness'])
+        .describe('What counts as an answer. This decides which facts the search is trying to prove, and therefore which tools it will reach for.'),
+      chain: z
+        .string()
+        .optional()
+        .describe('Chain id or alias, when you already know it. Saves the search from inferring it, and narrows every move after.'),
+      maxCalls: z
+        .number()
+        .optional()
+        .describe('Hard ceiling on tool calls. Defaults to 8, capped at 16. The only argument that spends anything.'),
+      beam: z
+        .number()
+        .optional()
+        .describe('How many moves may run at once in one wave. Defaults to 3, capped at 5. Higher finishes sooner and can spend calls on moves a slower wave would have skipped.'),
+      budget: budgetArg,
+      plan: z
+        .boolean()
+        .optional()
+        .describe('Return the order the moves would be attempted in, and what each would cost, without calling anything. A plan assumes every move answers in full, which a real run cannot.'),
+    },
+    run: (args) => ops.mesh({ ...args, budget: parseBudget(args.budget) }),
+  }),
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));

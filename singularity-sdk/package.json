@@ -57,7 +57,7 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "singularity-agent": ">=0.3.0"
+    "singularity-agent": ">=0.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

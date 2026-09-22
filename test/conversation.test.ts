@@ -98,6 +98,7 @@ describe('tool catalogue', () => {
       'history',
       'inspect_exit',
       'inspect_payment',
+      'mesh',
       'mint_audit',
       'portfolio',
       'read_contract',

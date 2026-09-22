@@ -39,6 +39,7 @@ describe('MCP server', () => {
       'history',
       'inspect_exit',
       'inspect_payment',
+      'mesh',
       'mint_audit',
       'portfolio',
       'read_contract',

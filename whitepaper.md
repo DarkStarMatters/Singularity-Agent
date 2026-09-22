@@ -2,7 +2,7 @@
 
 **Read-only blockchain access for agents, and the enforcement that makes it safe to act on**
 
-Version 0.3.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.4.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
 *This paper describes `main`. Everything in it is implemented and tested; where something
 has landed since the v0.0.9 tag it is marked.*
@@ -166,7 +166,7 @@ be separated eventually will be, by someone in a hurry, and the separation will 
     viem   web3.js  esplora   LCD
 ```
 
-21,128 lines of TypeScript in `src`, 1,051 tests, six runtime dependencies
+31,759 lines of TypeScript in `src`, 1,490 tests, six runtime dependencies
 (`viem`, `@solana/web3.js`, `@modelcontextprotocol/sdk`, `commander`, `zod`, `bs58`).
 Node ≥20.10.
 

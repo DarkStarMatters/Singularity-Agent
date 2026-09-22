@@ -53,6 +53,8 @@ import { convertBech32Prefix } from '../core/address-codec.js';
 import type { ScanOptions, StateOptions, TransferParams } from '../core/adapter.js';
 import type { ResponseBudget } from '../core/budget.js';
 import { completeness, weakest, type Completeness } from '../core/envelope.js';
+import { runMesh, type MeshResult } from '../mesh/search.js';
+import type { Objective as MeshObjective } from '../mesh/moves.js';
 import type {
   BalanceEntry,
   BurnEvent,
@@ -1763,4 +1765,59 @@ function withDemandWarnings(tx: UnsignedTx, report: PaymentDemandReport): Unsign
       `This demand was checked against ${report.chain} before building: ${report.note}`,
     ],
   };
+}
+
+/**
+ * Run the mesh: several tools, searched rather than guessed at.
+ *
+ * This is the one operation that calls the others. Everything above answers a
+ * question somebody already knew how to ask — which tool, with which
+ * arguments — and that is the part a model in a loop gets wrong, not the
+ * individual calls. It reaches for `balance` before it has a chain, re-reads a
+ * mint it already read, stops when the first four answers look like enough,
+ * and has no way afterwards to say which parts of what it reported were
+ * actually established.
+ *
+ * So the search lives here instead, where it is reproducible. `src/mesh`
+ * holds the whole of it and takes a runner rather than importing this module,
+ * which is what lets the ordering, the pruning and the backtracking be tested
+ * without a single endpoint. This function is the runner: the table below is
+ * the only place the mesh's move names meet real calls.
+ */
+export const MESH_RUNNERS: Record<string, (args: Record<string, any>) => Promise<unknown>> = {
+  resolve: (args) => resolve(String(args.input), args.chain),
+  chain_liveness: (args) => checkLiveness(args.chain),
+  fees: (args) => getFees(String(args.chain)),
+  balance: (args) => getBalance(args as { address: string; chain: string }),
+  history: (args) => getHistory(args as { address: string; chain: string }),
+  transaction: (args) => getTransaction(args as { hash: string; chain?: string }),
+  mint_audit: (args) => auditMint(args as { mint: string; chain?: string }),
+  token_identity: (args) => tokenIdentity(args as { mint: string; chain?: string }),
+  inspect_exit: (args) => inspectExit(args as { mint: string; chain?: string }),
+};
+
+export async function mesh(options: {
+  subject: string;
+  objective: MeshObjective;
+  chain?: string;
+  maxCalls?: number;
+  beam?: number;
+  budget?: ResponseBudget;
+  plan?: boolean;
+}): Promise<MeshResult> {
+  return runMesh(options, async (tool, args) => {
+    const run = MESH_RUNNERS[tool];
+    if (!run) {
+      // Unreachable from the move table, and worth failing loudly rather than
+      // silently dropping a move: a mesh missing one runner would quietly
+      // return `unproven` for everything that move was meant to prove, which
+      // reads exactly like a chain that would not answer.
+      throw new SingularityError(
+        'MESH_NO_RUNNER',
+        `The mesh has a move for \`${tool}\` and no way to call it.`,
+        'This is a wiring bug in `MESH_RUNNERS`, not something a caller can fix.',
+      );
+    }
+    return run(args);
+  });
 }

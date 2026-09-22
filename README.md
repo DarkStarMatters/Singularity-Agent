@@ -95,7 +95,7 @@ Or by hand, in any MCP client that speaks streamable HTTP:
 
 The `type` field matters: a `url` without one is skipped silently by some clients.
 
-This serves the same twenty tools as the local server, from the same catalogue, with
+This serves the same twenty-one tools as the local server, from the same catalogue, with
 full input schemas. It is read-only, holds no keys, and needs no credentials — so the
 trade is the obvious one: your queries reach our endpoint rather than staying on your
 machine. If that matters, use the local route below; it is identical in every other way.
@@ -450,6 +450,12 @@ singularity pay new 25 --to <address> --token <mint> --label "Order 7"
 singularity pay status <id> --watch     # exits 0 once it is actually paid
 singularity pay list
 
+# Several tools at once, searched: the calls, the facts, and what stayed unproven.
+singularity mesh safety <mint> --chain solana   # exits non-zero unless every fact was proved
+singularity mesh identify vitalik.eth
+singularity mesh activity <address> --chain solana
+singularity mesh safety <mint> --plan           # the order and the cost, calling nothing
+
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
@@ -474,6 +480,72 @@ ticks is a value it never saw. A reorg is reported rather than smoothed over.
 
 ---
 
+## `mesh` — several tools, searched
+
+Every other tool here answers a question somebody already knew how to ask: which tool,
+with which arguments. That is not the part a model in a loop gets wrong. It reaches for
+`balance` before it has a chain, re-reads a mint it already read, stops when the first
+few answers look like enough, and afterwards has no way to say which parts of what it
+reported were actually established.
+
+`mesh` is that part, made reproducible. You give it a subject and an **objective** —
+`identify`, `holdings`, `activity`, `settlement`, `safety`, `liveness` — and each
+objective declares the facts that count as an answer. The search runs the cheapest moves
+that could prove the missing ones, several at a time, and stops when they are all proved
+or the call budget is spent.
+
+```
+$ singularity mesh activity vitalik.eth
+
+  objective   activity
+  subject     vitalik.eth on ethereum
+  verdict     partial  2 of 3 facts proved
+  calls       2 across 2 waves, 1 backtrack
+  sigma       4 / 12  (0.33)
+  stopped     no applicable move remained
+
+  Path
+  w1  resolve          +5  subjectKind, chain, address
+
+  Discarded
+  w2  history          -1  proved nothing new
+
+  Unproven
+  activity         history was called and could not answer: History for an EVM address
+                   needs an indexer, and none is configured, so nothing is known about
+                   this address. This is not "no activity" — it is no answer.
+```
+
+Three properties are worth stating plainly, because they are what separate this from a
+model improvising the same calls:
+
+**It does not think.** There is no language model in the search, no trained policy, and
+nothing in it has an opinion. Each step is scored by arithmetic over what the call
+returned *about itself* — its `completeness`, whether it errored, which facts it was the
+first to prove. Two runs against the same chain state produce the same path and the same
+rewards, and every step records the tool and the exact arguments it was called with, so
+any one of them can be re-run by hand.
+
+**Nothing is read twice.** The facts live on one shared board rather than one per branch,
+which is the whole reason this is a mesh: a fact proved by the first wave unblocks every
+move in the second, and no call is paid for twice.
+
+**`unproven` is the point.** A partial answer that reads as complete is the failure this
+repository keeps finding, so the search reports what it could not establish and why —
+a tool that does not apply on this chain, a prerequisite that was never proved, an
+endpoint that refused, or the budget running out. `verdict` is about the evidence, never
+about the subject: `answered` means every fact the objective asked for was proved, not
+that the subject is fine.
+
+`sigma` is the summed step reward against what those same calls could have earned. Low
+with a full answer means the run paid for calls that told it little; it is a measure of
+the search, not of the chain.
+
+`--plan` prints the order the moves would run in and what each would cost, without
+calling anything. Over MCP the same tool takes `plan: true`.
+
+---
+
 ## MCP tools
 
 | Tool | What it does |
@@ -494,6 +566,7 @@ ticks is a value it never saw. A reorg is reported rather than smoothed over.
 | `build_burn` | Build an **unsigned** burn for the holder to sign. |
 | `verify_burn` | Confirm a burn from its signature, and check it against a claim. |
 | `inspect_exit` | Before buying a Solana token: the specific mechanisms that could stop you selling it again — transfer hook, permanent delegate, freeze authority — each naming who holds the power. Not a score. |
+| `mesh` | Answer one question with several of the tools above, in a searched order, and report the facts, the path that proved them, and what could not be proved. |
 
 Every tool is annotated `readOnlyHint: true`. Errors come back as structured results
 carrying a code and a hint, rather than as transport exceptions — so a model can correct
@@ -832,6 +905,7 @@ Architecture:
 src/core/       normalized types, chain registry, formatting, bech32/base58 codecs
 src/adapters/   one adapter per family, all implementing ChainAdapter
 src/tools/      operations, plus the tool catalogue every model front end reads
+src/mesh/       the search: the move table, the process reward, the blackboard
 src/mcp/        MCP server
 src/cli/        CLI and terminal rendering
 src/grok/       xAI client, agent loop, persona, conversation memory

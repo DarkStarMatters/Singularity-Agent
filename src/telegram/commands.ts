@@ -15,6 +15,8 @@ import { payCaption } from '../pay/notify.js';
 import { isExpired } from '../pay/intent.js';
 import { chatFromMemo } from './payments.js';
 import { SingularityError } from '../core/errors.js';
+import { shortAddress } from '../core/format.js';
+import { OBJECTIVES, type Objective as MeshObjective } from '../mesh/moves.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
 import type { InlineKeyboard } from './api.js';
@@ -838,6 +840,76 @@ const receipt: Command = {
   },
 };
 
+/**
+ * Several tools, searched rather than guessed at.
+ *
+ * The one command here that is not a single call. Everything else answers a
+ * question somebody already knew how to ask; this one takes the question and
+ * works out the calls, then shows its working — which is the part worth having
+ * in a chat window, because the trace is short enough to read and the
+ * `unproven` list is the answer to "what does this not cover".
+ */
+const mesh: Command = {
+  name: 'mesh',
+  aliases: ['investigate'],
+  usage: '/mesh <identify|holdings|activity|settlement|safety|liveness> <subject> [chain]',
+  summary: 'Answer one question with several tools, and say what it could not prove',
+  async run(ctx) {
+    const objective = required(ctx, 0, 'an objective', mesh).toLowerCase();
+    if (!(objective in OBJECTIVES)) {
+      throw new SingularityError(
+        'MESH_UNKNOWN_OBJECTIVE',
+        `"${objective}" is not an objective.`,
+        `Pick one of: ${Object.keys(OBJECTIVES).join(', ')}.`,
+      );
+    }
+
+    const subject = required(ctx, 1, 'an address, hash, mint or chain', mesh);
+    const chain = ctx.args[2];
+
+    const result = await ops.mesh({
+      subject,
+      objective: objective as MeshObjective,
+      ...(chain ? { chain } : {}),
+    });
+
+    const lines = [
+      `<b>Mesh — ${esc(objective)}</b>`,
+      `<code>${esc(shortAddress(result.subject, 10, 6))}</code>${result.chain ? ` on ${esc(result.chain)}` : ''}`,
+      '',
+      `Verdict   <b>${esc(result.verdict)}</b>`,
+      `Calls     ${result.calls} in ${result.waves} wave${result.waves === 1 ? '' : 's'}`,
+      `Sigma     ${result.sigma.earned}/${result.sigma.ceiling} (${result.sigma.ratio})`,
+    ];
+
+    if (result.path.length > 0) {
+      lines.push('', '<b>Proved</b>');
+      for (const step of result.path) {
+        lines.push(
+          `• <code>${esc(step.tool)}</code> — ${step.proved.length > 0 ? esc(step.proved.join(', ')) : 'nothing new'} <i>(+${step.reward.value})</i>`,
+        );
+      }
+    }
+
+    if (result.discarded.length > 0) {
+      lines.push('', '<b>Discarded</b>');
+      for (const step of result.discarded) {
+        lines.push(`• <code>${esc(step.tool)}</code> — ${esc(step.error?.message ?? 'proved nothing new')}`);
+      }
+    }
+
+    if (result.unproven.length > 0) {
+      lines.push('', '<b>Unproven</b>');
+      for (const entry of result.unproven) {
+        lines.push(`• <code>${esc(entry.fact)}</code> — ${esc(entry.why)}`);
+      }
+    }
+
+    lines.push('', `<i>${esc(result.completeness.note)}</i>`);
+    return lines.join('\n');
+  },
+};
+
 const qr: Command = {
   name: 'qr',
   aliases: ['scan'],
@@ -993,6 +1065,7 @@ const COMMAND_LIST: Command[] = [
   checkpay,
   paydemand,
   receipt,
+  mesh,
   qr,
   pay,
   paid,

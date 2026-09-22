@@ -18,6 +18,7 @@ import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { shortAddress } from '../core/format.js';
 import type { Finality } from '../core/finality.js';
+import type { MeshResult } from '../mesh/search.js';
 import type {
   BalanceResult,
   BurnClaim,
@@ -1071,5 +1072,96 @@ export function renderPaymentDemand(report: PaymentDemandReport): string {
     }
   }
 
+  return lines.join('\n');
+}
+
+/**
+ * A mesh run, as a trace somebody can check.
+ *
+ * The shape of this output is the argument for the tool. A model gets JSON and
+ * reads `facts` and `unproven`; a human at a terminal wants to see the search
+ * — which moves were chosen, in which wave, what each one paid, and which ones
+ * were thrown away. A run that took five calls and proved three of five facts
+ * should look like that at a glance, rather than reading as an answer.
+ *
+ * `unproven` is printed last and never abbreviated. It is the part that keeps
+ * the rest honest.
+ */
+export function renderMesh(result: MeshResult): string {
+  const lines: string[] = [];
+  const pad = (text: string, width: number): string => text.padEnd(width);
+  // Not `shortAddress`: a fact summary is JSON, and keeping its tail keeps a
+  // closing brace that reads as though the whole value is there.
+  const clip = (text: string, width: number): string =>
+    text.length <= width ? text : `${text.slice(0, width - 1)}…`;
+
+  lines.push(
+    `  objective   ${bold(result.objective)}`,
+    `  subject     ${shortAddress(result.subject, 12, 8)}${result.chain ? dim(` on ${result.chain}`) : ''}`,
+  );
+
+  if (result.verdict === 'planned') {
+    lines.push(`  ${yellow('plan only')}   ${dim('nothing was called')}`, '');
+    lines.push(bold('  Would run'));
+    for (const step of result.plan ?? []) {
+      lines.push(
+        `  ${dim(`w${step.wave}`)}  ${pad(step.tool, 16)} ${dim(`f=${step.rank.f}`)}  ${step.wouldProve.join(', ')}${step.conditional ? dim('  (only on the right family)') : ''}`,
+      );
+    }
+    lines.push('', dim(`  ${result.completeness.note}`));
+    return lines.join('\n');
+  }
+
+  const verdict =
+    result.verdict === 'answered'
+      ? green('answered')
+      : result.verdict === 'partial'
+        ? yellow('partial')
+        : red('unanswerable');
+
+  lines.push(
+    `  verdict     ${verdict}  ${dim(`${result.sigma.proved} of ${result.sigma.sought} facts proved`)}`,
+    `  calls       ${result.calls} across ${result.waves} wave${result.waves === 1 ? '' : 's'}${result.backtracks > 0 ? dim(`, ${result.backtracks} backtrack${result.backtracks === 1 ? '' : 's'}`) : ''}`,
+    `  sigma       ${result.sigma.earned} / ${result.sigma.ceiling}  ${dim(`(${result.sigma.ratio})`)}`,
+    `  stopped     ${dim(result.stopped)}`,
+  );
+
+  if (result.path.length > 0) {
+    lines.push('', bold('  Path'));
+    for (const step of result.path) {
+      lines.push(
+        `  ${dim(`w${step.wave}`)}  ${pad(step.tool, 16)} ${green(`+${step.reward.value}`)}  ${step.proved.join(', ')}${step.untrusted ? yellow('  ⚠ carries on-chain text') : ''}`,
+      );
+    }
+  }
+
+  if (result.discarded.length > 0) {
+    lines.push('', bold('  Discarded'));
+    for (const step of result.discarded) {
+      const why = step.error ? `${step.error.code}: ${step.error.message}` : 'proved nothing new';
+      lines.push(`  ${dim(`w${step.wave}`)}  ${pad(step.tool, 16)} ${red(String(step.reward.value))}  ${dim(why)}`);
+    }
+  }
+
+  const facts = Object.entries(result.facts);
+  if (facts.length > 0) {
+    lines.push('', bold('  Facts'));
+    for (const [kind, fact] of facts) {
+      const value =
+        typeof fact.value === 'object' && fact.value !== null
+          ? JSON.stringify(fact.value)
+          : String(fact.value);
+      lines.push(`  ${pad(kind, 16)} ${clip(value, 64)} ${dim(`(${fact.source})`)}`);
+    }
+  }
+
+  if (result.unproven.length > 0) {
+    lines.push('', bold('  Unproven'));
+    for (const entry of result.unproven) {
+      lines.push(`  ${yellow(pad(entry.fact, 16))} ${entry.why}`);
+    }
+  }
+
+  lines.push('', dim(`  ${result.completeness.note}`));
   return lines.join('\n');
 }

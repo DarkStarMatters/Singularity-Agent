@@ -25,6 +25,87 @@ declines to pretend it knows what a year from now contains.
 
 ---
 
+## Shipped — v0.4.0, the search over the tools
+
+Twenty tools, and no way to say which of them a question needed. This release adds the
+twenty-first, and it is the only one that calls the others: `mesh` takes a subject and a
+stated objective, works out the calls, runs them, and reports the facts, the path that
+proved them, and — the part nothing else here could give — an explicit list of what it
+could not prove and why.
+
+**The failure it is for.** A model asked whether a token is safe to buy issues four calls
+in whatever order occurred to it, re-reads a mint it already read, stops when the first
+few answers look like enough, and afterwards has no way to state which parts of its
+summary were established and which were absent. Every individual call in that sequence is
+correct. The sequence is not, and nothing in the repository was watching it, because a
+tool catalogue has no opinion about the order its tools are used in.
+
+So the order becomes a thing with a definition. Each objective — `identify`, `holdings`,
+`activity`, `settlement`, `safety`, `liveness` — declares the facts that count as an
+answer, and the search runs the cheapest moves that could prove the ones still missing,
+several at a time, stopping when they are all proved or the call budget is spent. A move
+that cannot contribute to the objective is never enumerated: `history` can always prove
+activity, and on a holdings question that is a round trip spent on a fact nobody asked
+for.
+
+**Q\*3e(σ), spelled out so it stops being a name.** The frontier is A* over evidence:
+`g` is what has been spent in round trips, `h` is how many of the objective's facts are
+still missing, and moves are chosen by `f = g + h`. Each wave passes three echelons —
+*expand* the applicable moves, *evaluate* the best few concurrently against what they
+returned, *elect* the ones that paid and discard the rest with the reason recorded. A
+wave that elects nothing is a backtrack, and two in a row stop the run rather than
+spending the remaining budget proving the same thing again. σ is the summed step reward
+over the run, reported against what the same calls could have earned.
+
+**The reward is arithmetic, and that is the whole argument.** The reasoning-model
+literature scores each step with a second model trained to judge reasoning. This
+repository has something better suited and already present: every tool reports how good
+its own answer is. `completeness` says exhaustive, curated, truncated or failed. An error
+is a code and a hint. So the process reward is computed from those — goal facts proved,
+facts proved on the way, whether the source could claim exhaustiveness — and never from
+how plausible a step looked. Nothing here thinks. Two runs against the same chain state
+produce the same path and the same rewards, and every step records the tool and the exact
+arguments, so any one of them can be re-run by hand.
+
+The pruning rule is the part worth arguing with. A step that errored is obviously spent;
+a step that *succeeded and proved nothing new* scores zero and is discarded by the same
+rule, because that is the failure that looks like progress in every transcript and is not.
+
+**The mesh part.** Facts live on one shared board rather than one per branch, and they
+only ever accumulate — two branches cannot disagree about what `resolve` returned. That
+collapses the search space from a tree into a DAG: a fact proved in the first wave
+unblocks every move in the second, and no call is paid for twice. It is also why the
+board carries summaries rather than payloads. A portfolio across eight chains is tens of
+kilobytes; a run that touched four tools and returned all four in full would be exactly
+the response size this project spends its time capping.
+
+**`unproven` is the deliverable.** `verdict` is about the evidence and never about the
+subject — `answered` means every fact the objective asked for was proved, not that the
+token is fine. Everything else is named: a tool that does not apply on this family, a
+prerequisite that was never proved, an endpoint that refused, the budget running out. And
+where the source said why it could not answer, that sentence *is* the reason: a `history`
+call on an EVM chain with no indexer key reports what is missing and how to supply it, and
+a mesh that flattened that into "did not establish this" would turn a fixable gap into a
+shrug.
+
+`mesh` is registered everywhere the other twenty are — the stdio MCP server, the hosted
+HTTP one, Grok's function calling, the elizaOS plugin, the Telegram bot and the CLI, which
+exits non-zero on anything short of `answered` so a script cannot read a partial picture
+as a complete one. `--plan` prints the order and the cost without calling anything.
+
+### What it deliberately does not do
+
+It does not write, sign, or build. Every move is a read, and the move table is a closed
+list — a mesh run cannot reach a tool that is not in it, which is what keeps "several
+tools at once" from becoming "arbitrary tool use with a budget".
+
+It does not interpret free text. `objective` is an enum because choosing between goals
+from a sentence needs a model, and putting one in this path would give up the property
+that makes the trace worth showing anybody: that it is reproducible. The caller — human
+or model — picks the objective, and the search is what happens after.
+
+---
+
 ## Shipped — v0.3.0, the other side of the table
 
 Every payment surface in v0.2.0 was written for whoever is asking to be paid. This release
@@ -2063,7 +2144,7 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (1,051 tests) across both packages;
+Every change needs a test. `npm test` runs the suite (1,490 tests) across both packages;
 `npm run typecheck` must pass clean, and so must `npm run typecheck -w singularity-sdk`,
 which also checks the SDK's examples and the templates its scaffolder copies — a broken
 template is invisible until somebody starts a project from it.
