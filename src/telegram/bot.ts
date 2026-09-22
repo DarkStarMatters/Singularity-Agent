@@ -45,9 +45,73 @@ export interface ParsedCommand {
 }
 
 /**
- * Arguments are split on whitespace. No quoting support: every argument this bot
- * takes is an address, hash, chain id, or number, none of which contain spaces.
+ * Opening quote to its closing partner.
+ *
+ * The curly pairs are not decoration. Every phone keyboard on both major
+ * platforms substitutes typographic quotes as you type, so a user asked to
+ * send `/nft #1 "Genesis Mesh"` will in practice send `/nft #1 “Genesis Mesh”`
+ * — and a parser that only knows the straight pair would take that as two
+ * arguments with stray characters glued to them. Refusing to handle the quotes
+ * people can actually type is not strictness, it is a bug with a rationale.
  */
+const QUOTE_PAIRS = new Map<string, string>([
+  ['"', '"'],
+  ["'", "'"],
+  ['“', '”'],
+  ['”', '”'],
+  ['‘', '’'],
+  ['’', '’'],
+  ['«', '»'],
+]);
+
+/**
+ * Split a command's tail into arguments, respecting quotes.
+ *
+ * This used to be `split(/\s+/)`, with a comment explaining that every
+ * argument the bot takes is an address, hash, chain id or number and none of
+ * those contain spaces. That was true until `/nft` needed a series name, which
+ * is prose and is the thing a person names rather than pastes.
+ *
+ * An unterminated quote takes the rest of the line rather than being an error.
+ * A user who opened a quote and forgot to close it meant everything after it,
+ * and the alternative — rejecting the command — throws away input over
+ * punctuation.
+ */
+export function tokenizeArgs(rest: string): string[] {
+  const args: string[] = [];
+  let at = 0;
+
+  while (at < rest.length) {
+    if (/\s/.test(rest[at]!)) {
+      at += 1;
+      continue;
+    }
+
+    const closer = QUOTE_PAIRS.get(rest[at]!);
+    if (closer) {
+      const end = rest.indexOf(closer, at + 1);
+      if (end === -1) {
+        const tail = rest.slice(at + 1).trim();
+        if (tail) args.push(tail);
+        break;
+      }
+      // An empty quoted string is pushed: the user typed something, and a
+      // command that wanted a name should say the name was empty rather than
+      // report the argument missing.
+      args.push(rest.slice(at + 1, end));
+      at = end + 1;
+      continue;
+    }
+
+    let end = at;
+    while (end < rest.length && !/\s/.test(rest[end]!)) end += 1;
+    args.push(rest.slice(at, end));
+    at = end;
+  }
+
+  return args;
+}
+
 export function parseCommand(text: string): ParsedCommand | null {
   const match = COMMAND_PATTERN.exec(text.trim());
   if (!match) return null;
@@ -56,7 +120,7 @@ export function parseCommand(text: string): ParsedCommand | null {
   return {
     name: name!.toLowerCase(),
     ...(addressedTo ? { addressedTo } : {}),
-    args: (rest ?? '').split(/\s+/).filter(Boolean),
+    args: tokenizeArgs(rest ?? ''),
   };
 }
 
@@ -467,6 +531,19 @@ export class SingularityBot {
     // A photo goes out as a photo. Telegram has no way to put an image inside
     // a text message, and a QR is the one reply here that has to be looked at
     // through a camera rather than read.
+    // Artwork goes out as a file, so the bytes a collector receives are the
+    // bytes that were drawn and the image stays checkable against its metadata.
+    if (typeof result === 'object' && 'document' in result) {
+      await this.api.sendDocument({
+        chatId: message.chat.id,
+        document: result.document,
+        filename: result.filename,
+        replyToMessageId: message.message_id,
+        ...(result.caption ? { caption: result.caption } : {}),
+      });
+      return;
+    }
+
     if (typeof result === 'object' && 'photo' in result) {
       await this.api.sendPhoto({
         chatId: message.chat.id,

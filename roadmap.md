@@ -25,7 +25,7 @@ declines to pretend it knows what a year from now contains.
 
 ---
 
-## Shipped — v0.4.0, the search over the tools
+## Shipped — v0.4.0, the search over the tools, and a picture of one
 
 Twenty tools, and no way to say which of them a question needed. This release adds the
 twenty-first, and it is the only one that calls the others: `mesh` takes a subject and a
@@ -103,6 +103,61 @@ It does not interpret free text. `objective` is an enum because choosing between
 from a sentence needs a model, and putting one in this path would give up the property
 that makes the trace worth showing anybody: that it is reproducible. The caller — human
 or model — picks the objective, and the search is what happens after.
+
+### The run as an object
+
+A mesh run has a shape — waves, branches that paid, branches that were cut, facts that
+were never proved — and `/nft #1 "series name"` in Telegram draws it. The command takes no
+subject, because by the time you want a picture you have just read a run and the one you
+mean is that one; `/mesh` leaves its result behind and `/nft` renders it.
+
+The thing worth recording is the rule the picture obeys, which is the receipt art's rule
+with more to work with. A receipt seeds its QR from the payment reference, so two payments
+can never render alike and anyone holding the reference can re-derive the image and check
+it. Here the seed is a canonical digest of the whole run, and there is structure to spend
+it on: the rotational symmetry is how many facts the objective asked for, each branch is
+one call with its length set by what the call earned, a failed call is drawn severed, a
+call that answered and proved nothing ends in an open ring, and the facts the run never
+proved are drawn as dashed branches ending in nothing. `unproven` is in the picture. A
+render that simply omitted them would be a picture of a different, better run.
+
+The fractal field is the part that had to be argued rather than chosen. It is a Julia set,
+and |c| is σ — mapped across the modulus where a Julia set stops having an interior and
+becomes Cantor dust. A run that earned its calls renders as one connected body; a run that
+thrashed renders as dust. So a bad search cannot produce a prettier picture than a good
+one, which is the only version of this idea worth shipping in a repository that spends
+every other page refusing to make a weak result look strong.
+
+Two seeds, for a reason a generative series needs: the digest alone drives every piece of
+geometry, and the digest with the series name and edition number folded in drives the
+palette, rotation and ornament. `#1` and `#2` of one run are the same structure in
+different colours. Neither can be mistaken for a picture of a different run.
+
+Three smaller things fell out of building it, each a small correction to something that
+was already wrong:
+
+**The bot could not parse a name.** Arguments were split on whitespace, under a comment
+saying every argument this bot takes is an address, hash, chain id or number. A series name
+is prose, and — worse — both phone platforms substitute typographic quotes as you type, so
+the literal thing a user sends is `/nft #1 “Genesis Mesh”`. The tokenizer handles the quotes
+people can actually produce, not the ones a keyboard would emit if it were a terminal.
+
+**Artwork cannot go out as a photo.** Telegram re-encodes them, which is right for a QR and
+fatal for an image whose claim is that it re-renders byte for byte. It goes out as a
+document, so what a collector receives is what was drawn.
+
+**The QR palette is the wrong palette here.** Its paper is near-white by construction,
+because a scanner needs it to be, and mixing a saturated field halfway toward near-white
+produces pastel — the first renderer was a pink wash for exactly that reason. The art has
+no scanner, so it gets a dark-ground palette of its own. What carried over was the method
+rather than the numbers: the figure tone is lifted until it *measurably* clears seven to
+one against the ground, swept across the whole hue wheel in a test, rather than being placed
+in a lightness band and hoped for.
+
+Nothing here mints. It produces the image, the traits and the Metaplex-shaped metadata; the
+mint builder already exists and needs the metadata hosted first, which is the application's
+decision and not a library's — the same line `receiptMetadata` draws.
+
 
 ---
 
@@ -2144,7 +2199,7 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (1,490 tests) across both packages;
+Every change needs a test. `npm test` runs the suite (1,520 tests) across both packages;
 `npm run typecheck` must pass clean, and so must `npm run typecheck -w singularity-sdk`,
 which also checks the SDK's examples and the templates its scaffolder copies — a broken
 template is invisible until somebody starts a project from it.

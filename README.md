@@ -198,6 +198,7 @@ that mapping so the three cannot drift:
 | `/redeem` | spend a burn, once | `/inspect` | can you sell it again |
 | `/pay` | a QR somebody can scan to pay you | `/paid` | did it settle, safe to ship |
 | `/payments` | what this chat is owed | `/qr` | render any link as a scannable code |
+| `/mesh` | several tools, searched | `/nft` | that run, as artwork |
 
 ```
 /pay <amount> [--to <recipient>] [--sender <wallet>] [--token <mint>] [--order <id>]
@@ -456,6 +457,9 @@ singularity mesh identify vitalik.eth
 singularity mesh activity <address> --chain solana
 singularity mesh safety <mint> --plan           # the order and the cost, calling nothing
 
+# The same run, drawn. Deterministic: same run + series + edition, same bytes.
+singularity mesh safety <mint> -c solana --art run.png --series "Genesis Mesh" --edition 1
+
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
@@ -543,6 +547,62 @@ the search, not of the chain.
 
 `--plan` prints the order the moves would run in and what each would cost, without
 calling anything. Over MCP the same tool takes `plan: true`.
+
+---
+
+## `/nft` — a mesh run as an object
+
+A run has a shape: how many waves it took, which calls paid, which were thrown away,
+what it could not prove. `/nft` draws that shape.
+
+```
+/mesh safety <mint> solana
+/nft #1 "Genesis Mesh"
+```
+
+The bot replies with a 1024×1024 PNG and its traits. There is no subject argument
+because by the time you want a picture you have just looked at a run and the one you
+mean is *that* one — `/mesh` leaves its result behind and `/nft` draws it. (A bot
+restart clears that, and `/nft` says so rather than drawing something else.)
+
+**Nothing in the image is chosen for looks alone.** Each element is a field of the run:
+
+| In the picture | In the run |
+| --- | --- |
+| Rotational symmetry | how many facts the objective asked for |
+| Segments out from the core | waves the search took |
+| Each branch | one tool call — length is what it earned, thickness is what it cost |
+| Sub-canopy depth | how many facts that call proved |
+| A severed branch with a cross-tick | a call that failed |
+| An open ring instead of a tip | a call that answered and proved nothing |
+| Dashed branches ending in nothing | facts the objective wanted and the run never proved |
+| The fractal field | a Julia set whose \|c\| comes from σ |
+| The outer ring | one arc per call, filled if kept, hollow if discarded |
+| The notches inside it | one per goal fact, filled for the proved ones |
+| Dots around the core | backtracks |
+
+The field is the mapping worth defending, because it is arithmetic rather than mood.
+A Julia set stops having an interior somewhere around \|c\| = 0.75 and becomes Cantor
+dust; σ is mapped across exactly that boundary. **A run that earned its calls renders as
+one connected body, and a run that thrashed renders as dust.** A bad search does not get
+to produce a prettier picture than a good one.
+
+**The structure is the state; the colourway is the edition.** Geometry derives from a
+canonical digest of the run alone, so renaming the series does not move a single branch.
+The palette, rotation and node ornament derive from the digest *with* the series and
+number folded in, so `#1` and `#2` of one run are recognisably the same structure in
+different colours — and neither can be mistaken for a picture of a different run.
+
+It is sent as a **document rather than a photo**, which is not a preference. Telegram
+re-encodes photos, and the claim this image makes is that it can be re-rendered from the
+digest and compared byte for byte. A JPEG of it fails that check while looking perfectly
+fine.
+
+Outside the bot, `singularity mesh … --art run.png` writes the same image, and
+`--metadata run.json --image-uri <url>` writes the Metaplex-shaped JSON beside it. The
+image location is not defaulted: which host holds your images, and for how long, is your
+decision. Rarity falls out of the run rather than out of a table somebody wrote — an
+`answered` at σ 1.00 with no voids is rare because it is hard.
 
 ---
 
@@ -906,6 +966,7 @@ src/core/       normalized types, chain registry, formatting, bech32/base58 code
 src/adapters/   one adapter per family, all implementing ChainAdapter
 src/tools/      operations, plus the tool catalogue every model front end reads
 src/mesh/       the search: the move table, the process reward, the blackboard
+src/art/        derived artwork: QR receipts, and the mesh renderer behind /nft
 src/mcp/        MCP server
 src/cli/        CLI and terminal rendering
 src/grok/       xAI client, agent loop, persona, conversation memory

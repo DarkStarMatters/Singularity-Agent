@@ -17,6 +17,9 @@ import { chatFromMemo } from './payments.js';
 import { SingularityError } from '../core/errors.js';
 import { shortAddress } from '../core/format.js';
 import { OBJECTIVES, type Objective as MeshObjective } from '../mesh/moves.js';
+import { meshArtFacts, meshArtName, meshArtStyle } from '../art/mesh-art.js';
+import { meshArtPng } from '../art/mesh-raster.js';
+import { meshMemory } from './mesh-memory.js';
 import type { TelegramConfig } from './config.js';
 import { runDraftsCommand, runXCommand, type XControl } from './control.js';
 import type { InlineKeyboard } from './api.js';
@@ -83,7 +86,13 @@ export type CommandResult =
    * point a phone at. A `solana:` link is not scannable as text, so an
    * approval that expects a wallet has to arrive as a picture.
    */
-  | { photo: Uint8Array; caption?: string; filename?: string };
+  | { photo: Uint8Array; caption?: string; filename?: string }
+  /**
+   * A file, for an image whose exact bytes matter. Generated artwork is
+   * checked by re-rendering it and comparing, and Telegram re-encodes a photo
+   * — so a picture that has to stay checkable travels as a document.
+   */
+  | { document: Uint8Array; filename: string; caption?: string };
 
 export interface Command {
   name: string;
@@ -873,6 +882,10 @@ const mesh: Command = {
       ...(chain ? { chain } : {}),
     });
 
+    // Kept for /nft, which draws a picture of a specific run and has no way to
+    // name one itself.
+    meshMemory.remember(ctx.chatId, result);
+
     const lines = [
       `<b>Mesh — ${esc(objective)}</b>`,
       `<code>${esc(shortAddress(result.subject, 10, 6))}</code>${result.chain ? ` on ${esc(result.chain)}` : ''}`,
@@ -909,6 +922,96 @@ const mesh: Command = {
     return lines.join('\n');
   },
 };
+
+/**
+ * `/nft #1 "series name"` — the last mesh run, as artwork.
+ *
+ * No subject and no objective, because by the time you want a picture you have
+ * just looked at the run and the thing you mean is *that one*. `/mesh` leaves
+ * its result in {@link meshMemory} and this draws it.
+ *
+ * The image is a function of the run: same run, same series, same edition,
+ * same bytes. That is what makes the traits below checkable rather than
+ * decorative — `verifyMeshArt` re-renders and compares, which is why this
+ * returns a document and not a photo. Telegram re-encodes photos, and a JPEG
+ * of a derived image fails its own verification while looking perfectly fine.
+ */
+const nft: Command = {
+  name: 'nft',
+  aliases: ['mint_art'],
+  usage: '/nft #1 "series name"',
+  summary: 'Turn the last mesh run into artwork, with its traits',
+  async run(ctx) {
+    const remembered = meshMemory.recall(ctx.chatId);
+    if (!remembered) {
+      throw new SingularityError(
+        'NO_MESH_RUN',
+        'There is no mesh run in this chat to draw.',
+        'Run /mesh first — the art is a picture of a specific run, not of the mesh in general. ' +
+          'A bot restart also clears this, so a run from before one has to be made again.',
+      );
+    }
+
+    const edition = ctx.args.map(editionOf).find((value) => value !== null);
+    if (edition === undefined || edition === null) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        '/nft needs an edition number.',
+        `Usage: ${nft.usage}`,
+      );
+    }
+
+    const series = ctx.args.filter((arg) => editionOf(arg) === null).join(' ').trim();
+    if (!series) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        '/nft needs a series name.',
+        `Usage: ${nft.usage} — quote it if it has spaces.`,
+      );
+    }
+
+    const facts = meshArtFacts(remembered.result, { series, edition });
+    const style = meshArtStyle(facts);
+    const png = meshArtPng(facts, { style });
+
+    const lines = [
+      `<b>${esc(meshArtName(facts))}</b>`,
+      `<i>${esc(facts.objective)} · ${esc(facts.subject.length > 24 ? shortAddress(facts.subject, 10, 6) : facts.subject)}${facts.chain ? ` · ${esc(facts.chain)}` : ''}</i>`,
+      '',
+      `Verdict   <b>${esc(facts.verdict)}</b>  ${facts.sigma.proved}/${facts.sigma.sought} proved`,
+      `Sigma     ${facts.sigma.earned}/${facts.sigma.ceiling} <i>(${facts.sigma.ratio})</i>`,
+      `Search    ${facts.calls} call${facts.calls === 1 ? '' : 's'}, ${facts.waves} wave${facts.waves === 1 ? '' : 's'}, ${facts.backtracks} backtrack${facts.backtracks === 1 ? '' : 's'}`,
+      `Field     ${esc(style.field)} · ${esc(style.palette.name)} · ${style.spokes}-fold · ${esc(style.nodeShape)}`,
+      `Voids     ${facts.voids.length}${facts.voids.length > 0 ? ` <i>(${esc(facts.voids.join(', '))})</i>` : ''}`,
+      '',
+      `<code>${esc(facts.digest.slice(0, 32))}…</code>`,
+      `<i>Every element is derived from that run. Re-render it from the digest to check this image is the one it describes.</i>`,
+    ];
+
+    return {
+      document: png,
+      filename: `${slug(series)}-${edition}.png`,
+      caption: lines.join('\n'),
+    };
+  },
+};
+
+/** `#7` and `7` are an edition; anything else is part of the name. */
+function editionOf(arg: string): number | null {
+  const match = /^#?(\d{1,6})$/.exec(arg.trim());
+  if (!match) return null;
+  const value = Number(match[1]);
+  return value >= 1 ? value : null;
+}
+
+/** A filename that survives every filesystem, from a name that need not. */
+function slug(series: string): string {
+  const cleaned = series
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return (cleaned || 'mesh').slice(0, 40);
+}
 
 const qr: Command = {
   name: 'qr',
@@ -1066,6 +1169,7 @@ const COMMAND_LIST: Command[] = [
   paydemand,
   receipt,
   mesh,
+  nft,
   qr,
   pay,
   paid,

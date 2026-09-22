@@ -166,7 +166,7 @@ be separated eventually will be, by someone in a hurry, and the separation will 
     viem   web3.js  esplora   LCD
 ```
 
-31,759 lines of TypeScript in `src`, 1,490 tests, six runtime dependencies
+33,406 lines of TypeScript in `src`, 1,520 tests, six runtime dependencies
 (`viem`, `@solana/web3.js`, `@modelcontextprotocol/sdk`, `commander`, `zod`, `bs58`).
 Node ≥20.10.
 

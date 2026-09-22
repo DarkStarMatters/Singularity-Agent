@@ -293,6 +293,82 @@ export class TelegramApi {
   }
 
   /**
+   * The same, as a file rather than a photograph.
+   *
+   * Telegram re-encodes anything sent through `sendPhoto`, which is exactly
+   * what you want for a QR — smaller, and a scanner does not care — and
+   * exactly what you cannot have for generated artwork. The whole claim of a
+   * derived image is that it can be re-rendered and compared byte for byte,
+   * and a JPEG of it fails that check while looking perfectly fine. So art
+   * goes out as a document, where the bytes that arrive are the bytes that
+   * were drawn.
+   *
+   * Clients still show an inline preview for an image document, so the cost of
+   * this is a filename under the picture rather than a worse-looking chat.
+   */
+  async sendDocument(options: {
+    chatId: number;
+    document: Uint8Array;
+    filename: string;
+    caption?: string;
+    replyToMessageId?: number;
+    contentType?: string;
+  }): Promise<TelegramMessage> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+
+    const form = new FormData();
+    form.set('chat_id', String(options.chatId));
+    form.set(
+      'document',
+      // Copied into a fresh ArrayBuffer for the reason sendPhoto gives: a
+      // Uint8Array view may be a window onto a larger buffer.
+      new Blob([options.document.slice().buffer as ArrayBuffer], {
+        type: options.contentType ?? 'image/png',
+      }),
+      options.filename,
+    );
+
+    if (options.caption) {
+      form.set('caption', truncateForTelegram(options.caption, 1024));
+      form.set('parse_mode', 'HTML');
+    }
+
+    if (options.replyToMessageId) {
+      form.set(
+        'reply_parameters',
+        JSON.stringify({ message_id: options.replyToMessageId, allow_sending_without_reply: true }),
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_ROOT}/bot${this.token}/sendDocument`, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const reason = (err as Error).name === 'AbortError' ? 'timed out' : (err as Error).message;
+      throw new TelegramApiError('sendDocument', 0, reason);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as ApiResponse<TelegramMessage>;
+
+    if (!payload.ok) {
+      throw new TelegramApiError(
+        'sendDocument',
+        payload.error_code ?? response.status,
+        payload.description ?? 'no description',
+      );
+    }
+
+    return payload.result!;
+  }
+
+  /**
    * Rewrites a message in place — used to turn an approval card into its
    * outcome, so the chat shows what was decided rather than a row of buttons
    * that no longer do anything.

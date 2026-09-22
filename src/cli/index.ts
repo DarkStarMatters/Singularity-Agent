@@ -9,6 +9,9 @@ import { VERSION } from '../version.js';
 import * as render from './render.js';
 import { parseBudget, type ResponseBudget } from '../core/budget.js';
 import type { Objective as MeshObjective } from '../mesh/moves.js';
+import { writeFileSync } from 'node:fs';
+import { meshArtFacts, meshArtMetadata, meshArtStyle } from '../art/mesh-art.js';
+import { meshArtPng } from '../art/mesh-raster.js';
 import { pollLoop } from '../core/watch.js';
 import { balanceIdentity } from '../tools/operations.js';
 import { FileIntentStore, requireAllowedRecipient } from '../pay/file-store.js';
@@ -731,11 +734,29 @@ program
   .option('--beam <n>', 'How many moves may run at once. Defaults to 3, capped at 5.')
   .option('--budget <size>', 'small | standard | full | a number, applied to the lists inside.')
   .option('--plan', 'Print the order the moves would run in, without calling anything.')
+  .option('--art <file>', 'Also draw the run as a PNG and write it here.')
+  .option('--series <name>', 'Series name for the artwork. Defaults to the objective.')
+  .option('--edition <n>', 'Edition number for the artwork. Defaults to 1.')
+  .option('--size <px>', 'Artwork size in pixels, square. Defaults to 1024.')
+  .option('--metadata <file>', 'Write the NFT metadata JSON here. Needs --image-uri.')
+  .option('--image-uri <url>', 'Where the image will be served from, for the metadata.')
   .action(
     async (
       objective: string,
       subject: string,
-      options: { chain?: string; maxCalls?: string; beam?: string; budget?: string; plan?: boolean },
+      options: {
+        chain?: string;
+        maxCalls?: string;
+        beam?: string;
+        budget?: string;
+        plan?: boolean;
+        art?: string;
+        series?: string;
+        edition?: string;
+        size?: string;
+        metadata?: string;
+        imageUri?: string;
+      },
     ) => {
       const result = await ops.mesh({
         subject,
@@ -754,9 +775,60 @@ program
         console.log(render.renderMesh(result));
       }
 
+      if (options.art || options.metadata) drawMesh(result, options);
+
       process.exitCode = result.verdict === 'answered' || result.verdict === 'planned' ? 0 : 1;
     },
   );
+
+/**
+ * Write the run's artwork, and the metadata that describes it.
+ *
+ * Split out of the action because it is the one part of `mesh` that touches
+ * the filesystem, and because the refusal below is worth being able to find:
+ * `meshArtMetadata` will not default the image location, so neither does this.
+ * Which host holds your images, and for how long, is not a decision a CLI flag
+ * should make silently on your behalf.
+ */
+function drawMesh(
+  result: Awaited<ReturnType<typeof ops.mesh>>,
+  options: { art?: string; series?: string; edition?: string; size?: string; metadata?: string; imageUri?: string },
+): void {
+  const facts = meshArtFacts(result, {
+    series: options.series ?? result.objective,
+    edition: options.edition ? Number(options.edition) : 1,
+  });
+
+  const style = meshArtStyle(facts);
+
+  if (options.art) {
+    const size = options.size ? Number(options.size) : undefined;
+    writeFileSync(options.art, meshArtPng(facts, { style, ...(size ? { size } : {}) }));
+    console.log(
+      render.dim(
+        `
+Artwork: ${options.art} — ${style.field}, ${style.palette.name}, ${style.spokes}-fold, ${facts.voids.length} void(s)`,
+      ),
+    );
+  }
+
+  if (options.metadata) {
+    if (!options.imageUri) {
+      throw new SingularityError(
+        'MISSING_IMAGE_URI',
+        'Metadata needs to say where the image will be served from.',
+        'Pass --image-uri. It is deliberately not defaulted: which host holds the image, and for how long, is your decision and not this tool’s.',
+      );
+    }
+
+    writeFileSync(
+      options.metadata,
+      `${toJson(meshArtMetadata(facts, { image: options.imageUri, style }))}
+`,
+    );
+    console.log(render.dim(`Metadata: ${options.metadata}`));
+  }
+}
 
 
 /**

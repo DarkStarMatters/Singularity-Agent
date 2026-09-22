@@ -63,7 +63,12 @@ const HUE_NAMES: Array<[number, string]> = [
   [360, 'ember'],
 ];
 
-function nameForHue(hue: number): string {
+/**
+ * Exported because the mesh art builds its own palette on a dark ground and
+ * still has to name its hues the same way. Two hue tables would drift, and the
+ * name is a trait a collector sorts on.
+ */
+export function nameForHue(hue: number): string {
   for (const [ceiling, name] of HUE_NAMES) if (hue < ceiling) return name;
   return 'ember';
 }
