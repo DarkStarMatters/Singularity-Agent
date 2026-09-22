@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { COMMANDS, botFatherCommandList, commandMenu } from '../src/telegram/commands.js';
 import { TOOLS } from '../src/tools/catalog.js';
 import { formatDecoded, formatHealth, formatReadResult } from '../src/telegram/format.js';
@@ -48,6 +50,87 @@ const TOOL_TO_COMMAND: Record<string, string> = {
 };
 
 describe('telegram command surface', () => {
+  /**
+   * Two commands both claimed `/invoice`, and the map is built by iterating the
+   * list and assigning, so the later registration silently won. `/checkpay`
+   * advertised an alias in its own definition that could never reach it, and
+   * nothing anywhere said so — not a crash, not a warning, just a command that
+   * did something other than what its source said.
+   *
+   * This is the shape of bug the repo keeps finding: a name resolved by
+   * declaration order rather than by a rule. The rule is now that every name
+   * is claimed once.
+   */
+  /**
+   * The README's Telegram table, held row for row.
+   *
+   * The MCP tool table had already fallen four tools behind without anything
+   * failing, and this one is longer and changes more often. A command that
+   * exists and is undocumented is a command nobody uses; one that is
+   * documented and does not exist is worse.
+   *
+   * Matched on the leading `/name` of each row, so re-wording a description or
+   * moving a command between the grouped tables costs nothing.
+   */
+  it('is listed in the README, every one of them', () => {
+    const readme = readFileSync(join(resolve(__dirname, '..'), 'README.md'), 'utf8');
+    // The heading plus its newline: `### Telegram as the control terminal`
+    // comes earlier in the file and would take the slice to the wrong section.
+    const section = readme.slice(readme.indexOf('### Telegram' + String.fromCharCode(10)));
+    const table = section.slice(0, section.indexOf('```'));
+
+    // Every `/name` anywhere in the tables, so aliases named in a description
+    // are held to resolving too, and a row listing two commands counts both.
+    const documented = new Set([...table.matchAll(/`\/([a-z_]+)/g)].map((m) => m[1]!));
+
+    const missing = [...new Set(COMMANDS.values())]
+      .map((command) => command.name)
+      .filter((name) => !documented.has(name));
+
+    expect(missing, `undocumented: ${missing.join(', ')}`).toEqual([]);
+
+    const invented = [...documented].filter((name) => !COMMANDS.has(name));
+    expect(invented, `documented but not a command: ${invented.join(', ')}`).toEqual([]);
+  });
+
+  it('is the number of commands the README claims there are', () => {
+    const readme = readFileSync(join(resolve(__dirname, '..'), 'README.md'), 'utf8');
+    const stated = /([A-Za-z-]+) commands, plus aliases/.exec(readme)?.[1]?.toLowerCase();
+
+    const words = [
+      'twenty-eight', 'twenty-nine', 'thirty', 'thirty-one', 'thirty-two',
+      'thirty-three', 'thirty-four', 'thirty-five', 'thirty-six', 'thirty-seven',
+    ];
+
+    expect(stated, 'the README no longer states a command count').toBeTruthy();
+    expect(words.indexOf(stated!) + 28, `the README says ${stated}`).toBe(commandMenu().length);
+  });
+
+  it('gives every name exactly one command to resolve to', () => {
+    const claims = new Map<string, string[]>();
+
+    for (const [name, command] of COMMANDS) {
+      // The map holds each command under its own name and each of its aliases;
+      // grouping by the *name the user types* is what surfaces a collision.
+      const owners = claims.get(name) ?? [];
+      if (!owners.includes(command.name)) owners.push(command.name);
+      claims.set(name, owners);
+    }
+
+    const shadowed: string[] = [];
+    for (const command of new Set(COMMANDS.values())) {
+      for (const alias of command.aliases ?? []) {
+        const resolved = COMMANDS.get(alias);
+        if (resolved !== command) {
+          shadowed.push(`/${alias} is declared by /${command.name} but resolves to /${resolved?.name ?? 'nothing'}`);
+        }
+      }
+    }
+
+    expect(shadowed, shadowed.join('; ')).toEqual([]);
+  });
+
+
   it('has a command for every tool in the catalogue', () => {
     for (const tool of TOOLS) {
       const command = TOOL_TO_COMMAND[tool.name];

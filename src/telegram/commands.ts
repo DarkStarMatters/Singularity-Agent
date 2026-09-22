@@ -741,7 +741,13 @@ function parseDemand(args: string[]): DemandArgs {
 
 const checkpay: Command = {
   name: 'checkpay',
-  aliases: ['inspect_payment', 'invoice'],
+  // `invoice` is deliberately not an alias here. `/pay` claims it too, and the
+  // last registration wins, so it silently resolved to "create an invoice"
+  // while this command's own alias list said otherwise. Between the two
+  // readings, a payments bot's `/invoice 25` means issuing one — so the
+  // collision is resolved in `/pay`'s favour and removed here rather than left
+  // to declaration order.
+  aliases: ['inspect_payment'],
   usage: '/checkpay token=<addr> to=<addr> amount=<n> [asset=USDC] [chain=base]',
   summary: 'Before you sign: whether a payment demand can be paid at all',
   async run(ctx) {

@@ -1953,8 +1953,8 @@ Everything above this line is shipped. What follows is not, and the quarters att
 it are **horizons rather than commitments** — an ordering with a rough sense of distance,
 not a set of dates anybody should hold this project to.
 
-The reason for saying so plainly: this repository is six days old. It went from the
-initial commit to v0.3.0 in six of them, across five phases and a hundred and thirty
+The reason for saying so plainly: this repository is seven days old. It went from the
+initial commit to v0.4.0 in seven of them, across five phases and a hundred and sixteen
 commits, and every numbered item written down as future work so far has shipped within
 days of being written. A roadmap that claimed to know what Q3 2027 contains would be
 making exactly the kind of confident, unfalsifiable statement the rest of this document
@@ -2199,7 +2199,7 @@ Highest-value contributions, in order:
 4. **A chain adapter meeting the Phase 3 bar.**
 5. **Decoder coverage** for a selector that currently returns raw calldata.
 
-Every change needs a test. `npm test` runs the suite (1,520 tests) across both packages;
+Every change needs a test. `npm test` runs the suite (1,528 tests) across both packages;
 `npm run typecheck` must pass clean, and so must `npm run typecheck -w singularity-sdk`,
 which also checks the SDK's examples and the templates its scaffolder copies — a broken
 template is invisible until somebody starts a project from it.

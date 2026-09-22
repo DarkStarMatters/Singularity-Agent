@@ -1,10 +1,15 @@
 /**
  * The SDK's own version, which is not the agent's.
  *
- * Two numbers in one repository, on purpose. The agent is at v0.3.0 with eleven
+ * Two numbers in one repository, on purpose. The agent is at v0.4.0 with eleven
  * releases behind it; this package is at v0.2.0 with two. Giving them a single
  * version would make the SDK look nine releases more settled than it is, which
  * is a claim about stability that nobody made.
+ *
+ * That first sentence went stale the moment the agent shipped v0.4.0 and
+ * nothing noticed, which is this repository's oldest failure in its smallest
+ * form: a fact living in prose, duplicated, with nothing holding the copies
+ * together. `test/version.test.ts` in the root package holds it now.
  *
  * The minor bump rather than a patch is the same argument as last time:
  * `portfolio` widened from one address to a set, and an API that grew a new

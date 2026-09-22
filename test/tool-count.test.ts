@@ -83,6 +83,26 @@ describe('the number of tools, everywhere it is written down', () => {
     });
   }
 
+  /**
+   * The README's own table, which had quietly fallen four tools behind.
+   *
+   * The site's table was already held row-for-row here and the README's was
+   * not, so `chain_liveness`, `inspect_payment`, `build_payment` and
+   * `receipt_art` shipped, were documented everywhere else, and were missing
+   * from the first place anybody looks. The count line above it stayed right
+   * the whole time, which is what made it invisible.
+   */
+  it('is how many rows the README lists, naming the same tools', () => {
+    const readme = read('README.md');
+    const section = readme.slice(readme.indexOf('## MCP tools'));
+    const table = section.slice(0, section.indexOf('\nEvery tool is annotated'));
+
+    const listed = [...table.matchAll(/^\| `([a-z_]+)` \|/gm)].map((m) => m[1]!);
+
+    expect(new Set(listed).size, 'the README lists the same tool twice').toBe(listed.length);
+    expect([...listed].sort()).toEqual([...TOOLS.map((tool) => tool.name)].sort());
+  });
+
   it('is how many rows the site lists, naming the same tools', () => {
     // The heading can be right while the table is short, which is what happened.
     const html = read('web/index.html');

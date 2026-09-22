@@ -182,23 +182,74 @@ so on the card instead of vanishing.
 
 ### Telegram
 
-Every tool the CLI and MCP server expose has a bot command, and a test asserts
-that mapping so the three cannot drift:
+Every tool the CLI and MCP server expose has a bot command, and a test asserts that
+mapping so the three cannot drift. Thirty-three commands, plus aliases — a second test
+asserts every name resolves to exactly one of them, after `/invoice` turned out to be
+claimed by two and silently reachable as only one.
 
-| Command | | Command | |
-| --- | --- | --- | --- |
-| `/balance` | one address, one chain | `/read` | call a view function |
-| `/portfolio` | one address, many chains | `/decode` | decode EVM calldata |
-| `/tx` | look up a transaction | `/transfer` | build an **unsigned** transfer |
-| `/resolve` | identify an address or hash | `/health` | which chains are serving current state |
-| `/fees` | current gas conditions | `/chains` | what is supported |
-| `/block` | fetch a block | `/forget` | drop this chat's history |
-| `/mint` | what a mint can do to you | `/identity` | is this the real token |
-| `/burn` | build an **unsigned** burn | `/verifyburn` | confirm a burn happened |
-| `/redeem` | spend a burn, once | `/inspect` | can you sell it again |
-| `/pay` | a QR somebody can scan to pay you | `/paid` | did it settle, safe to ship |
-| `/payments` | what this chat is owed | `/qr` | render any link as a scannable code |
-| `/mesh` | several tools, searched | `/nft` | that run, as artwork |
+**Reading the chain**
+
+| Command | What it does |
+| --- | --- |
+| `/balance <address> [chain]` | Balances for one address on one chain. |
+| `/portfolio <address[,…]> [chains]` | One address, or several, across many chains. |
+| `/tx <hash> [chain]` | Look up a transaction. Also `/transaction`. |
+| `/history <address> <chain> [limit]` | What an address has been doing. |
+| `/resolve <address\|name\|hash>` | Identify an address, name, or hash. |
+| `/fees <chain>` | Current fee conditions. |
+| `/block <chain> [height\|hash\|latest]` | Fetch a block. |
+| `/chains [filter]` | What is supported. |
+| `/read <chain> <address> [method]` | Call a view function or read account data. Also `/read_contract`. |
+| `/decode <hex> [abi entry]` | Decode EVM calldata into a function call. |
+| `/health [chains]` | Which chains are serving current state. Also `/chain_liveness`, `/liveness`. |
+
+**Solana tokens**
+
+| Command | What it does |
+| --- | --- |
+| `/mint <mint> [chain]` | What a mint can still do to a holder. Also `/mint_audit`, `/audit`. |
+| `/identity <mint> [fetch]` | What a mint declares, and whether it can change. Also `/token_identity`, `/real`. |
+| `/inspect <mint>` | Before buying: what could stop you selling again. Also `/inspect_exit`, `/exit`, `/canisell`. |
+
+**Building — unsigned, always**
+
+| Command | What it does |
+| --- | --- |
+| `/transfer <chain> <to> <amount> [token] [from]` | An **unsigned** transfer to review. Also `/build_transfer`. |
+| `/burn <mint> <amount> [wallet] [chain]` | Burn tokens — tap to approve in your wallet. Also `/build_burn`. |
+| `/verifyburn <signature> [mint] [owner]` | Confirm a burn from its signature. Also `/verify_burn`. |
+| `/redeem <signature> <mint> [purpose]` | Redeem a burn once, and record it as spent. |
+
+**Getting paid, and checking a demand**
+
+| Command | What it does |
+| --- | --- |
+| `/pay <amount> [--to …] [--token …]` | A QR somebody can scan to pay you. Also `/request`, `/invoice`. |
+| `/paid <intent id>` | Has it been paid, and is it safe to act on. Also `/settled`, `/pay_status`. |
+| `/payments [open\|all]` | What this chat is owed. Also `/paylist`, `/requests`. |
+| `/checkpay token=… to=… amount=…` | Before you sign: can this demand be paid at all. Also `/inspect_payment`. |
+| `/paydemand from=… token=… to=… amount=…` | The same checks, then the unsigned payment. Also `/build_payment`. |
+| `/receipt <reference\|uri> [link]` | What a receipt looks like, and whether an image is genuinely it. Also `/receipt_art`, `/art`. |
+| `/qr <link or text>` | Turn a link into something you can scan. Also `/scan`. |
+
+**The mesh, and its artwork**
+
+| Command | What it does |
+| --- | --- |
+| `/mesh <objective> <subject> [chain]` | Several tools, searched, and what it could not prove. Also `/investigate`. |
+| `/nft #1 "series name"` | That run, as artwork, with its traits. Also `/mint_art`. |
+
+**The bot itself**
+
+| Command | What it does |
+| --- | --- |
+| `/chat <question>` | Ask in plain English. Also `/agent`, `/ask`. |
+| `/x [status\|pending\|post\|approve\|reject\|pause\|resume]` | Control the X bot. |
+| `/drafts` | X posts waiting for approval. Also `/queue`, `/approve`. |
+| `/forget` | Drop what it remembers of this chat. |
+| `/chatid` | This chat id, for the allowlist. |
+| `/help`, `/start` | Everything above, in the chat. |
+
 
 ```
 /pay <amount> [--to <recipient>] [--sender <wallet>] [--token <mint>] [--order <id>]
@@ -471,6 +522,73 @@ singularity watch tx <hash> -c ethereum --confirmations 12   # stops when it get
 singularity watch liveness -c ethereum -c base
 ```
 
+### Every command
+
+Twenty-four commands, four of them with subcommands. `--json` works on all of them, and
+`<command> --help` has the flags.
+
+**Reading**
+
+| Command | What it does |
+| --- | --- |
+| `chains [query]` | Every supported chain, filterable by name, id, alias or symbol. |
+| `resolve <input>` | What a string is — address, tx hash, ENS/SNS name, block height — and which chains it could belong to. |
+| `balance <address>` | Native and token balances on one chain. `--at-block` reads the past. |
+| `portfolio <address...>` | One address, or several, across many chains at once. |
+| `history <address>` | Recent transactions, newest first. Says so when an EVM indexer key is missing. |
+| `tx <hash>` | A transaction, searched across chains when you do not name one. |
+| `block [ref]` | A block by height, hash, or `latest`. |
+| `fees` | What a simple transfer costs right now. |
+| `read` | An EVM view function, or parsed Solana account data. |
+| `decode <data>` | Raw calldata into a function signature and arguments. |
+
+**Solana tokens**
+
+| Command | What it does |
+| --- | --- |
+| `mint <mint>` | Authorities and Token-2022 extensions, and who holds each power. |
+| `identity <mint>` | What a mint declares, and whether it can be rewritten later. `--fetch` reads the document it points at. |
+| `inspect <mint>` | Before buying: what could stop you selling again. Exits non-zero when something blocks a sale. |
+
+**Building — unsigned, always**
+
+| Command | What it does |
+| --- | --- |
+| `build` | An **unsigned** transfer for your own wallet to sign. |
+| `burn` | An **unsigned** burn. Nothing receives these. |
+| `verify-burn <signature>` | Confirm a burn happened, at finalized commitment, and that it was the mint you expected. |
+| `redeem <signature>` | Confirm a burn and record it as spent, once. |
+
+**Payments**
+
+| Command | What it does |
+| --- | --- |
+| `checkpay` | Whether a demand somebody handed you can be paid at all. Exits non-zero when it cannot. |
+| `paydemand` | The same checks, then the **unsigned** payment — only if they pass. |
+| `pay new <amount>` | Create a payment request and print it as a QR. |
+| `pay status <id>` | Whether it was paid, and how settled that is. Exits 0 once it really is. |
+| `pay list` | Every request this machine has created. |
+
+**The mesh**
+
+| Command | What it does |
+| --- | --- |
+| `mesh <objective> <subject>` | Several tools, searched. Exits non-zero on anything short of `answered`. |
+| `mesh … --plan` | The order and the cost, calling nothing. |
+| `mesh … --art <file>` | The run, drawn. `--series`, `--edition`, `--size` shape it. |
+| `mesh … --metadata <file>` | The NFT metadata beside it. Needs `--image-uri`. |
+
+**Operations**
+
+| Command | What it does |
+| --- | --- |
+| `doctor` | Which chains are producing blocks, not just answering. `--endpoints` shows every one. |
+| `watch balance <address>` | Poll an address and report when its balance moves. |
+| `watch tip` | Poll a chain's head and report each new block. |
+| `watch tx <hash>` | Poll one transaction to a confirmation depth, then stop. |
+| `watch liveness` | Poll chain health and report every status change. |
+| `mcp` | Run the MCP server on stdio, for Claude Code and other MCP clients. |
+
 Add `--json` to any command for machine-readable output.
 
 `watch` is the one exception to that last sentence: under `--json` it emits
@@ -613,20 +731,25 @@ decision. Rarity falls out of the run rather than out of a table somebody wrote 
 | `chains` | List supported chains, with families, ids, aliases, native assets. |
 | `resolve` | Identify an address / tx hash / name and which chains it belongs to. |
 | `balance` | Native + token balances on one chain, now or `atBlock`, with a `completeness` saying what the list covers. Takes a `budget`. |
-| `portfolio` | One address across many chains in parallel. Takes a `budget`, applied per chain. |
-| `transaction` | Fetch and normalize a transaction, decoding EVM calldata. |
-| `block` | A block by height, hash, or `latest`. |
-| `fees` | Current fee conditions, normalized. |
-| `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
-| `decode` | Decode EVM calldata into a signature and arguments. |
+| `portfolio` | One address, or a set of them, across many chains in parallel. Takes a `budget`, applied per chain. |
+| `transaction` | Fetch and normalize a transaction, decoding EVM calldata, with a `finality` saying whether its block can still be discarded. |
 | `history` | What an address has been doing, newest first. Takes a `budget` or an exact `limit`. Reports that it has no answer rather than an empty list when an EVM indexer key is missing. |
-| `build_transfer` | Build an **unsigned** transfer payload. |
+| `block` | A block by height, hash, or `latest`. |
+| `fees` | Current fee conditions, normalized to "what a simple transfer costs". |
+| `read_contract` | EVM view calls, now or `atBlock`; parsed account data on Solana. |
 | `mint_audit` | What a Solana mint permits: authorities, Token-2022 extensions, and who holds each power. |
-| `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
+| `decode` | Decode EVM calldata into a signature and arguments, unwrapping multicalls and Safe batches. |
+| `build_transfer` | Build an **unsigned** transfer payload. |
 | `build_burn` | Build an **unsigned** burn for the holder to sign. |
-| `verify_burn` | Confirm a burn from its signature, and check it against a claim. |
+| `verify_burn` | Confirm a burn from its signature, at finalized commitment, and check it against a claim. |
+| `token_identity` | What a mint declares, and whether the declaration can be rewritten later. |
+| `chain_liveness` | Whether a chain is producing blocks rather than merely answering, per endpoint. |
 | `inspect_exit` | Before buying a Solana token: the specific mechanisms that could stop you selling it again — transfer hook, permanent delegate, freeze authority — each naming who holds the power. Not a score. |
+| `inspect_payment` | Somebody handed you an invoice: whether signing it does what it says. Checks each claim against the chain rather than against the rest of the invoice. |
+| `build_payment` | The same checks, and the **unsigned** payment only if they pass. `unpayable` and `unproven` are refusals here, not advice. |
+| `receipt_art` | What a payment receipt looks like, and whether an image you were served is the one its reference generates. |
 | `mesh` | Answer one question with several of the tools above, in a searched order, and report the facts, the path that proved them, and what could not be proved. |
+
 
 Every tool is annotated `readOnlyHint: true`. Errors come back as structured results
 carrying a code and a hint, rather than as transport exceptions — so a model can correct
@@ -946,6 +1069,37 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
   historical, never current state wearing a past label. On EVM and Cosmos the endpoint has
   to be archival, and a pruned one returns `HISTORICAL_STATE_UNAVAILABLE` rather than
   falling back to now.
+
+---
+
+## Versions
+
+| Package | Version | What it is |
+| --- | --- | --- |
+| `singularity-agent` | `0.4.0` | the CLI, the MCP server, the Claude Code plugin, the Telegram and X bots |
+| `singularity-sdk` | `0.2.0` | the application SDK, in this repository and released separately |
+
+**Two numbers on purpose.** The agent has eleven releases behind it and the SDK has two.
+Giving them one number would make the SDK look nine releases more settled than it is,
+which is a claim about stability nobody made. The SDK takes the agent as a *peer*
+dependency rather than bundling it — the chain registry is module state, and two copies
+in one tree would mean configuring a registry the operations are not reading from.
+
+**Where the number lives.** `src/version.ts` is the one the running tool prints — CLI
+`--version`, the MCP handshake, the facts the poster draws on. Five other files carry it
+and cannot import it: `package.json`, `.claude-plugin/plugin.json`,
+`.claude-plugin/marketplace.json`, the whitepaper header and the roadmap's newest
+`## Shipped` section. `test/version.test.ts` holds all of them together, along with the
+two places that name it in *prose* — this table, and the SDK's own header explaining
+which version it is not. Both of those went stale once already, silently, because a
+manifest check cannot see them.
+
+Every release has a `## Shipped — v…` section in [the roadmap](roadmap.md) with what
+changed and why, newest first. A bump with no entry fails the same test.
+
+To update an installed plugin after a rebuild, bump `version` in both
+`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then
+`claude plugin update singularity-agent`.
 
 ---
 

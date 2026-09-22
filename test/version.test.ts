@@ -55,6 +55,49 @@ describe('the version, in every place that carries it', () => {
     expect(paper).toContain(`Version ${VERSION}`);
   });
 
+  /**
+   * Prose that names the version, in the two places that are not manifests.
+   *
+   * Both of these went stale the moment v0.4.0 was cut, and nothing failed:
+   * the SDK's own header explained that the agent was at v0.3.0, and the
+   * roadmap's argument for why it will not predict Q3 2027 rested on having
+   * reached v0.3.0 in six days. Neither is a manifest, so the checks above
+   * could not see them, and both are exactly the failure the top of the
+   * roadmap is about — a fact living in prose, duplicated, with nothing
+   * holding the copies together.
+   *
+   * They are checked for the *current* version by substring rather than
+   * rewritten by hand, so the next bump either updates them or turns this red.
+   */
+  for (const [path, why] of [
+    ['singularity-sdk/src/version.ts', 'the SDK explains which agent version it is not'],
+    ['roadmap.md', 'the Horizons section dates itself against the latest release'],
+  ] as const) {
+    it(`is the version ${path} says the agent is on, because ${why}`, () => {
+      expect(readFileSync(join(ROOT, path), 'utf8')).toContain(`v${VERSION}`);
+    });
+  }
+
+  it('is the version the README tells an installer they are getting', () => {
+    // The README states both package versions in one place, so somebody
+    // reading it before installing is not guessing from npm.
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+    const sdk = json('singularity-sdk/package.json').version;
+
+    expect(readme).toContain(`| \`singularity-agent\` | \`${VERSION}\` |`);
+    expect(readme).toContain(`| \`singularity-sdk\` | \`${sdk}\` |`);
+  });
+
+  it('has one shipped entry in the roadmap for every release up to this one', () => {
+    // A release with no entry is a release nobody can read the notes for; an
+    // entry with no release is a note about something that never shipped.
+    const roadmap = readFileSync(join(ROOT, 'roadmap.md'), 'utf8');
+    const shipped = [...roadmap.matchAll(/^## Shipped — v(\d+\.\d+\.\d+)/gm)].map((m) => m[1]!);
+
+    expect(shipped[0]).toBe(VERSION);
+    expect(new Set(shipped).size, 'the roadmap lists a version twice').toBe(shipped.length);
+  });
+
   it('is the version the roadmap most recently called shipped', () => {
     // The roadmap opens with the shipped releases, newest first. A bump with no
     // entry is a release nobody can read the notes for.
