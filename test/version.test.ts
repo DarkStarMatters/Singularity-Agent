@@ -88,6 +88,20 @@ describe('the version, in every place that carries it', () => {
     expect(readme).toContain(`| \`singularity-sdk\` | \`${sdk}\` |`);
   });
 
+  it('is the release the whitepaper says is current, and the SDK requires', () => {
+    // The whitepaper's header tracks the release while its body stays at the
+    // version it was written for, and its note says which is which. That note
+    // once said the paper "describes main" four releases after it stopped.
+    const paper = readFileSync(join(ROOT, 'whitepaper.md'), 'utf8');
+    expect(paper).toContain(`The current release is v${VERSION}`);
+
+    // The SDK's peer range is its claim about which agent it was built
+    // against, and the README repeats it.
+    const peer = (json('singularity-sdk/package.json').peerDependencies as Record<string, string>)['singularity-agent'];
+    expect(peer).toBe(`>=${VERSION}`);
+    expect(readFileSync(join(ROOT, 'README.md'), 'utf8')).toContain(`\`singularity-agent ${peer}\``);
+  });
+
   it('has one shipped entry in the roadmap for every release up to this one', () => {
     // A release with no entry is a release nobody can read the notes for; an
     // entry with no release is a note about something that never shipped.

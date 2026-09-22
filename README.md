@@ -802,6 +802,21 @@ await readOnly.write.transfer({ to: 'vitalik.eth', amount: '0.1' });
 // Property 'transfer' does not exist on type 'SignerRequired'.
 ```
 
+The package ships one binary, `singularity-sdk`, and it only scaffolds:
+
+| Command | What it does |
+| --- | --- |
+| `singularity-sdk new <directory> [--template <id>]` | A project that runs on the first try. Refuses a directory that is not empty. |
+| `singularity-sdk templates` | The templates `new` can use. |
+| `singularity-sdk --version` | The SDK's version, which is not the agent's — see [Versions](#versions). |
+| `singularity-sdk --help` | Usage and the template list. |
+
+| Template | What it is |
+| --- | --- |
+| `reader` | A read-only script: balances, portfolio, completeness. No keys, no signer. The default. |
+| `monitor` | A liveness and balance watcher, with backoff and clean shutdown. |
+| `agent` | A tool-use loop over the catalogue, with a policy hook and a signer *stub*. |
+
 Full documentation: **[singularity-sdk/README.md](singularity-sdk/README.md)**.
 
 ---
@@ -863,6 +878,23 @@ and a stored intent — resolving an id needs storage, and a serverless function
 The intent is still stored, on the merchant's side, where it holds the order binding,
 the expiry, the mint risk read, and the ledger that makes fulfilment happen exactly
 once.
+
+### Every HTTP route
+
+Everything under `api/` deploys as a Vercel function. The static site in `web/` is served
+beside them.
+
+| Route | Methods | What it is |
+| --- | --- | --- |
+| `/mcp` → `/api/mcp` | `POST`, `GET` | The hosted MCP server. `POST` speaks JSON-RPC; `GET` returns name, version and tool count. |
+| `/api/pay` | `GET`, `POST` | The Solana Pay transaction request for a payment. Needs `SINGULARITY_PAY_RECIPIENTS`. |
+| `/api/burn` | `GET`, `POST` | The Solana Pay transaction request for a burn. |
+| `/api/ping` | any | Deployment probe: does a function in this repo run at all? |
+| `/api/ping-src` | any | Deployment probe: does an import from `../src` survive the build? |
+| `/api/ping-solana` | any | Deployment probe: does `@solana/web3.js` load? |
+
+The three probes are diagnostics for a deployment that would not serve `/api/burn`, and
+are marked in their own source for deletion once it does.
 
 ---
 
@@ -1095,7 +1127,18 @@ which version it is not. Both of those went stale once already, silently, becaus
 manifest check cannot see them.
 
 Every release has a `## Shipped — v…` section in [the roadmap](roadmap.md) with what
-changed and why, newest first. A bump with no entry fails the same test.
+changed and why, newest first. A bump with no entry fails the same test. Releases from
+v0.3.0 on are also git tags (`v0.3.0`, `v0.4.0`); earlier ones exist only as roadmap
+entries.
+
+**The SDK's pin on the agent.** `singularity-sdk` declares `singularity-agent >=0.4.0` as
+its peer range. A scaffolded project pins the SDK version that generated it, and the
+templates themselves stay at `0.0.0` because they are not packages anyone installs.
+
+**What is deliberately not kept current.** `announce-*.md`, `docs/` and
+`whitepaper-x.txt` are records of what was true on a date, and carry the version they were
+written at. The whitepaper's header tracks the current release; its body describes
+v0.0.9 and says so.
 
 To update an installed plugin after a rebuild, bump `version` in both
 `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then
@@ -1112,6 +1155,33 @@ npm run dev -- chains        # run the CLI from source
 npm run mcp                  # run the MCP server from source
 npm run bot                  # run the Telegram bot from source
 ```
+
+Every script in `package.json`:
+
+| Script | What it does |
+| --- | --- |
+| `npm run build` | Compile to `dist/`, in both passes — the main one and `src/eliza/`. |
+| `npm run typecheck` | Typecheck both passes and the `api/` routes, emitting nothing. |
+| `npm test` | Run the test suite once. |
+| `npm run test:watch` | Run it on every change. |
+| `npm run dev -- <command>` | The CLI from source, no build. |
+| `npm run mcp` | The MCP server on stdio, from source. |
+| `npm run bot` | The Telegram bot. |
+| `npm run x-bot` | The X bot. |
+| `npm run agent` | The elizaOS agent. |
+| `npm run build:sdk` | Build the agent, then `singularity-sdk` against it. |
+| `npm run typecheck:sdk` | Build the agent, then typecheck `singularity-sdk`. |
+| `npm run smoke:burn [-- <url>]` | Ask the deployed `/api/burn` whether it is alive, the way a wallet would. Burns nothing. |
+| `npm run verify:builders` | Build, then simulate every transaction builder against mainnet. Signs and sends nothing; needs the network, so not part of `npm test`. |
+| `npm run prepublishOnly` | Runs `build`; npm calls it before a publish. |
+
+And the three binaries the package installs:
+
+| Binary | What it is |
+| --- | --- |
+| `singularity` | The CLI — [every command](#every-command). |
+| `singularity-agent` | The same CLI, under the package's name, so `npx singularity-agent` resolves. |
+| `singularity-mcp` | The MCP server on stdio. |
 
 Architecture:
 

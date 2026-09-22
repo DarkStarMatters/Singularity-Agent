@@ -4,8 +4,11 @@
 
 Version 0.4.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
-*This paper describes `main`. Everything in it is implemented and tested; where something
-has landed since the v0.0.9 tag it is marked.*
+*The current release is v0.4.0; this paper describes v0.0.9 and has not been revised
+since. Everything in it is implemented and tested, and where something landed between
+v0.0.8 and v0.0.9 it is marked. What shipped after — Singularity Pay, the mesh, and the
+five tools after the first sixteen — is in the [README](README.md) and the
+[roadmap](roadmap.md).*
 
 ---
 
