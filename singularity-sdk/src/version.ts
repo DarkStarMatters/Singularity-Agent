@@ -1,9 +1,9 @@
 /**
  * The SDK's own version, which is not the agent's.
  *
- * Two numbers in one repository, on purpose. The agent is at v0.4.0 with eleven
+ * Two numbers in one repository, on purpose. The agent is at v0.5.0 with twelve
  * releases behind it; this package is at v0.2.0 with two. Giving them a single
- * version would make the SDK look nine releases more settled than it is, which
+ * version would make the SDK look ten releases more settled than it is, which
  * is a claim about stability that nobody made.
  *
  * That first sentence went stale the moment the agent shipped v0.4.0 and

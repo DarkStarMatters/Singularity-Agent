@@ -25,6 +25,51 @@ declines to pretend it knows what a year from now contains.
 
 ---
 
+## Shipped — v0.5.0, the payer's side of a payment
+
+Everything this project checked about a payment was on one side of it. `inspect_payment`
+and `build_payment` answer whether a demand *can* be paid; `findPayment`, behind `pay
+status`, answers for whoever is owed whether it *was*. Nothing answered for the party who paid — and in
+September that was exactly the party left holding a payment that landed, finalized, and
+was never credited.
+
+**`prove_payment`, the twenty-second tool.** A signature and the terms of the demand it
+answered — payee, amount, mint, the exact token account, memo, deadline, payer — and each
+term checked on its own against the finalized transaction, expected beside observed.
+`proven` needs every stated term to hold; `contradicted` means at least one does not, and
+a real payment can still be the wrong one; `unproven` is the chain declining to settle it
+yet — not found, not finalized, a block nobody will date — and is never read as
+`contradicted`. It starts from the signature rather than a reference because the payer
+holds one and plenty of demands never issue the other. It is Phase 8.2, shipped the day
+after the first credited job showed what it had to check.
+
+**Buying on the exchange, in two commands.** `exchange buy` opens a PrivateDAO job,
+checks the demand it issues and builds the unsigned payment, or refuses. `exchange settle`
+picks up from the signature: it proves the payment against the demand *before* the
+exchange hears about it, never submits one that contradicts it, waits for one that has
+not finalized, submits, polls, and re-derives the receipt from the input sent and the
+result returned. Landed, credited and verified stay three answers, because they came
+apart once already. What signs in between is the payer's own wallet; the package still
+cannot.
+
+**A receipt checked rather than trusted.** `checkReceipt` recomputes a PrivateDAO
+receipt's input and result hashes — SHA-256 over sorted-key JSON, recovered from the first
+credited job and pinned by it as a fixture. It proves the receipt is about *this* job. It
+does not prove the result is correct, and says so.
+
+**`mesh payment`.** Settlement plus one fact: whether the transaction met the demand. The
+demand is the caller's to give and is never inferred; without one, the proof is listed in
+`unproven` with that as the reason, without a call spent on it.
+
+**What the exchange work corrected.** The client's submission went over MCP to a tool that
+answers `use_http_payment_endpoint` and credits nothing; it now posts where payment is
+actually taken. Two argument shapes probed from error messages turned out wrong once the
+server published real schemas, and now follow them. And a first diagnosis of the exchange
+as down turned out to be the local network dropping every connection to AWS in Europe —
+worth recording because the symptom, a silent timeout, is identical.
+
+---
+
 ## Shipped — v0.4.0, the search over the tools, and a picture of one
 
 Twenty tools, and no way to say which of them a question needed. This release adds the
@@ -1953,8 +1998,8 @@ Everything above this line is shipped. What follows is not, and the quarters att
 it are **horizons rather than commitments** — an ordering with a rough sense of distance,
 not a set of dates anybody should hold this project to.
 
-The reason for saying so plainly: this repository is seven days old. It went from the
-initial commit to v0.4.0 in seven of them, across five phases and a hundred and sixteen
+The reason for saying so plainly: this repository is eight days old. It went from the
+initial commit to v0.5.0 in eight of them, across five phases and a hundred and twenty-six
 commits, and every numbered item written down as future work so far has shipped within
 days of being written. A roadmap that claimed to know what Q3 2027 contains would be
 making exactly the kind of confident, unfalsifiable statement the rest of this document
