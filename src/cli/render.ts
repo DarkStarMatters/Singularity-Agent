@@ -19,6 +19,7 @@ import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import { shortAddress } from '../core/format.js';
 import type { Finality } from '../core/finality.js';
 import type { MeshResult } from '../mesh/search.js';
+import type { Settlement, SettlementVerdict } from '../exchange/buy.js';
 import type {
   BalanceResult,
   BurnClaim,
@@ -1030,6 +1031,39 @@ export function renderIntentList(intents: StoredIntent[]): string {
  * The verdict is one line and the reason is the next, because the caller may
  * well be a script reading the exit code and a human reading only the top.
  */
+/**
+ * Where a bought job ended up: landed, credited and verified are separate lines
+ * because they are separate facts, and a job can have the first without the rest.
+ */
+export function renderJobSettlement(settlement: Settlement): string {
+  const verdicts: Record<SettlementVerdict, string> = {
+    verified: `${green('verified')}   ${dim('paid, credited, and the receipt re-derives')}`,
+    credited: `${yellow('credited')}   ${dim('paid and credited; the receipt was not re-derived')}`,
+    pending: `${yellow('pending')}    ${dim('paid and submitted; the job has not finished')}`,
+    failed: `${red('failed')}     ${bold('paid and proven, and the exchange reports the job failed')}`,
+    refused: `${red('refused')}    ${bold('the payment does not meet the demand; not submitted')}`,
+    unproven: `${yellow('unproven')}   ${dim('not finalized yet; not submitted')}`,
+  };
+
+  const lines = [`  ${verdicts[settlement.verdict]}`, ''];
+  const mark = (ok: boolean | undefined) => (ok === undefined ? yellow('?') : ok ? green('✓') : red('✗'));
+
+  lines.push(`  ${mark(settlement.proof.verdict === 'proven' ? true : settlement.proof.verdict === 'contradicted' ? false : undefined)} ${bold('landed')}     payment ${settlement.proof.verdict} on chain`);
+  if (settlement.job) {
+    lines.push(`  ${mark(settlement.job['status'] === 'completed' ? true : settlement.job['status'] === 'failed' ? false : undefined)} ${bold('credited')}   job ${String(settlement.job['status'] ?? 'unreported')}`);
+  }
+  if (settlement.receiptCheck) {
+    lines.push(`  ${mark(settlement.receiptCheck.inputHash.holds)} ${bold('input')}      ${dim(settlement.receiptCheck.inputHash.derived)}`);
+    lines.push(`  ${mark(settlement.receiptCheck.resultHash.holds)} ${bold('result')}     ${dim(settlement.receiptCheck.resultHash.derived)}`);
+  }
+  if (settlement.receipt?.['receipt_id']) {
+    lines.push('', `  ${dim('receipt')}  ${String(settlement.receipt['receipt_id'])}  ${dim(String(settlement.receipt['status'] ?? ''))}`);
+  }
+  lines.push(`  ${dim('job')}      ${settlement.jobId}`, '', `  ${wrap(settlement.note, 76, '  ')}`);
+
+  return lines.join('\n');
+}
+
 /** A payer's proof: each term of the demand, expected beside observed. */
 export function renderPaymentProof(proof: PaymentProof): string {
   const lines: string[] = [

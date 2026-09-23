@@ -571,6 +571,21 @@ Twenty-four commands, four of them with subcommands. `--json` works on all of th
 | `pay status <id>` | Whether it was paid, and how settled that is. Exits 0 once it really is. |
 | `pay list` | Every request this machine has created. |
 
+**Buying on the PrivateDAO exchange**
+
+| Command | What it does |
+| --- | --- |
+| `exchange services` | What the exchange sells, and for how much. |
+| `exchange buy <service> --from <wallet>` | Open a job, check its payment demand, and build the **unsigned** payment. Refuses to build for a demand that does not check out. |
+| `exchange settle <job> <signature>` | Prove the payment from the chain, submit it, wait for the credit, and re-derive the receipt. Exits 0 only when `verified`. |
+
+The signature in between comes from your own wallet — this CLI cannot make one.
+`settle` refuses to submit a payment that contradicts the demand, waits for one that
+has not finalized, and keeps *landed*, *credited* and *verified* as separate answers: a
+payment can land and never be credited, and a job can be credited against a receipt that
+does not re-derive. Pass the same `--input` to `settle` as to `buy`, or the receipt's
+input hash cannot be checked and the best it can say is `credited`.
+
 **The mesh**
 
 | Command | What it does |

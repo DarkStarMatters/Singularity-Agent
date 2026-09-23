@@ -136,6 +136,13 @@ export interface Exchange {
   submitPayment(jobId: string, signature: string): Promise<Record<string, unknown>>;
   /** Where a job got to. */
   jobStatus(jobId: string): Promise<Record<string, unknown>>;
+  /**
+   * A job as the HTTP API reports it — status, result and `receipt_id` — which
+   * is where a job that is still running after payment is polled.
+   */
+  job(jobId: string): Promise<Record<string, unknown>>;
+  /** The payment demand for a job, re-read from the exchange rather than remembered. */
+  paymentIntent(jobId: string): Promise<Record<string, unknown>>;
   /** The exchange's own receipt, by the `rvr_` id a completed job carries. */
   getReceipt(receiptId: string): Promise<Record<string, unknown>>;
   /** Escape hatch: call any tool by name, for shapes this client has not typed. */
@@ -197,6 +204,38 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+/**
+   * GET a path on the endpoint's own host. The job id is checked first because
+   * it goes into the path, and a crafted one would be a different request.
+   */
+  async function getJson(path: string, jobId: string): Promise<Record<string, unknown>> {
+    requireJobId(jobId);
+    const url = new URL(path, endpoint).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await doFetch(url, { headers: { accept: 'application/json' }, signal: controller.signal });
+    } catch (cause) {
+      throw new SingularityError(
+        'ENDPOINT_FAILED',
+        `The PrivateDAO exchange at ${url} could not be reached: ${describe(cause)}.`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok || typeof body['error'] === 'string') {
+      throw new SingularityError(
+        'ENDPOINT_FAILED',
+        `PrivateDAO answered ${response.status} for ${path}: ${String(body['message'] ?? body['error'] ?? 'no reason given')}.`,
+      );
+    }
+    return body;
   }
 
   async function rpc(method: string, params: unknown): Promise<unknown> {
@@ -314,11 +353,9 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
     },
 
     async submitPayment(jobId, signature) {
-      if (!/^job_[A-Za-z0-9-]+$/.test(jobId) || !signature) {
-        throw new SingularityError(
-          'BAD_INPUT',
-          'A payment needs the job_… id from createJob and a finalized Solana signature.',
-        );
+      requireJobId(jobId);
+      if (!signature) {
+        throw new SingularityError('BAD_INPUT', 'A payment needs a finalized Solana signature.');
       }
 
       // Built from the endpoint's own origin rather than from the intent's
@@ -342,6 +379,22 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
 
     async jobStatus(jobId) {
       return record(await callTool('job_status', { job_id: jobId }), 'job_status');
+    },
+
+    job(jobId) {
+      return getJson(`/api/jobs/${jobId}`, jobId);
+    },
+
+    async paymentIntent(jobId) {
+      const body = await getJson(`/api/jobs/${jobId}/payment-intent`, jobId);
+      const intent = body['paymentIntent'];
+      if (!intent || typeof intent !== 'object') {
+        throw new SingularityError(
+          'ENDPOINT_FAILED',
+          `PrivateDAO returned no payment intent for ${jobId}. A free job has none; a paid one should.`,
+        );
+      }
+      return intent as Record<string, unknown>;
     },
 
     async getReceipt(receiptId) {
@@ -445,6 +498,15 @@ export function checkReceipt(
         ? 'The job carries no receipt hashes to check, so nothing here is re-derivable.'
         : `The receipt does not re-derive: ${[!inputHolds && 'input', !resultHolds && 'result'].filter(Boolean).join(' and ')} hash differ. Either the digest rule changed or the receipt covers something other than what was returned — ask before relying on it.`,
   };
+}
+
+function requireJobId(jobId: string): void {
+  if (!/^job_[A-Za-z0-9-]+$/.test(jobId)) {
+    throw new SingularityError(
+      'BAD_INPUT',
+      `${JSON.stringify(jobId)} is not a job id. They look like job_… and come from createJob.`,
+    );
+  }
 }
 
 function describe(cause: unknown): string {

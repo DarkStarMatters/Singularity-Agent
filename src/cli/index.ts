@@ -20,6 +20,8 @@ import { notifyPayment } from '../pay/notify.js';
 import { qrMatrix } from '../core/qr.js';
 import { qrUnicode } from '../core/qr-render.js';
 import type { SettlementLevel } from '../pay/types.js';
+import { createExchange } from '../exchange/privatedao.js';
+import { quoteJob, settleJob } from '../exchange/buy.js';
 
 /**
  * Read `--budget` off the command line.
@@ -1267,6 +1269,125 @@ payCommand
     if (all.length > shown.length) {
       console.log(render.dim(`\n  ${all.length - shown.length} older, not shown.`));
     }
+  });
+
+/**
+ * `exchange` — buy a job on the PrivateDAO agent exchange.
+ *
+ * Two halves either side of a signature this CLI never makes: `buy` goes as far
+ * as an unsigned payment and stops, `settle` picks up from the signature. What
+ * signs in between is the payer's own wallet or script.
+ */
+const exchangeCommand = program
+  .command('exchange')
+  .description('Buy a job on the PrivateDAO agent exchange: quote, then settle.')
+  .addHelpText(
+    'after',
+    `
+  The payment in between is signed outside this CLI, which holds no keys.
+
+  Examples:
+    singularity exchange services
+    singularity exchange buy token.intelligence --input '{"network":"solana-mainnet-beta","asset":"<mint>"}' --from <wallet>
+    singularity exchange settle <job_id> <signature> --input '<the same json>'`,
+  );
+
+function parseInput(raw: string | undefined): Record<string, unknown> | undefined {
+  if (raw === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    // Reported below with the same message as a non-object.
+  }
+  throw new SingularityError('BAD_INPUT', '--input must be a JSON object.', `Got: ${raw}`);
+}
+
+exchangeCommand
+  .command('services')
+  .description('What the exchange sells, and for how much.')
+  .action(async () => {
+    const services = await createExchange().services();
+
+    if (program.opts().json) {
+      console.log(toJson(services));
+      return;
+    }
+
+    console.log(render.heading('PrivateDAO services'));
+    console.log(
+      render.table(
+        services.map((service) => [
+          service.id,
+          service.price ? `${service.price} ${service.currency}` : render.green('free'),
+          render.dim(service.title),
+        ]),
+        ['SERVICE', 'PRICE', ''],
+      ),
+    );
+  });
+
+exchangeCommand
+  .command('buy <service>')
+  .description('Open a job, check its payment demand, and build the unsigned payment.')
+  .requiredOption('--from <address>', 'The wallet that will pay, and sign.')
+  .option('--input <json>', 'The service input, as a JSON object.')
+  .action(async (service: string, options: { from: string; input?: string }) => {
+    const input = parseInput(options.input);
+    const quote = await quoteJob(createExchange(), {
+      service,
+      from: options.from,
+      ...(input ? { input } : {}),
+    });
+
+    if (program.opts().json) {
+      console.log(toJson(quote));
+      return;
+    }
+
+    if (quote.kind === 'free') {
+      console.log(render.heading('Free job'));
+      console.log(toJson(quote.job));
+      return;
+    }
+
+    console.log(render.heading(`Job ${quote.jobId}`));
+    console.log(render.renderPaymentDemand(quote.report));
+    console.log(render.heading('Unsigned payment'));
+    console.log(render.renderUnsignedTx(quote.transaction));
+    console.log(
+      `\n  ${render.dim('Sign it within about a minute, then:')}\n  singularity exchange settle ${quote.jobId} <signature>` +
+        (options.input ? ` --input '${options.input}'` : ''),
+    );
+  });
+
+exchangeCommand
+  .command('settle <jobId> <signature>')
+  .description('Prove the payment, submit it, wait for the credit, and verify the receipt.')
+  .option('--input <json>', 'The input the job was created with, to re-derive the receipt.')
+  .option('--wait <seconds>', 'How long to wait for finality, then for the job. Default 90.', (v: string) => Number(v))
+  .action(async (jobId: string, signature: string, options: { input?: string; wait?: number }) => {
+    const input = parseInput(options.input);
+    const settlement = await settleJob(createExchange(), {
+      jobId,
+      signature,
+      ...(input ? { input } : {}),
+      ...(options.wait !== undefined ? { waitMs: options.wait * 1000 } : {}),
+    });
+
+    // Only a verified job exits 0: a script reading "credited" as done would be
+    // trusting a receipt nobody checked.
+    process.exitCode = settlement.verdict === 'verified' ? 0 : 1;
+
+    if (program.opts().json) {
+      console.log(toJson(settlement));
+      return;
+    }
+
+    console.log(render.heading('Settlement'));
+    console.log(render.renderJobSettlement(settlement));
+    console.log(render.heading('Payment proof'));
+    console.log(render.renderPaymentProof(settlement.proof));
   });
 
 program
