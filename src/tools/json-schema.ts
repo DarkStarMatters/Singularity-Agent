@@ -77,6 +77,12 @@ function render(schema: z.ZodTypeAny, def: ZodDef, name: string): JsonSchema {
     case 'ZodEnum':
       return { type: 'string', enum: def.values };
 
+    case 'ZodObject':
+      // A nested argument (mesh's `demand`) is converted exactly as a whole
+      // tool shape is, so its own required fields and closed properties
+      // survive rather than flattening to "an object of anything".
+      return shapeToJsonSchema((schema as z.AnyZodObject).shape);
+
     case 'ZodUnion': {
       const members = (def.options ?? []).map((option) => toJsonSchema(option, name));
       const types = members.map((m) => m.type).filter((t): t is string => typeof t === 'string');

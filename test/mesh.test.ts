@@ -336,3 +336,73 @@ describe('the mesh, as wiring', () => {
 function result_chainCount(seen: string[]): number {
   return seen.filter((tool) => tool === 'resolve').length;
 }
+
+describe('the payment objective', () => {
+  const SIG = '3C4s5ngiJP23vABg8h3rKWwZVnUaYNmaa3EhY3NhrdcBrMBdgqk3hkpdFEBqytGFEnZrVnQLRt6nHYb3nYXsYq6f';
+  const DEMAND = { to: '2BJ4ezxqV9YJXc38D9duKBkdn4su4jE1beKUHwH663sL', amount: '0.03' };
+
+  const table = (proof: unknown) => ({
+    resolve: resolved({ input: SIG, kind: 'tx', address: undefined }),
+    transaction: {
+      found: [
+        {
+          chain: 'solana',
+          hash: SIG,
+          status: 'success',
+          blockNumber: 449714898,
+          finality: { kind: 'final', note: 'finalized' },
+        },
+      ],
+    },
+    prove_payment: proof,
+  });
+
+  it('holds the transaction to the demand, and passes the demand through untouched', async () => {
+    let called: Record<string, unknown> | undefined;
+    const result = await runMesh(
+      { subject: SIG, objective: 'payment', chain: 'solana', demand: DEMAND },
+      runnerOver({
+        ...table(null),
+        prove_payment: (args) => {
+          called = args;
+          return { verdict: 'proven', checks: [{ term: 'amount', holds: true }], paid: { formatted: '0.03' } };
+        },
+      }),
+    );
+
+    expect(result.verdict).toBe('answered');
+    expect(called).toMatchObject({ signature: SIG, chain: 'solana', ...DEMAND });
+    expect(result.facts.paymentProof?.value).toMatchObject({ verdict: 'proven', held: ['amount'] });
+  });
+
+  it('records a contradicted payment as a proved fact, because it is one', async () => {
+    const result = await runMesh(
+      { subject: SIG, objective: 'payment', chain: 'solana', demand: DEMAND },
+      runnerOver(table({ verdict: 'contradicted', checks: [{ term: 'memo', holds: false }] })),
+    );
+
+    expect(result.facts.paymentProof?.value).toMatchObject({ verdict: 'contradicted', failed: ['memo'] });
+  });
+
+  it('leaves an unfinalized proof unproven instead of filling the slot with a shrug', async () => {
+    const result = await runMesh(
+      { subject: SIG, objective: 'payment', chain: 'solana', demand: DEMAND },
+      runnerOver(table({ verdict: 'unproven', checks: [] })),
+    );
+
+    expect(result.verdict).toBe('partial');
+    expect(result.unproven.map((entry) => entry.fact)).toContain('paymentProof');
+  });
+
+  it('says what is missing when no demand was given, without spending a call on it', async () => {
+    const seen: string[] = [];
+    const result = await runMesh(
+      { subject: SIG, objective: 'payment', chain: 'solana' },
+      runnerOver(table({ verdict: 'proven', checks: [] }), seen),
+    );
+
+    expect(seen).not.toContain('prove_payment');
+    const why = result.unproven.find((entry) => entry.fact === 'paymentProof')?.why;
+    expect(why).toMatch(/needs the demand/);
+  });
+});

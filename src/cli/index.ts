@@ -8,7 +8,7 @@ import { adapterFor } from '../adapters/index.js';
 import { VERSION } from '../version.js';
 import * as render from './render.js';
 import { parseBudget, type ResponseBudget } from '../core/budget.js';
-import type { Objective as MeshObjective } from '../mesh/moves.js';
+import type { MeshDemand, Objective as MeshObjective } from '../mesh/moves.js';
 import { writeFileSync } from 'node:fs';
 import { meshArtFacts, meshArtMetadata, meshArtStyle } from '../art/mesh-art.js';
 import { meshArtPng } from '../art/mesh-raster.js';
@@ -713,6 +713,25 @@ program
   });
 
 
+/** `--demand` for the payment objective: a JSON object carrying at least `to` and `amount`. */
+function parseDemandOption(raw: string): MeshDemand {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+  }
+  const demand = parsed as Partial<MeshDemand> | undefined;
+  if (!demand || typeof demand.to !== 'string' || typeof demand.amount !== 'string') {
+    throw new SingularityError(
+      'BAD_INPUT',
+      '--demand must be a JSON object with at least "to" and "amount" as strings.',
+      `Got: ${raw}`,
+    );
+  }
+  return demand as MeshDemand;
+}
+
 /**
  * `mesh` — the one command that is not a single call.
  *
@@ -729,7 +748,7 @@ program
 program
   .command('mesh')
   .description('Answer one question with several tools, searched, and say what it could not prove.')
-  .argument('<objective>', 'identify | holdings | activity | settlement | safety | liveness')
+  .argument('<objective>', 'identify | holdings | activity | settlement | payment | safety | liveness')
   .argument('<subject>', 'An address, transaction hash, name, mint, alias, or a chain id for `liveness`.')
   .option('-c, --chain <chain>', 'Chain id or alias, when you already know it.')
   .option('--max-calls <n>', 'Hard ceiling on tool calls. Defaults to 8, capped at 16.')
@@ -742,6 +761,7 @@ program
   .option('--size <px>', 'Artwork size in pixels, square. Defaults to 1024.')
   .option('--metadata <file>', 'Write the NFT metadata JSON here. Needs --image-uri.')
   .option('--image-uri <url>', 'Where the image will be served from, for the metadata.')
+  .option('--demand <json>', 'For the payment objective: the terms, e.g. {"to":"…","amount":"0.03","mint":"…"}.')
   .action(
     async (
       objective: string,
@@ -758,9 +778,12 @@ program
         size?: string;
         metadata?: string;
         imageUri?: string;
+        demand?: string;
       },
     ) => {
+      const demand = options.demand === undefined ? undefined : parseDemandOption(options.demand);
       const result = await ops.mesh({
+        ...(demand ? { demand } : {}),
         subject,
         objective: objective as MeshObjective,
         ...(options.chain ? { chain: options.chain } : {}),

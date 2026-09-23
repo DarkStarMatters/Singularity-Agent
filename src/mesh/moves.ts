@@ -25,6 +25,23 @@ export interface MeshContext {
   chainHint?: string;
   objective: Objective;
   budget?: unknown;
+  /**
+   * The terms a payment is held to, for the `payment` objective. Supplied by
+   * the caller, never inferred: a mesh that guessed what a payment was for
+   * would be proving a demand nobody made.
+   */
+  demand?: MeshDemand;
+}
+
+/** What a payment was asked to do — the arguments `prove_payment` takes, less the signature. */
+export interface MeshDemand {
+  to: string;
+  amount: string;
+  mint?: string;
+  tokenAccount?: string;
+  memo?: string;
+  expiresAt?: string;
+  from?: string;
 }
 
 export interface Move {
@@ -53,7 +70,14 @@ export interface Move {
   bind(board: Blackboard, result: unknown, ctx: MeshContext): FactKind[];
 }
 
-export type Objective = 'identify' | 'holdings' | 'activity' | 'settlement' | 'safety' | 'liveness';
+export type Objective =
+  | 'identify'
+  | 'holdings'
+  | 'activity'
+  | 'settlement'
+  | 'payment'
+  | 'safety'
+  | 'liveness';
 
 /**
  * What each objective counts as an answer.
@@ -68,6 +92,9 @@ export const OBJECTIVES: Record<Objective, FactKind[]> = {
   holdings: ['subjectKind', 'chain', 'nativeBalance', 'tokens'],
   activity: ['subjectKind', 'chain', 'activity'],
   settlement: ['subjectKind', 'chain', 'txSummary', 'finality'],
+  // Settlement, plus whether the transaction met the demand it answered. A
+  // payment can settle perfectly and still be the wrong payment.
+  payment: ['subjectKind', 'chain', 'txSummary', 'finality', 'paymentProof'],
   safety: ['subjectKind', 'chain', 'authorities', 'identity', 'exit'],
   liveness: ['chain', 'liveness', 'fees'],
 };
@@ -345,6 +372,45 @@ export const MOVES: Move[] = [
       }
 
       return bound;
+    },
+  },
+
+  {
+    tool: 'prove_payment',
+    needs: ['txHash', 'chain'],
+    binds: ['paymentProof'],
+    cost: 2,
+    gate: (board, ctx) => onSolana(board) && Boolean(ctx.demand),
+    gateNote:
+      'A payment proof needs the demand the payment answered (at least `to` and `amount`) and a Solana transaction; without a demand there is nothing to hold the payment to.',
+    args: (board, ctx) => ({
+      signature: board.value<string>('txHash'),
+      chain: board.value<string>('chain'),
+      ...ctx.demand,
+    }),
+    bind: (board, result) => {
+      const proof = record(result);
+      const verdict = text(proof.verdict);
+
+      // An unproven proof is the chain declining to settle the question — not
+      // finalized, or pruned. Binding it would put "we could not tell" on the
+      // board as though it were an answer; leaving the slot empty is what
+      // lists it in `unproven` with a reason instead.
+      if (verdict !== 'proven' && verdict !== 'contradicted') return [];
+
+      const checks = Array.isArray(proof.checks) ? proof.checks.map(record) : [];
+      return board.bind(
+        'paymentProof',
+        {
+          verdict,
+          held: checks.filter((check) => check.holds === true).map((check) => check.term),
+          failed: checks.filter((check) => check.holds === false).map((check) => check.term),
+          paid: record(proof.paid).formatted,
+        },
+        'prove_payment',
+      )
+        ? ['paymentProof']
+        : [];
     },
   },
 

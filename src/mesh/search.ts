@@ -58,7 +58,14 @@ import {
 } from '../core/envelope.js';
 import { getChain } from '../core/registry.js';
 import { Blackboard, type FactKind } from './blackboard.js';
-import { MOVES, OBJECTIVES, type MeshContext, type Move, type Objective } from './moves.js';
+import {
+  MOVES,
+  OBJECTIVES,
+  type MeshContext,
+  type MeshDemand,
+  type Move,
+  type Objective,
+} from './moves.js';
 import { MAX_STEP_REWARD, scoreStep, sigma, type Sigma, type StepReward } from './reward.js';
 
 /**
@@ -83,6 +90,8 @@ export interface MeshRequest {
   budget?: unknown;
   /** Rank the moves and return the order without calling anything. */
   plan?: boolean;
+  /** The terms a payment is held to, for the `payment` objective. */
+  demand?: MeshDemand;
 }
 
 export interface MeshStep {
@@ -382,6 +391,7 @@ export async function runMesh(request: MeshRequest, runner: ToolRunner): Promise
     objective: request.objective,
     ...(request.chain ? { chainHint: getChain(request.chain).id } : {}),
     ...(request.budget !== undefined ? { budget: request.budget } : {}),
+    ...(request.demand ? { demand: request.demand } : {}),
   };
 
   if (request.plan) return planOnly(request, ctx, board, goal, maxCalls, beam, notes);

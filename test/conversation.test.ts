@@ -64,7 +64,20 @@ describe('zod to JSON Schema', () => {
 
   it('throws on a type it cannot render rather than emitting an empty schema', () => {
     // An empty schema would read to a model as "this takes anything".
-    expect(() => toJsonSchema(z.object({ a: z.string() }), 'thing')).toThrow(/Unsupported/);
+    expect(() => toJsonSchema(z.date(), 'thing')).toThrow(/Unsupported/);
+  });
+
+  it('renders a nested object with its own required fields, closed', () => {
+    // mesh's `demand`: flattening it to a bare object would tell a model that
+    // `to` and `amount` are optional and anything else is welcome.
+    const schema = toJsonSchema(z.object({ to: z.string(), memo: z.string().optional() }), 'demand');
+
+    expect(schema).toEqual({
+      type: 'object',
+      properties: { to: { type: 'string' }, memo: { type: 'string' } },
+      required: ['to'],
+      additionalProperties: false,
+    });
   });
 
   it('omits required entirely when every argument is optional', () => {

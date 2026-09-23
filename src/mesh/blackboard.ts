@@ -50,7 +50,8 @@ export type FactKind =
   | 'identity'
   | 'exit'
   | 'liveness'
-  | 'fees';
+  | 'fees'
+  | 'paymentProof';
 
 export interface Fact {
   kind: FactKind;

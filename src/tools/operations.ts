@@ -55,7 +55,7 @@ import type { ScanOptions, StateOptions, TransferParams } from '../core/adapter.
 import type { ResponseBudget } from '../core/budget.js';
 import { completeness, weakest, type Completeness } from '../core/envelope.js';
 import { runMesh, type MeshResult } from '../mesh/search.js';
-import type { Objective as MeshObjective } from '../mesh/moves.js';
+import type { MeshDemand, Objective as MeshObjective } from '../mesh/moves.js';
 import type {
   BalanceEntry,
   BurnEvent,
@@ -1828,6 +1828,8 @@ export const MESH_RUNNERS: Record<string, (args: Record<string, any>) => Promise
   mint_audit: (args) => auditMint(args as { mint: string; chain?: string }),
   token_identity: (args) => tokenIdentity(args as { mint: string; chain?: string }),
   inspect_exit: (args) => inspectExit(args as { mint: string; chain?: string }),
+  prove_payment: (args) =>
+    provePayment(args as { signature: string; to: string; amount: string; chain?: string }),
 };
 
 export async function mesh(options: {
@@ -1838,6 +1840,7 @@ export async function mesh(options: {
   beam?: number;
   budget?: ResponseBudget;
   plan?: boolean;
+  demand?: MeshDemand;
 }): Promise<MeshResult> {
   return runMesh(options, async (tool, args) => {
     const run = MESH_RUNNERS[tool];

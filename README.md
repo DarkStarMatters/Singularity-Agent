@@ -628,10 +628,16 @@ few answers look like enough, and afterwards has no way to say which parts of wh
 reported were actually established.
 
 `mesh` is that part, made reproducible. You give it a subject and an **objective** —
-`identify`, `holdings`, `activity`, `settlement`, `safety`, `liveness` — and each
-objective declares the facts that count as an answer. The search runs the cheapest moves
-that could prove the missing ones, several at a time, and stops when they are all proved
-or the call budget is spent.
+`identify`, `holdings`, `activity`, `settlement`, `payment`, `safety`, `liveness` — and
+each objective declares the facts that count as an answer. The search runs the cheapest
+moves that could prove the missing ones, several at a time, and stops when they are all
+proved or the call budget is spent.
+
+`payment` is `settlement` plus one more fact: whether the transaction met the demand it
+answered. It needs the demand, so pass it — `--demand '{"to":"…","amount":"0.03","mint":"…"}'`
+from the CLI, or `demand` over MCP. Without one, the proof is listed in `unproven` with
+that as the reason rather than guessed at, because a payment can settle perfectly and
+still be the wrong payment.
 
 ```
 $ singularity mesh activity vitalik.eth
