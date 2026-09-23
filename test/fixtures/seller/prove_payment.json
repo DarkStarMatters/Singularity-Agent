@@ -1,0 +1,67 @@
+{
+  "verdict": "proven",
+  "signature": "3C4s5ngiJP23vABg8h3rKWwZVnUaYNmaa3EhY3NhrdcBrMBdgqk3hkpdFEBqytGFEnZrVnQLRt6nHYb3nYXsYq6f",
+  "checks": [
+    {
+      "term": "landed",
+      "expected": "finalized and successful",
+      "observed": "finalized, succeeded",
+      "holds": true
+    },
+    {
+      "term": "recipient",
+      "expected": "2BJ4ezxqV9YJXc38D9duKBkdn4su4jE1beKUHwH663sL",
+      "observed": "2BJ4ezxqV9YJXc38D9duKBkdn4su4jE1beKUHwH663sL",
+      "holds": true
+    },
+    {
+      "term": "mint",
+      "expected": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "observed": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "holds": true
+    },
+    {
+      "term": "tokenAccount",
+      "expected": "5RyKShQxSkbUJ9vA2MZ1Qf2TKgnwhhS3m7mj2ZZaVh6t",
+      "observed": "5RyKShQxSkbUJ9vA2MZ1Qf2TKgnwhhS3m7mj2ZZaVh6t",
+      "holds": true
+    },
+    {
+      "term": "amount",
+      "expected": "0.03",
+      "observed": "0.03",
+      "holds": true
+    },
+    {
+      "term": "memo",
+      "expected": "PDAOJOB:job_33640e3c-5bdb-42bb-a250-129840776b37",
+      "observed": "PDAOJOB:job_33640e3c-5bdb-42bb-a250-129840776b37",
+      "holds": true
+    },
+    {
+      "term": "deadline",
+      "expected": "landed by 2026-09-23T13:38:50.376Z",
+      "observed": "landed 2026-09-23T13:18:59.000Z",
+      "holds": true
+    }
+  ],
+  "paid": {
+    "raw": "30000",
+    "formatted": "0.03",
+    "decimals": 6,
+    "symbol": ""
+  },
+  "at": "2026-09-23T13:18:59.000Z",
+  "slot": 449714898,
+  "memo": {
+    "text": "PDAOJOB:job_33640e3c-5bdb-42bb-a250-129840776b37",
+    "untrusted": true,
+    "source": "whoever signed the payment, who wrote it into the transaction"
+  },
+  "finality": {
+    "kind": "final",
+    "note": "Finalized by the cluster, which does not roll back.",
+    "height": 449714898
+  },
+  "note": "Finalized, and every term checked holds: landed, recipient, mint, tokenAccount, amount, memo, deadline. Anyone holding the signature can re-derive this."
+}

@@ -1,0 +1,38 @@
+{
+  "chain": "solana",
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "program": "spl-token",
+  "decimals": 6,
+  "supply": {
+    "raw": "8225862825498855",
+    "formatted": "8225862825.498855",
+    "decimals": 6,
+    "symbol": "USDC"
+  },
+  "metadata": {
+    "name": "USD Coin",
+    "symbol": "USDC",
+    "mutability": "unknown",
+    "untrusted": true
+  },
+  "powers": [
+    {
+      "kind": "mint",
+      "holder": "BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG",
+      "what": "More of this token can be created at any time, diluting every existing holder."
+    },
+    {
+      "kind": "freeze",
+      "holder": "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar",
+      "what": "Any holder’s account can be frozen, leaving the balance visible and unsendable."
+    }
+  ],
+  "settled": [],
+  "extensions": [],
+  "completeness": {
+    "kind": "exhaustive",
+    "note": "Every authority and extension on the mint account, read in one go. The name came from a Metaplex metadata account, whose mutability flag sits past variable-length creator data and is not decoded here, so whether this text can be rewritten later is unknown rather than settled."
+  },
+  "note": "This says what the mint account permits, and nothing else. It is not a verdict on whether the token is worth holding: liquidity, who owns the supply, and what the deployer does next are not in these bytes. ",
+  "explorerUrl": "https://solscan.io/account/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+}

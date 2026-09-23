@@ -22,6 +22,7 @@ import { qrUnicode } from '../core/qr-render.js';
 import type { SettlementLevel } from '../pay/types.js';
 import { createExchange } from '../exchange/privatedao.js';
 import { quoteJob, settleJob } from '../exchange/buy.js';
+import { sellerMetadata } from '../exchange/listings.js';
 
 /**
  * Read `--budget` off the command line.
@@ -1347,6 +1348,35 @@ exchangeCommand
         ]),
         ['SERVICE', 'PRICE', ''],
       ),
+    );
+  });
+
+exchangeCommand
+  .command('listings')
+  .description('What Singularity sells on the exchange: price, schemas and payout, as sent to PrivateDAO.')
+  .action(() => {
+    const metadata = sellerMetadata();
+
+    if (program.opts().json) {
+      console.log(toJson(metadata));
+      return;
+    }
+
+    console.log(render.heading('Singularity on the exchange'));
+    console.log(
+      render.table(
+        metadata.services.map((service) => [
+          service.id,
+          `${service.price} ${service.currency}`,
+          service.category,
+          render.dim(service.title),
+        ]),
+        ['SERVICE', 'PRICE', 'CATEGORY', ''],
+      ),
+    );
+    console.log(
+      `\n  ${render.dim('payout')}    ${metadata.seller.payoutAddress}  ${render.dim(`USDC on ${metadata.seller.payoutNetwork}`)}` +
+        `\n  ${render.dim('endpoint')}  ${metadata.seller.endpoint}`,
     );
   });
 

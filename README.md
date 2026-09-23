@@ -576,6 +576,7 @@ Twenty-four commands, four of them with subcommands. `--json` works on all of th
 | Command | What it does |
 | --- | --- |
 | `exchange services` | What the exchange sells, and for how much. |
+| `exchange listings` | What Singularity sells there: each service's price, input and output schemas, and the payout wallet. `--json` is the metadata the exchange publishes from. |
 | `exchange buy <service> --from <wallet>` | Open a job, check its payment demand, and build the **unsigned** payment. Refuses to build for a demand that does not check out. |
 | `exchange settle <job> <signature>` | Prove the payment from the chain, submit it, wait for the credit, and re-derive the receipt. Exits 0 only when `verified`. |
 

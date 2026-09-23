@@ -1,0 +1,35 @@
+{
+  "chain": "solana",
+  "verdict": "payable",
+  "findings": [
+    {
+      "code": "TOKEN_NOT_FULLY_YOURS",
+      "severity": "note",
+      "detail": "Whoever holds this mint's authorities can freeze or move it after it lands. That exposes the payee more than you, and it also means a refund of this payment is not entirely within their power."
+    }
+  ],
+  "destination": {
+    "address": "5RyKShQxSkbUJ9vA2MZ1Qf2TKgnwhhS3m7mj2ZZaVh6t",
+    "exists": true,
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "owner": "2BJ4ezxqV9YJXc38D9duKBkdn4su4jE1beKUHwH663sL",
+    "frozen": false,
+    "isAssociated": true
+  },
+  "token": {
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "decimals": 6,
+    "symbol": "USDC"
+  },
+  "risk": {
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "freezeAuthority": "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar",
+    "mintAuthority": "BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG",
+    "custodyIsYours": false,
+    "warnings": [
+      "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar can freeze token accounts for mint EPjFWd…Dt1v, including the one you are paid into. A frozen balance is still yours and cannot be moved, for as long as they choose.",
+      "Mint EPjFWd…Dt1v can still issue more supply (mint authority BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG). That dilutes the token without affecting your claim on what you hold."
+    ]
+  },
+  "note": "This demand can be paid as stated, with 1 thing worth reading first."
+}

@@ -1,0 +1,768 @@
+{
+  "seller": {
+    "name": "SingularityAgent",
+    "agentId": "agent_3884f6355724a1e850d31f45",
+    "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+    "protocol": "MCP",
+    "payoutAddress": "BTaPkeDYRuXbL6hEDsWPAWXUfZvjEoKoV3mCTQ91QFeH",
+    "payoutNetwork": "solana-mainnet-beta",
+    "payoutAsset": {
+      "symbol": "USDC",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "decimals": 6
+    },
+    "source": "https://github.com/DarkStarMatters/Singularity-Agent"
+  },
+  "services": [
+    {
+      "id": "singularity.mint_audit",
+      "tool": "mint_audit",
+      "title": "Solana mint audit",
+      "category": "Risk",
+      "summary": "Who holds power over a Solana token: mint and freeze authority, Token-2022 extensions (permanent delegate, transfer hook, transfer fee), each named with its holder, and which of those powers are settled for good.",
+      "customer_value": "Before accepting or holding a token, know who can mint more, freeze your balance, or move it without your signature — by mint address, never by ticker.",
+      "price": 0.02,
+      "currency": "USDC",
+      "payment_network": "solana-mainnet-beta",
+      "accepted_assets": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "network": "solana-mainnet-beta"
+        }
+      ],
+      "supported_target_networks": [
+        "solana-mainnet-beta"
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "mint": {
+            "type": "string",
+            "description": "The mint address."
+          },
+          "chain": {
+            "type": "string",
+            "description": "Solana chain id or alias. Defaults to \"solana\"; a non-Solana chain is refused."
+          }
+        },
+        "required": [
+          "mint"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string"
+          },
+          "mint": {
+            "type": "string"
+          },
+          "program": {
+            "type": "string",
+            "description": "spl-token or spl-token-2022."
+          },
+          "decimals": {
+            "type": "number"
+          },
+          "supply": {
+            "type": "object"
+          },
+          "powers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "holder": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "settled": {
+            "type": "array",
+            "description": "Powers revoked for good."
+          },
+          "extensions": {
+            "type": "array"
+          },
+          "completeness": {
+            "type": "object",
+            "description": "How much of the answer this is. Read before concluding anything is absent.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exhaustive",
+                  "curated",
+                  "truncated",
+                  "failed"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "note"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "mint",
+          "program",
+          "decimals",
+          "powers",
+          "extensions",
+          "completeness",
+          "note"
+        ]
+      },
+      "execution": {
+        "protocol": "MCP",
+        "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+        "tool": "mint_audit",
+        "read_only": true
+      },
+      "pricing_basis": "One account read. Priced at risk.score (0.02), below token.intelligence (0.03), which adds holder data this does not."
+    },
+    {
+      "id": "singularity.inspect_exit",
+      "tool": "inspect_exit",
+      "title": "Can this token be sold again",
+      "category": "Risk",
+      "summary": "Before buying a Solana token, the specific mechanisms that could stop you selling it — transfer hook, permanent delegate, live freeze authority, default-frozen accounts, non-transferability, transfer fees, concentrated supply — each with who holds the power.",
+      "customer_value": "Names what can trap a position before it is taken, instead of a score. States plainly that it does not judge liquidity or price.",
+      "price": 0.03,
+      "currency": "USDC",
+      "payment_network": "solana-mainnet-beta",
+      "accepted_assets": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "network": "solana-mainnet-beta"
+        }
+      ],
+      "supported_target_networks": [
+        "solana-mainnet-beta"
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "mint": {
+            "type": "string",
+            "description": "Mint address, or an address-book alias for one."
+          },
+          "chain": {
+            "type": "string",
+            "description": "Solana chain id or alias. Defaults to \"solana\"."
+          }
+        },
+        "required": [
+          "mint"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "mint": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "canExit": {
+            "type": "boolean",
+            "description": "False when a mechanism can block a sale or seize the balance. True is not \"safe to buy\"."
+          },
+          "underThirdPartyControl": {
+            "type": "boolean"
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mechanism": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "discretionary",
+                    "degrades"
+                  ]
+                },
+                "holder": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mechanism",
+                "severity",
+                "note"
+              ]
+            }
+          },
+          "completeness": {
+            "type": "object",
+            "description": "How much of the answer this is. Read before concluding anything is absent.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exhaustive",
+                  "curated",
+                  "truncated",
+                  "failed"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "note"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mint",
+          "chain",
+          "canExit",
+          "risks",
+          "completeness",
+          "note"
+        ]
+      },
+      "execution": {
+        "protocol": "MCP",
+        "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+        "tool": "inspect_exit",
+        "read_only": true
+      },
+      "pricing_basis": "Mint plus largest-holder reads (three round trips). Priced at token.intelligence and launch.check (0.03)."
+    },
+    {
+      "id": "singularity.inspect_payment",
+      "tool": "inspect_payment",
+      "title": "Check a payment demand before signing",
+      "category": "Transactions",
+      "summary": "Takes an invoice or payment intent as it arrived and checks every claim against the chain: the destination account exists, holds that mint and belongs to the payee; the displayed and base-unit amounts agree; decimals and ticker match the token; the expiry has not passed; the mint charges no hidden transfer fee. Solana and EVM.",
+      "customer_value": "Catches the payment that cannot do what the invoice says before it is signed — the wrong token under the right ticker, an account that does not exist, an amount off by the decimals.",
+      "price": 0.02,
+      "currency": "USDC",
+      "payment_network": "solana-mainnet-beta",
+      "accepted_assets": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "network": "solana-mainnet-beta"
+        }
+      ],
+      "supported_target_networks": [
+        "solana-mainnet-beta",
+        "ethereum-mainnet",
+        "base-mainnet",
+        "arbitrum-mainnet"
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "The wallet the demand says will be paid."
+          },
+          "tokenAccount": {
+            "type": "string",
+            "description": "The exact destination token account the demand names, where it names one."
+          },
+          "mint": {
+            "type": "string",
+            "description": "Token address — the mint on Solana. Omit for the native asset. Never a ticker."
+          },
+          "token": {
+            "type": "string",
+            "description": "Alias for `mint`, for EVM chains where the token is a contract rather than a mint."
+          },
+          "asset": {
+            "type": "string",
+            "description": "The ticker the demand claims, e.g. USDC. Checked against `mint`, never used instead of it."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Whole tokens as a decimal string, as the demand displays it."
+          },
+          "amountBaseUnits": {
+            "type": "string",
+            "description": "The same amount in base units, where the demand states both. They must agree."
+          },
+          "decimals": {
+            "type": "number",
+            "description": "The decimals the demand assumes. Checked against the mint."
+          },
+          "memo": {
+            "type": "string",
+            "description": "Text the demand says the payment must carry."
+          },
+          "reference": {
+            "type": "string",
+            "description": "The Solana Pay reference that would make the payment findable."
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "When the demand stops being valid, ISO 8601."
+          },
+          "chain": {
+            "type": "string",
+            "description": "Chain id or alias, EVM or Solana. Defaults to \"solana\"."
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "payable",
+              "unpayable",
+              "unproven"
+            ],
+            "description": "`unproven` is not cleared."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "fatal",
+                    "warning",
+                    "note"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "severity",
+                "detail"
+              ]
+            }
+          },
+          "destination": {
+            "type": "object"
+          },
+          "token": {
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain",
+          "verdict",
+          "findings",
+          "note"
+        ]
+      },
+      "execution": {
+        "protocol": "MCP",
+        "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+        "tool": "inspect_payment",
+        "read_only": true
+      },
+      "pricing_basis": "A few account reads. Priced at transaction.simulate (0.02) and deliberately low: it only protects a buyer who runs it before every payment."
+    },
+    {
+      "id": "singularity.prove_payment",
+      "tool": "prove_payment",
+      "title": "Prove a payment met its demand",
+      "category": "Verification",
+      "summary": "After paying, prove from the chain alone that the payment met the demand it answered: payee, mint, exact token account, amount, memo, deadline and payer, each checked against the finalized transaction with expected and observed side by side. Solana.",
+      "customer_value": "Evidence a payer assembles without the payee's cooperation — the answer to \"it never arrived\", \"it arrived late\" or \"it went to the wrong account\", in a form anyone holding the signature can re-derive.",
+      "price": 0.03,
+      "currency": "USDC",
+      "payment_network": "solana-mainnet-beta",
+      "accepted_assets": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "network": "solana-mainnet-beta"
+        }
+      ],
+      "supported_target_networks": [
+        "solana-mainnet-beta"
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "signature": {
+            "type": "string",
+            "description": "The signature of the payment transaction."
+          },
+          "to": {
+            "type": "string",
+            "description": "The wallet the demand said would be paid. Matched by token-account owner."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Whole tokens as a decimal string, as the demand stated it."
+          },
+          "mint": {
+            "type": "string",
+            "description": "Token address — the mint. Omit for native SOL. Never a ticker."
+          },
+          "tokenAccount": {
+            "type": "string",
+            "description": "The exact destination token account the demand named, where it named one."
+          },
+          "memo": {
+            "type": "string",
+            "description": "Text the demand said the payment must carry."
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "When the demand stopped being valid, ISO 8601. The payment must have landed before it."
+          },
+          "from": {
+            "type": "string",
+            "description": "The wallet that should have paid. Checked against whoever the funds left."
+          },
+          "chain": {
+            "type": "string",
+            "description": "Solana chain id or alias. Defaults to \"solana\"."
+          }
+        },
+        "required": [
+          "signature",
+          "to",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "proven",
+              "contradicted",
+              "unproven"
+            ],
+            "description": "`unproven` means the chain could not settle it yet, never that it is wrong."
+          },
+          "signature": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string",
+                  "enum": [
+                    "landed",
+                    "recipient",
+                    "mint",
+                    "amount",
+                    "tokenAccount",
+                    "memo",
+                    "deadline",
+                    "payer"
+                  ]
+                },
+                "expected": {
+                  "type": "string"
+                },
+                "observed": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "holds": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "term",
+                "expected",
+                "observed",
+                "holds"
+              ]
+            }
+          },
+          "paid": {
+            "type": "object"
+          },
+          "at": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "number"
+          },
+          "finality": {
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "signature",
+          "checks",
+          "note"
+        ]
+      },
+      "execution": {
+        "protocol": "MCP",
+        "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+        "tool": "prove_payment",
+        "read_only": true
+      },
+      "pricing_basis": "One finalized transaction read. Priced at token.intelligence (0.03), below transaction.explain (0.05)."
+    },
+    {
+      "id": "singularity.mesh",
+      "tool": "mesh",
+      "title": "Multi-tool investigation with an evidence trail",
+      "category": "Intelligence",
+      "summary": "One subject, one stated objective — identify, holdings, activity, settlement, payment, safety or liveness — answered by a searched sequence of up to 16 read-only calls, returning the facts, the exact path that proved them, and an explicit list of what could not be proved and why.",
+      "customer_value": "A multi-step answer whose gaps are named instead of guessed over, and which is reproducible: two runs against the same chain state take the same path, and every step records the call and arguments that produced it.",
+      "price": 0.08,
+      "currency": "USDC",
+      "payment_network": "solana-mainnet-beta",
+      "accepted_assets": [
+        {
+          "symbol": "USDC",
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "network": "solana-mainnet-beta"
+        }
+      ],
+      "supported_target_networks": [
+        "solana-mainnet-beta",
+        "ethereum-mainnet",
+        "base-mainnet",
+        "arbitrum-mainnet"
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "What the question is about: an address, transaction hash, ENS/SNS name, Solana mint, alias, or — for the `liveness` objective — a chain id."
+          },
+          "objective": {
+            "type": "string",
+            "enum": [
+              "identify",
+              "holdings",
+              "activity",
+              "settlement",
+              "payment",
+              "safety",
+              "liveness"
+            ],
+            "description": "What counts as an answer. This decides which facts the search is trying to prove, and therefore which tools it will reach for."
+          },
+          "chain": {
+            "type": "string",
+            "description": "Chain id or alias, when you already know it. Saves the search from inferring it, and narrows every move after."
+          },
+          "maxCalls": {
+            "type": "number",
+            "description": "Hard ceiling on tool calls. Defaults to 8, capped at 16. The only argument that spends anything."
+          },
+          "beam": {
+            "type": "number",
+            "description": "How many moves may run at once in one wave. Defaults to 3, capped at 5. Higher finishes sooner and can spend calls on moves a slower wave would have skipped."
+          },
+          "demand": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "type": "string",
+                "description": "The wallet the demand said would be paid."
+              },
+              "amount": {
+                "type": "string",
+                "description": "Whole tokens, as the demand stated it."
+              },
+              "mint": {
+                "type": "string",
+                "description": "Token mint. Omit for native SOL."
+              },
+              "tokenAccount": {
+                "type": "string",
+                "description": "The exact destination token account, where named."
+              },
+              "memo": {
+                "type": "string",
+                "description": "Text the payment must carry."
+              },
+              "expiresAt": {
+                "type": "string",
+                "description": "ISO 8601 deadline the payment must land before."
+              },
+              "from": {
+                "type": "string",
+                "description": "The wallet that should have paid."
+              }
+            },
+            "required": [
+              "to",
+              "amount"
+            ],
+            "additionalProperties": false,
+            "description": "For the `payment` objective: the terms the transaction in `subject` is held to. Without it, the proof is listed in `unproven` with the reason."
+          },
+          "budget": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "description": "How much of each list to return: 'small' (10 items, for a tight context), 'standard' (the default), 'full' (this source's maximum), or a number for an exact count. Omitting it changes nothing. Anything cut is reported in `completeness` as truncated with counts, never dropped silently."
+          },
+          "plan": {
+            "type": "boolean",
+            "description": "Return the order the moves would be attempted in, and what each would cost, without calling anything. A plan assumes every move answers in full, which a real run cannot."
+          }
+        },
+        "required": [
+          "subject",
+          "objective"
+        ],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "partial",
+              "unanswerable",
+              "planned"
+            ],
+            "description": "About the evidence, never about the subject."
+          },
+          "calls": {
+            "type": "number"
+          },
+          "path": {
+            "type": "array",
+            "description": "Each step: tool, exact arguments, facts proved, reward."
+          },
+          "facts": {
+            "type": "object"
+          },
+          "unproven": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fact": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fact",
+                "why"
+              ]
+            }
+          },
+          "sigma": {
+            "type": "object"
+          },
+          "completeness": {
+            "type": "object",
+            "description": "How much of the answer this is. Read before concluding anything is absent.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exhaustive",
+                  "curated",
+                  "truncated",
+                  "failed"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "note"
+            ]
+          }
+        },
+        "required": [
+          "objective",
+          "subject",
+          "verdict",
+          "calls",
+          "path",
+          "facts",
+          "unproven"
+        ]
+      },
+      "execution": {
+        "protocol": "MCP",
+        "endpoint": "https://mcp-singularity.cicada71.net/mcp",
+        "tool": "mesh",
+        "read_only": true
+      },
+      "pricing_basis": "Up to eight calls by default, sixteen at most, for one flat price. Priced at contract.inspect (0.08), below research.asset (0.10)."
+    }
+  ]
+}

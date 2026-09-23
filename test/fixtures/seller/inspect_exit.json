@@ -1,0 +1,26 @@
+{
+  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "chain": "solana",
+  "canExit": true,
+  "underThirdPartyControl": true,
+  "risks": [
+    {
+      "mechanism": "freeze-authority",
+      "severity": "discretionary",
+      "holder": "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar",
+      "note": "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar can freeze token accounts for EPjFWd…Dt1v. A frozen balance stays yours and cannot be sold, for as long as they choose."
+    },
+    {
+      "mechanism": "mint-authority",
+      "severity": "degrades",
+      "holder": "BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG",
+      "note": "BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG can still issue more EPjFWd…Dt1v. That dilutes what you hold without preventing you from selling it."
+    }
+  ],
+  "completeness": {
+    "kind": "curated",
+    "note": "Covers what the mint account and its Token-2022 extensions declare, plus the largest holders the endpoint would name. It does not cover liquidity: whether the pool is locked or burned, how deep it is, or whether a transfer-hook program behaves. Those need pool-level reads this does not do."
+  },
+  "note": "Nothing stops a sale today, but 7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar can prevent one whenever they choose. Holder distribution could not be read from this endpoint, so nothing here speaks to how concentrated the supply is. Whether that is acceptable depends on who they are, which is why they are named rather than scored. This reads the mint, not the market — it says nothing about whether liquidity is locked or how deep the pool is.",
+  "explorerUrl": "https://solscan.io/account/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+}
