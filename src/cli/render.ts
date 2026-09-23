@@ -11,7 +11,7 @@ import type {
 } from '../core/types.js';
 import type { TransactionHistory } from '../core/adapter.js';
 import type { TokenExitReport } from '../trade/types.js';
-import type { PaymentDemandReport } from '../pay/types.js';
+import type { PaymentDemandReport, PaymentProof } from '../pay/types.js';
 import type { Holding } from '../core/holdings.js';
 import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
@@ -1030,6 +1030,30 @@ export function renderIntentList(intents: StoredIntent[]): string {
  * The verdict is one line and the reason is the next, because the caller may
  * well be a script reading the exit code and a human reading only the top.
  */
+/** A payer's proof: each term of the demand, expected beside observed. */
+export function renderPaymentProof(proof: PaymentProof): string {
+  const lines: string[] = [
+    proof.verdict === 'proven'
+      ? `  ${green('proven')}        ${dim('finalized, and every term holds')}`
+      : proof.verdict === 'contradicted'
+        ? `  ${red('contradicted')}  ${bold('a term of the demand does not hold')}`
+        : `  ${yellow('unproven')}      ${dim('the chain cannot settle this yet')}`,
+    '',
+  ];
+
+  for (const check of proof.checks) {
+    const mark = check.holds === true ? green('✓') : check.holds === false ? red('✗') : yellow('?');
+    lines.push(`  ${mark} ${bold(check.term)}`);
+    lines.push(`      ${dim('expected')}  ${check.expected}`);
+    lines.push(`      ${dim('observed')}  ${check.observed ?? dim('not answerable')}`);
+  }
+
+  if (proof.memo) lines.push('', `  ${dim('memo')}  ${proof.memo.text}  ${dim('(written by the signer)')}`);
+  lines.push('', `  ${wrap(proof.note, 76, '  ')}`);
+
+  return lines.join('\n');
+}
+
 export function renderPaymentDemand(report: PaymentDemandReport): string {
   const lines: string[] = [];
 

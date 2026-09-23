@@ -50,6 +50,7 @@
  * source, exactly as the rest of this project treats a value it did not compute.
  */
 
+import { createHash } from 'node:crypto';
 import { SingularityError } from '../core/errors.js';
 
 /** Where the exchange lives. Overridable, because a URL is not a constant. */
@@ -370,6 +371,79 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
             : `${documented} of ${tools.length} tools now advertise properties. Rewrite this client against the real schemas and delete the guesswork.`,
       };
     },
+  };
+}
+
+/**
+ * The exchange's receipt digest: SHA-256 over JSON with every object's keys
+ * sorted, no whitespace.
+ *
+ * Recovered rather than documented — it is the rule that reproduced both hashes
+ * on the first credited job, `rvr_fe53c65d…`, on 2026-09-23. If the exchange
+ * changes it, {@link checkReceipt} reports a mismatch, which is the right
+ * failure: a receipt that can no longer be re-derived is one to ask about.
+ */
+export function receiptDigest(value: unknown): string {
+  const canonical = (v: unknown): string =>
+    Array.isArray(v)
+      ? `[${v.map(canonical).join(',')}]`
+      : v !== null && typeof v === 'object'
+        ? `{${Object.keys(v)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${canonical((v as Record<string, unknown>)[key])}`)
+            .join(',')}}`
+        : JSON.stringify(v);
+
+  return createHash('sha256').update(canonical(value)).digest('hex');
+}
+
+/** Whether a receipt's hashes are the hashes of what it claims to cover. */
+export interface ReceiptCheck {
+  /** Recomputed from the input the caller sent, not the one the exchange echoes. */
+  inputHash: { claimed?: string; derived: string; holds: boolean };
+  resultHash: { claimed?: string; derived: string; holds: boolean };
+  /** The payment the receipt says it was paid by, for `prove_payment`. */
+  paymentSignature?: string;
+  holds: boolean;
+  note: string;
+}
+
+/**
+ * Re-derive a completed job's receipt instead of trusting it.
+ *
+ * `input` is what *you* sent to `createJob` — using the copy the exchange hands
+ * back would only prove it agrees with itself. The receipt's `status: VERIFIED`
+ * is the exchange's word; this is the part of it anybody can check. What it
+ * cannot check is that the result is *true* — only that the receipt commits to
+ * exactly this result. For the payment side, pass `paymentSignature` to
+ * `prove_payment`.
+ */
+export function checkReceipt(
+  job: Record<string, unknown>,
+  input: Record<string, unknown>,
+): ReceiptCheck {
+  const receipt = (job['receipt'] ?? {}) as Record<string, unknown>;
+  const claimedInput = typeof receipt['input_hash'] === 'string' ? receipt['input_hash'] : undefined;
+  const claimedResult = typeof receipt['result_hash'] === 'string' ? receipt['result_hash'] : undefined;
+
+  const inputHash = receiptDigest(input);
+  const resultHash = receiptDigest(job['result']);
+  const inputHolds = claimedInput === inputHash;
+  const resultHolds = claimedResult === resultHash;
+  const holds = inputHolds && resultHolds;
+
+  return {
+    inputHash: { ...(claimedInput ? { claimed: claimedInput } : {}), derived: inputHash, holds: inputHolds },
+    resultHash: { ...(claimedResult ? { claimed: claimedResult } : {}), derived: resultHash, holds: resultHolds },
+    ...(typeof receipt['payment_signature'] === 'string'
+      ? { paymentSignature: receipt['payment_signature'] }
+      : {}),
+    holds,
+    note: holds
+      ? 'The receipt commits to exactly the input sent and the result returned. That proves the receipt is about this job, not that the result is correct.'
+      : !claimedInput || !claimedResult
+        ? 'The job carries no receipt hashes to check, so nothing here is re-derivable.'
+        : `The receipt does not re-derive: ${[!inputHolds && 'input', !resultHolds && 'result'].filter(Boolean).join(' and ')} hash differ. Either the digest rule changed or the receipt covers something other than what was returned — ask before relying on it.`,
   };
 }
 

@@ -27,7 +27,7 @@ import type {
 } from '../tools/operations.js';
 import type { TokenIdentity } from '../core/types.js';
 import type { TokenExitReport } from '../trade/types.js';
-import type { PaymentDemandReport } from '../pay/types.js';
+import type { PaymentDemandReport, PaymentProof } from '../pay/types.js';
 import type { SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import type { TransactionHistory } from '../core/adapter.js';
@@ -751,6 +751,35 @@ export function formatIntentList(intents: StoredIntent[], total: number): string
  * read on a phone by somebody with a wallet already open. Everything else can
  * scroll.
  */
+/**
+ * A payer's proof, one term per line.
+ *
+ * Each line shows what was expected beside what the chain shows, because the
+ * person reading this is usually about to paste it to a payee who said the
+ * payment was wrong — and the useful reply is the two values side by side.
+ */
+export function formatPaymentProof(proof: PaymentProof): string {
+  const verdicts = {
+    proven: '✅ <b>Proven</b> — finalized, and every term holds',
+    contradicted: '⛔ <b>Contradicted</b> — a term does not hold',
+    unproven: '❓ <b>Unproven</b> — the chain cannot settle it yet',
+  } as const;
+
+  const lines = [bold('Payment proof'), '', verdicts[proof.verdict], '', esc(proof.note), ''];
+
+  for (const check of proof.checks) {
+    const mark = check.holds === true ? '✓' : check.holds === false ? '✗' : '?';
+    lines.push(`${mark} <b>${esc(check.term)}</b>`);
+    lines.push(`  expected ${code(check.expected)}`);
+    lines.push(`  observed ${check.observed === null ? '<i>not answerable</i>' : code(check.observed)}`);
+  }
+
+  if (proof.memo) lines.push('', `${bold('Memo')} ${code(proof.memo.text)} <i>(written by the signer)</i>`);
+  lines.push('', `${bold('Signature')} ${code(proof.signature)}`);
+
+  return lines.join('\n');
+}
+
 export function formatPaymentDemand(report: PaymentDemandReport): string {
   const lines = [`${bold('Payment check')} — ${esc(report.chain)}`, ''];
 

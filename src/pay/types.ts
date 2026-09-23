@@ -141,6 +141,77 @@ export interface PaymentSettlement {
 }
 
 /**
+ * What the payer was asked to pay, restated so the payment can be held to it.
+ *
+ * The payer's side of {@link PaymentClaim}. A merchant finds a payment by the
+ * reference it issued; a payer already holds the signature, and needs no
+ * reference at all — which matters, because plenty of demands (an agent
+ * exchange's job memo, an invoice number) never issue one.
+ */
+export interface PaymentProofClaim {
+  /** Who the demand said would be paid. Matched by token-account owner. */
+  to: string;
+  /** Whole tokens as a decimal string, never base units. */
+  amount: string;
+  /** Mint address. Absent means native SOL. Never a symbol. */
+  mint?: string;
+  /** The exact destination token account, where the demand named one. */
+  tokenAccount?: string;
+  /** Text the demand said the payment must carry. */
+  memo?: string;
+  /** When the demand stopped being valid, ISO 8601. The payment must land before it. */
+  expiresAt?: string;
+  /** The wallet that should have paid. Checked against whoever the funds left. */
+  from?: string;
+}
+
+/**
+ * One term of the demand, and what the chain says about it.
+ *
+ * `holds` is three-valued on purpose. `null` means the chain could not settle
+ * the question — an endpoint that will not date the block cannot say whether a
+ * deadline was met — and that is a different answer from `false`.
+ */
+export interface PaymentCheck {
+  term: 'landed' | 'recipient' | 'mint' | 'amount' | 'tokenAccount' | 'memo' | 'deadline' | 'payer';
+  expected: string;
+  observed: string | null;
+  holds: boolean | null;
+}
+
+/**
+ * - `proven` — finalized, and every term the demand stated holds on chain.
+ * - `contradicted` — at least one term does not hold. The payment may be real
+ *   and still not be *this* payment.
+ * - `unproven` — the chain could not settle it yet: not found, not finalized,
+ *   or a term the endpoint would not answer. Never read as `contradicted`.
+ */
+export type ProofVerdict = 'proven' | 'contradicted' | 'unproven';
+
+/**
+ * Evidence, assembled from the chain by the party who paid, that a payment met
+ * the demand it answered.
+ *
+ * Not a receipt. A receipt is issued by the payee, and a payee who has taken the
+ * money and credited nothing is exactly the one who will not issue it. Every
+ * field here is re-derivable by anyone holding the signature.
+ */
+export interface PaymentProof {
+  verdict: ProofVerdict;
+  signature: string;
+  checks: PaymentCheck[];
+  /** What reached the recipient in the demanded asset. */
+  paid?: Amount;
+  /** ISO 8601, from the block time. */
+  at?: string;
+  slot?: number;
+  /** The memo found in the transaction. Untrusted: whoever signed wrote it. */
+  memo?: UntrustedText;
+  finality?: Finality;
+  note: string;
+}
+
+/**
  * What accepting a token exposes you to *after* you have been paid.
  *
  * The check nobody runs, and the one with the worst failure mode. Receiving a

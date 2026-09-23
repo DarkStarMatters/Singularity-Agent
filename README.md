@@ -95,7 +95,7 @@ Or by hand, in any MCP client that speaks streamable HTTP:
 
 The `type` field matters: a `url` without one is skipped silently by some clients.
 
-This serves the same twenty-one tools as the local server, from the same catalogue, with
+This serves the same twenty-two tools as the local server, from the same catalogue, with
 full input schemas. It is read-only, holds no keys, and needs no credentials — so the
 trade is the obvious one: your queries reach our endpoint rather than staying on your
 machine. If that matters, use the local route below; it is identical in every other way.
@@ -183,7 +183,7 @@ so on the card instead of vanishing.
 ### Telegram
 
 Every tool the CLI and MCP server expose has a bot command, and a test asserts that
-mapping so the three cannot drift. Thirty-three commands, plus aliases — a second test
+mapping so the three cannot drift. Thirty-four commands, plus aliases — a second test
 asserts every name resolves to exactly one of them, after `/invoice` turned out to be
 claimed by two and silently reachable as only one.
 
@@ -229,6 +229,7 @@ claimed by two and silently reachable as only one.
 | `/payments [open\|all]` | What this chat is owed. Also `/paylist`, `/requests`. |
 | `/checkpay token=… to=… amount=…` | Before you sign: can this demand be paid at all. Also `/inspect_payment`. |
 | `/paydemand from=… token=… to=… amount=…` | The same checks, then the unsigned payment. Also `/build_payment`. |
+| `/provepay <signature> to=… amount=… [token=… memo=… expiresAt=…]` | After paying: each term of the demand, proven or contradicted from the chain. Also `/prove_payment`. |
 | `/receipt <reference\|uri> [link]` | What a receipt looks like, and whether an image is genuinely it. Also `/receipt_art`, `/art`. |
 | `/qr <link or text>` | Turn a link into something you can scan. Also `/scan`. |
 
@@ -565,6 +566,7 @@ Twenty-four commands, four of them with subcommands. `--json` works on all of th
 | --- | --- |
 | `checkpay` | Whether a demand somebody handed you can be paid at all. Exits non-zero when it cannot. |
 | `paydemand` | The same checks, then the **unsigned** payment — only if they pass. |
+| `provepay <signature>` | After paying, prove from the chain that the payment met the demand. Exits non-zero unless `proven`. |
 | `pay new <amount>` | Create a payment request and print it as a QR. |
 | `pay status <id>` | Whether it was paid, and how settled that is. Exits 0 once it really is. |
 | `pay list` | Every request this machine has created. |
@@ -747,6 +749,7 @@ decision. Rarity falls out of the run rather than out of a table somebody wrote 
 | `inspect_exit` | Before buying a Solana token: the specific mechanisms that could stop you selling it again — transfer hook, permanent delegate, freeze authority — each naming who holds the power. Not a score. |
 | `inspect_payment` | Somebody handed you an invoice: whether signing it does what it says. Checks each claim against the chain rather than against the rest of the invoice. |
 | `build_payment` | The same checks, and the **unsigned** payment only if they pass. `unpayable` and `unproven` are refusals here, not advice. |
+| `prove_payment` | After paying: each term of the demand — payee, mint, token account, amount, memo, deadline, payer — checked against the finalized transaction. Evidence the payer assembles, not a receipt the payee issues. |
 | `receipt_art` | What a payment receipt looks like, and whether an image you were served is the one its reference generates. |
 | `mesh` | Answer one question with several of the tools above, in a searched order, and report the facts, the path that proved them, and what could not be proved. |
 

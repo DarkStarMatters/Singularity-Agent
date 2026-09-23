@@ -40,6 +40,7 @@ import {
   formatBurnClaim,
   formatExitReport,
   formatPaymentDemand,
+  formatPaymentProof,
   formatIntentList,
   formatSettlement,
   formatTokenIdentity,
@@ -809,6 +810,52 @@ const paydemand: Command = {
 };
 
 /**
+ * After paying: prove from the chain that the payment met the demand.
+ *
+ * The answer to a payee who says it did not arrive, arrived late, or went to the
+ * wrong place. Takes the signature first and the demand's terms after it, in the
+ * same key=value or pasted-JSON form `/checkpay` reads.
+ */
+const provepay: Command = {
+  name: 'provepay',
+  aliases: ['prove_payment'],
+  usage: '/provepay <signature> to=<addr> amount=<n> [token=<mint>] [tokenAccount=<addr>] [memo=<text>] [expiresAt=<iso>] [from=<addr>]',
+  summary: 'After you pay: prove from the chain that the payment met the demand',
+  async run(ctx) {
+    const signature = required(ctx, 0, 'the payment signature', provepay);
+
+    let demand: DemandArgs & { from?: string };
+    try {
+      demand = parseDemand(ctx.args.slice(1)) as DemandArgs & { from?: string };
+    } catch {
+      return 'The terms after the signature did not parse as JSON. Give <code>key=value</code> pairs, or paste the payment intent whole.';
+    }
+
+    const { to, amount, mint, token, tokenAccount, memo, expiresAt, from, chain } = demand;
+    if (!to || !amount) {
+      throw new SingularityError(
+        'MISSING_ARGUMENT',
+        'A proof needs at least who was to be paid and how much.',
+        `Usage: ${provepay.usage}`,
+      );
+    }
+
+    const proof = await ops.provePayment({
+      signature,
+      to,
+      amount,
+      ...((mint ?? token) ? { mint: mint ?? token } : {}),
+      ...(tokenAccount ? { tokenAccount } : {}),
+      ...(memo ? { memo } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(from ? { from } : {}),
+      ...(chain ? { chain } : {}),
+    });
+    return formatPaymentProof(proof);
+  },
+};
+
+/**
  * Is the picture on my receipt the one my payment generates?
  *
  * The check a holder cannot do by eye. A receipt NFT's image is served by a
@@ -1173,6 +1220,7 @@ const COMMAND_LIST: Command[] = [
   inspect,
   checkpay,
   paydemand,
+  provepay,
   receipt,
   mesh,
   nft,

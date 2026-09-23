@@ -52,6 +52,9 @@ import type {
   PaymentClaim,
   PaymentDemand,
   PaymentDemandReport,
+  PaymentCheck,
+  PaymentProof,
+  PaymentProofClaim,
   PaymentSettlement,
   SettlementLevel,
 } from '../pay/types.js';
@@ -2451,6 +2454,249 @@ export async function findPayment(
             { height: tx.slot },
           ),
     } satisfies PaymentSettlement;
+  });
+}
+
+/**
+ * Prove, from the chain, that a payment you made met the demand it answered.
+ *
+ * The payer's half of {@link findPayment}. It starts from the signature rather
+ * than a reference, because the payer holds one and plenty of demands never
+ * issue the other, and it reports each term of the demand as its own check —
+ * so a payee who says "quote expired" can be shown the block time against the
+ * deadline, and one who says "wrong account" can be shown the account.
+ *
+ * Only finalized state counts. A payment that is merely confirmed is reported
+ * `unproven`, never `proven`: evidence that can still be dropped is not
+ * evidence yet.
+ */
+export async function provePayment(
+  chain: ChainSpec,
+  rawSignature: string,
+  claim: PaymentProofClaim,
+): Promise<PaymentProof> {
+  const signature = requireSignature(rawSignature);
+  const recipient = requirePubkey(claim.to, 'recipient address').toBase58();
+  const wanted = claim.mint ? requirePubkey(claim.mint, 'mint address').toBase58() : undefined;
+  const account = claim.tokenAccount
+    ? requirePubkey(claim.tokenAccount, 'token account').toBase58()
+    : undefined;
+  const payer = claim.from ? requirePubkey(claim.from, 'payer address').toBase58() : undefined;
+
+  return withConnection(chain, 'provePayment', async (connection) => {
+    const tx = await connection.getParsedTransaction(signature, {
+      maxSupportedTransactionVersion: MAX_TX_VERSION,
+      commitment: 'finalized',
+    });
+
+    if (!tx) {
+      const status = await connection
+        .getSignatureStatuses([signature])
+        .then((result) => result.value[0])
+        .catch(() => null);
+
+      return {
+        verdict: 'unproven',
+        signature,
+        checks: [
+          {
+            term: 'landed',
+            expected: 'finalized and successful',
+            observed: status ? (status.confirmationStatus ?? 'known, not finalized') : null,
+            holds: null,
+          },
+        ],
+        note: status
+          ? `Signature ${shortAddress(signature, 10, 8)} is ${status.confirmationStatus ?? 'known'} but not finalized on ${chain.name}. It can still be dropped, so it proves nothing yet — ask again in a few seconds.`
+          : `Signature ${shortAddress(signature, 10, 8)} was not found on ${chain.name}. It either never landed or is old enough to need an archival endpoint, and those are indistinguishable from here — so this is unproven, not disproven.`,
+      } satisfies PaymentProof;
+    }
+
+    const keys = tx.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+    const at = tx.blockTime ? new Date(tx.blockTime * 1000).toISOString() : undefined;
+    const settled = finality.final('Finalized by the cluster, which does not roll back.', {
+      height: tx.slot,
+    });
+
+    if (tx.meta?.err != null) {
+      return {
+        verdict: 'contradicted',
+        signature,
+        checks: [
+          { term: 'landed', expected: 'finalized and successful', observed: 'failed', holds: false },
+        ],
+        ...(at ? { at } : {}),
+        slot: tx.slot,
+        finality: settled,
+        note: `Transaction ${shortAddress(signature, 10, 8)} finalized as failed. A failed transaction moves no funds, so it paid nobody.`,
+      } satisfies PaymentProof;
+    }
+
+    const checks: PaymentCheck[] = [
+      { term: 'landed', expected: 'finalized and successful', observed: 'finalized, succeeded', holds: true },
+    ];
+
+    let paidRaw = 0n;
+    let decimals = chain.nativeCurrency.decimals;
+    let symbol = chain.nativeCurrency.symbol;
+    let debited: string[] = [];
+
+    if (wanted) {
+      // Token movements are read from the balance metadata, which names each
+      // account's owner and mint — the instruction alone names neither for an
+      // unchecked transfer.
+      const before = new Map<number, bigint>();
+      for (const entry of tx.meta?.preTokenBalances ?? []) {
+        before.set(entry.accountIndex, BigInt(entry.uiTokenAmount.amount));
+      }
+
+      const credits: Array<{ account: string; owner?: string; mint: string; gained: bigint }> = [];
+      const seen = new Set<number>();
+      for (const entry of tx.meta?.postTokenBalances ?? []) {
+        seen.add(entry.accountIndex);
+        const change = BigInt(entry.uiTokenAmount.amount) - (before.get(entry.accountIndex) ?? 0n);
+        if (entry.mint === wanted) decimals = entry.uiTokenAmount.decimals;
+        if (change > 0n) {
+          credits.push({
+            account: keys[entry.accountIndex] ?? '',
+            owner: entry.owner ?? undefined,
+            mint: entry.mint,
+            gained: change,
+          });
+        } else if (change < 0n && entry.mint === wanted && entry.owner) {
+          debited.push(entry.owner);
+        }
+      }
+      // An account closed in the same transaction has no post balance at all.
+      for (const entry of tx.meta?.preTokenBalances ?? []) {
+        if (!seen.has(entry.accountIndex) && entry.mint === wanted && entry.owner) debited.push(entry.owner);
+      }
+
+      const toRecipient = credits.filter((credit) => credit.owner === recipient);
+      paidRaw = toRecipient
+        .filter((credit) => credit.mint === wanted)
+        .reduce((sum, credit) => sum + credit.gained, 0n);
+      symbol = '';
+
+      checks.push({
+        term: 'recipient',
+        expected: recipient,
+        observed: credits.length
+          ? [...new Set(credits.map((credit) => credit.owner ?? 'an account with no stated owner'))].join(', ')
+          : 'no token balance increased',
+        holds: toRecipient.length > 0,
+      });
+
+      const mints = [...new Set(toRecipient.map((credit) => credit.mint))];
+      checks.push({
+        term: 'mint',
+        expected: wanted,
+        observed: mints.length ? mints.join(', ') : null,
+        holds: toRecipient.length > 0 ? mints.includes(wanted) : false,
+      });
+
+      if (account) {
+        const landedIn = toRecipient.filter((credit) => credit.mint === wanted).map((c) => c.account);
+        checks.push({
+          term: 'tokenAccount',
+          expected: account,
+          observed: landedIn.length ? landedIn.join(', ') : null,
+          holds: landedIn.includes(account),
+        });
+      }
+    } else {
+      const index = keys.indexOf(recipient);
+      const pre = tx.meta?.preBalances?.[index];
+      const post = tx.meta?.postBalances?.[index];
+      const gained = index >= 0 && pre !== undefined && post !== undefined ? BigInt(post) - BigInt(pre) : 0n;
+      paidRaw = gained > 0n ? gained : 0n;
+      if (keys[0]) debited = [keys[0]];
+
+      checks.push({
+        term: 'recipient',
+        expected: recipient,
+        observed: paidRaw > 0n ? recipient : `${recipient} was not credited`,
+        holds: paidRaw > 0n,
+      });
+    }
+
+    const expected = parseUnits(claim.amount, decimals);
+    checks.push({
+      term: 'amount',
+      expected: `${claim.amount}${wanted ? '' : ` ${symbol}`}`,
+      observed: `${formatUnits(paidRaw, decimals)}${wanted ? '' : ` ${symbol}`}`,
+      holds: paidRaw >= expected && paidRaw > 0n,
+    });
+
+    let memo: UntrustedText | undefined;
+    const instructions: ParsedIx[] = [
+      ...(tx.transaction.message.instructions as ParsedIx[]),
+      ...(tx.meta?.innerInstructions ?? []).flatMap((inner) => inner.instructions as ParsedIx[]),
+    ];
+    for (const instruction of instructions) {
+      if (instruction.program === 'spl-memo' && typeof instruction.parsed === 'string') {
+        memo = untrustedText(instruction.parsed, 'whoever signed the payment, who wrote it into the transaction');
+        break;
+      }
+    }
+
+    if (claim.memo) {
+      checks.push({
+        term: 'memo',
+        expected: claim.memo,
+        observed: memo?.text ?? null,
+        holds: (memo?.text ?? '').includes(claim.memo),
+      });
+    }
+
+    if (claim.expiresAt) {
+      const deadline = Date.parse(claim.expiresAt);
+      if (Number.isNaN(deadline)) {
+        throw new SingularityError(
+          'BAD_INPUT',
+          `${JSON.stringify(claim.expiresAt)} is not a date.`,
+          'Pass the deadline as ISO 8601, e.g. 2026-09-23T13:38:50Z.',
+        );
+      }
+      checks.push({
+        term: 'deadline',
+        expected: `landed by ${new Date(deadline).toISOString()}`,
+        observed: at ? `landed ${at}` : null,
+        // A block the endpoint will not date cannot be held to a deadline.
+        holds: tx.blockTime ? tx.blockTime * 1000 <= deadline : null,
+      });
+    }
+
+    if (payer) {
+      const from = [...new Set(debited)];
+      checks.push({
+        term: 'payer',
+        expected: payer,
+        observed: from.length ? from.join(', ') : null,
+        holds: from.length ? from.includes(payer) : null,
+      });
+    }
+
+    const failed = checks.filter((check) => check.holds === false);
+    const open = checks.filter((check) => check.holds === null);
+    const verdict = failed.length ? 'contradicted' : open.length ? 'unproven' : 'proven';
+
+    return {
+      verdict,
+      signature,
+      checks,
+      paid: amount(paidRaw, decimals, symbol),
+      ...(at ? { at } : {}),
+      slot: tx.slot,
+      ...(memo ? { memo } : {}),
+      finality: settled,
+      note:
+        verdict === 'proven'
+          ? `Finalized, and every term checked holds: ${checks.map((check) => check.term).join(', ')}. Anyone holding the signature can re-derive this.`
+          : verdict === 'contradicted'
+            ? `This payment finalized but does not meet the demand on: ${failed.map((check) => check.term).join(', ')}. It may be a real payment and still not be this one.`
+            : `Finalized, but the chain could not settle: ${open.map((check) => check.term).join(', ')}. That is unproven, not contradicted.`,
+    } satisfies PaymentProof;
   });
 }
 

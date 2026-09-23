@@ -1,0 +1,330 @@
+{
+  "job_id": "job_33640e3c-5bdb-42bb-a250-129840776b37",
+  "status": "completed",
+  "result": {
+    "freeze_authority": "7dGbd2QZcCKcTndnHcTL8q7SMVXAkp688NTQYwrRCrar",
+    "observed_at": "2026-09-23T13:20:33.092Z",
+    "metadata_status": "on-chain-account-found",
+    "provider_source": "alchemy",
+    "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "largest_accounts": [
+      {
+        "address": "7KJjY7rArbydeLBF7gQ5LdqXRKRYyPArT99NEctsHsgU",
+        "amount": "1086888617311764",
+        "decimals": 6,
+        "uiAmount": 1086888617.311764,
+        "uiAmountString": "1086888617.311764"
+      },
+      {
+        "amount": "260006765527073",
+        "address": "3emsAVdmGKERbHjmGfQ6oZ1e35dkf5iYcS6U4CPKFVaa",
+        "decimals": 6,
+        "uiAmount": 260006765.527073,
+        "uiAmountString": "260006765.527073"
+      },
+      {
+        "decimals": 6,
+        "amount": "130996600099276",
+        "address": "WzWUoCmtVv7eqAbU3BfKPU3fhLP6CXR8NCJH78UK9VS",
+        "uiAmount": 130996600.099276,
+        "uiAmountString": "130996600.099276"
+      },
+      {
+        "uiAmountString": "130039829.190021",
+        "amount": "130039829190021",
+        "uiAmount": 130039829.190021,
+        "address": "Cp8wjBC7MVWeMeawTdyPzPdH7ThpBq1vRdBKtVRVTW2B",
+        "decimals": 6
+      },
+      {
+        "address": "DT78gNBH7enTRrAFcag4PAuQbSeemstmtj888w8pkvdf",
+        "uiAmount": 116235415.193,
+        "uiAmountString": "116235415.193",
+        "amount": "116235415193000",
+        "decimals": 6
+      },
+      {
+        "decimals": 6,
+        "uiAmount": 113535065.019455,
+        "uiAmountString": "113535065.019455",
+        "amount": "113535065019455",
+        "address": "FSxJ85FXVsXSr51SeWf9ciJWTcRnqKFSmBgRDeL3KyWw"
+      },
+      {
+        "decimals": 6,
+        "address": "8g1gYt8tFYP8Yo4Wvz1VpUsfouH1kL79wxeiRvyB4hND",
+        "uiAmount": 93023484.068672,
+        "amount": "93023484068672",
+        "uiAmountString": "93023484.068672"
+      },
+      {
+        "uiAmountString": "73647769.868364",
+        "amount": "73647769868364",
+        "decimals": 6,
+        "uiAmount": 73647769.868364,
+        "address": "8MzrQK9MiFhgzFuh3RXyHXGM6xRChHyKy7VZQMqaTqtq"
+      },
+      {
+        "uiAmountString": "70117912.905315",
+        "uiAmount": 70117912.905315,
+        "address": "Ezo6p9nw16XJeDGmKnXSH9rHdGEkwpfZDWfHwb68rUa7",
+        "amount": "70117912905315",
+        "decimals": 6
+      },
+      {
+        "decimals": 6,
+        "address": "BmkUoKMFYBxNSzWXyUjyMJjMAaVz4d8ZnxwwmhDCUXFB",
+        "amount": "67803151983152",
+        "uiAmountString": "67803151.983152",
+        "uiAmount": 67803151.983152
+      },
+      {
+        "decimals": 6,
+        "address": "6xTBTqJMBr5m7BKqVxmW2x11DfqUwtD3TJsqpxELx72L",
+        "uiAmount": 54439933.643195,
+        "uiAmountString": "54439933.643195",
+        "amount": "54439933643195"
+      },
+      {
+        "uiAmountString": "45204803.117991",
+        "decimals": 6,
+        "address": "9gD46MnYLpskDiRisMZGY958JHgMSxLUiT56r8vdNzb8",
+        "amount": "45204803117991",
+        "uiAmount": 45204803.117991
+      },
+      {
+        "uiAmountString": "44474811.63967",
+        "amount": "44474811639670",
+        "address": "cYoCXcb7kq5e4MMVogKpKPho4TVtmmxVsFkhR1Pk75Q",
+        "decimals": 6,
+        "uiAmount": 44474811.63967
+      },
+      {
+        "amount": "40586817635419",
+        "decimals": 6,
+        "uiAmountString": "40586817.635419",
+        "address": "3Cb2XScJtYKrRtThk78jWsiiDsQuKFCeTdvs2Xvv7T51",
+        "uiAmount": 40586817.635419
+      },
+      {
+        "uiAmount": 39658749.006807,
+        "uiAmountString": "39658749.006807",
+        "amount": "39658749006807",
+        "decimals": 6,
+        "address": "88ZqF6djYK2MHQZ1X6roZ4ptWkVDYT7M2DGAcybNFjPv"
+      },
+      {
+        "uiAmountString": "37611477.876568",
+        "decimals": 6,
+        "address": "6XMoH1xQpHFYoNdhz8d66Ag2RLj4GevqCHAog86LuC6j",
+        "uiAmount": 37611477.876568,
+        "amount": "37611477876568"
+      },
+      {
+        "decimals": 6,
+        "amount": "35207851230289",
+        "address": "G4bUmbrCkepgM1wyKBwVFEJgE8PjuLnKrhR33m7SoQEb",
+        "uiAmount": 35207851.230289,
+        "uiAmountString": "35207851.230289"
+      },
+      {
+        "uiAmount": 30000411.413178,
+        "uiAmountString": "30000411.413178",
+        "amount": "30000411413178",
+        "address": "7TwfoMqAy5o5tPGmN9MtxWbTcLZzoLvhG5zc9oDVhTJA",
+        "decimals": 6
+      },
+      {
+        "uiAmountString": "29772257.0014",
+        "address": "ABnvL6oaY7PqaD5EwNUfRgLFTmCuWxmwBudCzPLhDxkb",
+        "amount": "29772257001400",
+        "decimals": 6,
+        "uiAmount": 29772257.0014
+      },
+      {
+        "uiAmount": 29400000.012026,
+        "decimals": 6,
+        "amount": "29400000012026",
+        "uiAmountString": "29400000.012026",
+        "address": "H5Te9HAvdY2Tv4s43GykN19bDQphwZxMaFMrrt5XTYWs"
+      }
+    ],
+    "holder_snapshot": [
+      {
+        "address": "7KJjY7rArbydeLBF7gQ5LdqXRKRYyPArT99NEctsHsgU",
+        "amount": "1086888617311764",
+        "uiAmount": 1086888617.311764,
+        "uiAmountString": "1086888617.311764",
+        "decimals": 6
+      },
+      {
+        "decimals": 6,
+        "amount": "260006765527073",
+        "uiAmount": 260006765.527073,
+        "uiAmountString": "260006765.527073",
+        "address": "3emsAVdmGKERbHjmGfQ6oZ1e35dkf5iYcS6U4CPKFVaa"
+      },
+      {
+        "uiAmount": 130996600.099276,
+        "uiAmountString": "130996600.099276",
+        "address": "WzWUoCmtVv7eqAbU3BfKPU3fhLP6CXR8NCJH78UK9VS",
+        "decimals": 6,
+        "amount": "130996600099276"
+      },
+      {
+        "decimals": 6,
+        "uiAmount": 130039829.190021,
+        "amount": "130039829190021",
+        "uiAmountString": "130039829.190021",
+        "address": "Cp8wjBC7MVWeMeawTdyPzPdH7ThpBq1vRdBKtVRVTW2B"
+      },
+      {
+        "decimals": 6,
+        "amount": "116235415193000",
+        "uiAmountString": "116235415.193",
+        "uiAmount": 116235415.193,
+        "address": "DT78gNBH7enTRrAFcag4PAuQbSeemstmtj888w8pkvdf"
+      },
+      {
+        "address": "FSxJ85FXVsXSr51SeWf9ciJWTcRnqKFSmBgRDeL3KyWw",
+        "amount": "113535065019455",
+        "decimals": 6,
+        "uiAmount": 113535065.019455,
+        "uiAmountString": "113535065.019455"
+      },
+      {
+        "uiAmount": 93023484.068672,
+        "uiAmountString": "93023484.068672",
+        "address": "8g1gYt8tFYP8Yo4Wvz1VpUsfouH1kL79wxeiRvyB4hND",
+        "decimals": 6,
+        "amount": "93023484068672"
+      },
+      {
+        "uiAmount": 73647769.868364,
+        "decimals": 6,
+        "uiAmountString": "73647769.868364",
+        "amount": "73647769868364",
+        "address": "8MzrQK9MiFhgzFuh3RXyHXGM6xRChHyKy7VZQMqaTqtq"
+      },
+      {
+        "decimals": 6,
+        "uiAmountString": "70117912.905315",
+        "amount": "70117912905315",
+        "uiAmount": 70117912.905315,
+        "address": "Ezo6p9nw16XJeDGmKnXSH9rHdGEkwpfZDWfHwb68rUa7"
+      },
+      {
+        "amount": "67803151983152",
+        "address": "BmkUoKMFYBxNSzWXyUjyMJjMAaVz4d8ZnxwwmhDCUXFB",
+        "uiAmount": 67803151.983152,
+        "uiAmountString": "67803151.983152",
+        "decimals": 6
+      },
+      {
+        "address": "6xTBTqJMBr5m7BKqVxmW2x11DfqUwtD3TJsqpxELx72L",
+        "uiAmount": 54439933.643195,
+        "uiAmountString": "54439933.643195",
+        "decimals": 6,
+        "amount": "54439933643195"
+      },
+      {
+        "decimals": 6,
+        "uiAmountString": "45204803.117991",
+        "amount": "45204803117991",
+        "address": "9gD46MnYLpskDiRisMZGY958JHgMSxLUiT56r8vdNzb8",
+        "uiAmount": 45204803.117991
+      },
+      {
+        "uiAmount": 44474811.63967,
+        "address": "cYoCXcb7kq5e4MMVogKpKPho4TVtmmxVsFkhR1Pk75Q",
+        "decimals": 6,
+        "amount": "44474811639670",
+        "uiAmountString": "44474811.63967"
+      },
+      {
+        "address": "3Cb2XScJtYKrRtThk78jWsiiDsQuKFCeTdvs2Xvv7T51",
+        "uiAmountString": "40586817.635419",
+        "uiAmount": 40586817.635419,
+        "amount": "40586817635419",
+        "decimals": 6
+      },
+      {
+        "decimals": 6,
+        "amount": "39658749006807",
+        "uiAmount": 39658749.006807,
+        "uiAmountString": "39658749.006807",
+        "address": "88ZqF6djYK2MHQZ1X6roZ4ptWkVDYT7M2DGAcybNFjPv"
+      },
+      {
+        "uiAmountString": "37611477.876568",
+        "decimals": 6,
+        "address": "6XMoH1xQpHFYoNdhz8d66Ag2RLj4GevqCHAog86LuC6j",
+        "amount": "37611477876568",
+        "uiAmount": 37611477.876568
+      },
+      {
+        "uiAmountString": "35207851.230289",
+        "address": "G4bUmbrCkepgM1wyKBwVFEJgE8PjuLnKrhR33m7SoQEb",
+        "amount": "35207851230289",
+        "uiAmount": 35207851.230289,
+        "decimals": 6
+      },
+      {
+        "address": "7TwfoMqAy5o5tPGmN9MtxWbTcLZzoLvhG5zc9oDVhTJA",
+        "uiAmountString": "30000411.413178",
+        "uiAmount": 30000411.413178,
+        "decimals": 6,
+        "amount": "30000411413178"
+      },
+      {
+        "address": "ABnvL6oaY7PqaD5EwNUfRgLFTmCuWxmwBudCzPLhDxkb",
+        "decimals": 6,
+        "uiAmount": 29772257.0014,
+        "amount": "29772257001400",
+        "uiAmountString": "29772257.0014"
+      },
+      {
+        "uiAmountString": "29400000.012026",
+        "uiAmount": 29400000.012026,
+        "amount": "29400000012026",
+        "address": "H5Te9HAvdY2Tv4s43GykN19bDQphwZxMaFMrrt5XTYWs",
+        "decimals": 6
+      }
+    ],
+    "mint_authority": "BJE5MMbqXjVwjAF7oxwPYXnTXDyspzZyt4vwenNw5ruG",
+    "valid": true,
+    "decimals": 6,
+    "evidence_gaps": {
+      "largest_accounts": null,
+      "token_supply": null
+    },
+    "evidence_confidence": "rpc-confirmed",
+    "service": "token.intelligence",
+    "cluster": "mainnet-beta",
+    "supply": "7583704998786886",
+    "chain": "solana",
+    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  },
+  "receipt": {
+    "input_hash": "fd2e6b72a91675d741a289236bfe3dfdec286e640fc597ee6ea1b5652d7f41f0",
+    "created_at": "2026-09-23T13:08:49.236Z",
+    "status": "VERIFIED",
+    "result_hash": "7c77e159ea2ec8bdc6b045708765c330bbafe807db6b935ae26eaec8f7e4630f",
+    "evidence_hash": "7c77e159ea2ec8bdc6b045708765c330bbafe807db6b935ae26eaec8f7e4630f",
+    "receipt_id": "rvr_fe53c65da876a1798a5b6ae36af3f27e",
+    "job_id": "job_33640e3c-5bdb-42bb-a250-129840776b37",
+    "payment_signature": "3C4s5ngiJP23vABg8h3rKWwZVnUaYNmaa3EhY3NhrdcBrMBdgqk3hkpdFEBqytGFEnZrVnQLRt6nHYb3nYXsYq6f",
+    "target_network": "solana-mainnet-beta",
+    "asset": "USDC",
+    "network": "solana-mainnet-beta",
+    "service": "token.intelligence",
+    "completed_at": "2026-09-23T13:20:33.093Z",
+    "verification_url": "https://agents.privatedao.org/verify/receipt/rvr_fe53c65da876a1798a5b6ae36af3f27e",
+    "payment_network": "solana-mainnet-beta",
+    "public_url": "https://agents.privatedao.org/receipts/rvr_fe53c65da876a1798a5b6ae36af3f27e",
+    "amount": 0.03,
+    "id": "rvr_fe53c65da876a1798a5b6ae36af3f27e",
+    "treasury": "2BJ4ezxqV9YJXc38D9duKBkdn4su4jE1beKUHwH663sL",
+    "job_url": "https://agents.privatedao.org/jobs/job_33640e3c-5bdb-42bb-a250-129840776b37"
+  }
+}

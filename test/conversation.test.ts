@@ -101,6 +101,7 @@ describe('tool catalogue', () => {
       'mesh',
       'mint_audit',
       'portfolio',
+      'prove_payment',
       'read_contract',
       'receipt_art',
       'resolve',

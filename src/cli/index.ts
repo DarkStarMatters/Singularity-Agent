@@ -971,6 +971,61 @@ program
   );
 
 /**
+ * `provepay` — after paying, prove the payment met the demand.
+ *
+ * The other end of `paydemand`. Exits non-zero on anything short of `proven`,
+ * so a script cannot read a merely-landed payment as a credited one.
+ */
+program
+  .command('provepay <signature>')
+  .description('Prove from the chain that a payment you made met the demand.')
+  .requiredOption('--to <address>', 'The wallet the demand said would be paid.')
+  .requiredOption('--amount <amount>', 'Whole tokens, as the demand stated it.')
+  .option('--mint <address>', 'Token address — the mint. Omit for native SOL.')
+  .option('--token-account <address>', 'The exact destination token account the demand named.')
+  .option('--memo <text>', 'Text the demand said the payment must carry.')
+  .option('--expires-at <iso>', 'When the demand stopped being valid.')
+  .option('--from <address>', 'The wallet that should have paid.')
+  .option('-c, --chain <chain>', 'Solana chain id or alias. Defaults to "solana".')
+  .action(
+    async (
+      signature: string,
+      options: {
+        to: string;
+        amount: string;
+        mint?: string;
+        tokenAccount?: string;
+        memo?: string;
+        expiresAt?: string;
+        from?: string;
+        chain?: string;
+      },
+    ) => {
+      const proof = await ops.provePayment({
+        signature,
+        to: options.to,
+        amount: options.amount,
+        ...(options.mint ? { mint: options.mint } : {}),
+        ...(options.tokenAccount ? { tokenAccount: options.tokenAccount } : {}),
+        ...(options.memo ? { memo: options.memo } : {}),
+        ...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
+        ...(options.from ? { from: options.from } : {}),
+        ...(options.chain ? { chain: options.chain } : {}),
+      });
+
+      process.exitCode = proof.verdict === 'proven' ? 0 : 1;
+
+      if (program.opts().json) {
+        console.log(toJson(proof));
+        return;
+      }
+
+      console.log(render.heading('Payment proof'));
+      console.log(render.renderPaymentProof(proof));
+    },
+  );
+
+/**
  * `pay` — create a payment request somebody can scan.
  *
  * The whole loop from a terminal: name an amount and a recipient, get a QR in

@@ -2517,7 +2517,7 @@
         </div>
         <pre><code><span class="ok">✓</span> Added HTTP MCP server singularity
 
-<span class="dim">Twenty-one tools. Read-only. No account, no key, no credentials.</span></code></pre>
+<span class="dim">Twenty-two tools. Read-only. No account, no key, no credentials.</span></code></pre>
       </figure>
       <figcaption class="sample">
         The one thing to weigh: your questions travel to our server rather than staying on
@@ -2734,7 +2734,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
       <div class="callout">
         <strong>It also makes your app an agent</strong>
         <span>
-          The twenty-one tools Claude uses are defined once in this project. The SDK hands you the
+          The twenty-two tools Claude uses are defined once in this project. The SDK hands you the
           same set in Anthropic, OpenAI-style and MCP shapes, with a hook to approve or refuse
           each call before it runs — so anything you build can be driven by a model too,
           without you transcribing a single tool definition.
@@ -2755,7 +2755,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
         </button>
         <button class="opener" type="button" data-opens="tools">
           <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-          <span class="ot">The twenty-one tools Claude gets</span>
+          <span class="ot">The twenty-two tools Claude gets</span>
           <span class="od">Every tool on the MCP surface, what it answers, and which of them refuse rather than guess.</span>
           <span class="om">reference</span>
         </button>
@@ -2806,7 +2806,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
         </button>
         <button class="opener" type="button" data-opens="tools">
           <span class="go" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-          <span class="ot">The twenty-one tools</span>
+          <span class="ot">The twenty-two tools</span>
           <span class="od">Every tool on the MCP surface, and what each one answers.</span>
           <span class="om">reference</span>
         </button>
@@ -3254,10 +3254,10 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
     </div>
   </aside>
 
-  <aside class="drawer" data-drawer="tools" role="dialog" aria-modal="true" aria-label="The twenty-one tools Claude gets" inert aria-hidden="true">
+  <aside class="drawer" data-drawer="tools" role="dialog" aria-modal="true" aria-label="The twenty-two tools Claude gets" inert aria-hidden="true">
     <div class="drawer-head">
       <span class="crumb">Reference</span>
-      <h2>The twenty-one tools Claude gets</h2>
+      <h2>The twenty-two tools Claude gets</h2>
       <button class="ghost-btn shut" type="button" data-shut aria-label="Close this panel">Close <kbd>Esc</kbd></button>
     </div>
     <div class="drawer-body">
@@ -3284,6 +3284,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
                   <tr><td><code>inspect_exit</code></td><td>Before you buy: what could stop you selling it again.</td></tr>
                   <tr><td><code>inspect_payment</code></td><td>Somebody sent you an invoice: does signing it do what it says.</td></tr>
                   <tr><td><code>build_payment</code></td><td>Prepare an <strong>unsigned</strong> payment for an invoice, and refuse if the invoice does not check out.</td></tr>
+                  <tr><td><code>prove_payment</code></td><td>After paying, prove from the chain that the payment met every term of the invoice — no receipt from the payee needed.</td></tr>
                   <tr><td><code>receipt_art</code></td><td>What a payment receipt looks like, and whether an image is genuinely it.</td></tr>
                   <tr><td><code>mesh</code></td><td>Answer one question with several of these tools, searched rather than guessed at, and say what it could not prove.</td></tr>
                 </tbody>
@@ -3841,7 +3842,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
   ];
 
   var BANNER = [
-    '<span class="dim">Singularity Agent — 32 chains, 21 tools, no keys.</span>',
+    '<span class="dim">Singularity Agent — 32 chains, 22 tools, no keys.</span>',
     '<span class="dim">This terminal replays real output. Type </span><span class="acc">help</span><span class="dim"> to begin.</span>',
     ''
   ];
@@ -4948,7 +4949,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
 
   function banner() {
     screen.textContent = "";
-    put(dim("Singularity Agent — 32 chains, 21 tools, no keys."));
+    put(dim("Singularity Agent — 32 chains, 22 tools, no keys."));
     put(live
       ? dim("Live. What you type here really runs. Type ") + acc("help") + dim(" to begin.")
       : dim("Replay. These are recordings of earlier real runs. Type ") + acc("help") + dim(" to begin."));
@@ -5231,7 +5232,7 @@ balance.tokenCompleteness.kind     <span class="dim">// 'curated' — read this 
 
     if (/^clear$/i.test(trimmed)) {
       screen.textContent = "";
-      put(dim("Singularity Agent — 32 chains, 21 tools, no keys."));
+      put(dim("Singularity Agent — 32 chains, 22 tools, no keys."));
       put(dim("Live. What you type here really runs. Type ") + acc("help") + dim(" to begin."));
       put("");
       return true;

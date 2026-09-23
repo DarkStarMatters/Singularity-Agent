@@ -2141,7 +2141,17 @@ the counterparty's word.
 The contradictory expiry is the concrete first instance. That intent stated five minutes in
 one field and fifteen in another, and both were visible before a signature.
 
-### 8.2 Proof a payer can hand over
+### 8.2 Proof a payer can hand over — **shipped**
+
+*Shipped as `prove_payment` (`provepay` in the CLI and the bot), the day after the first
+credited job showed what it had to check. Each term of the demand is its own check —
+landed, recipient, mint, token account, amount, memo, deadline, payer — with the expected
+and observed values side by side, and only finalized state counts. `unproven` stays
+distinct from `contradicted`: a signature a pruned endpoint cannot find is not a payment
+that did not happen. For the exchange specifically, `checkReceipt` re-derives a receipt's
+input and result hashes from what was actually sent and returned, which proves the
+receipt is about this job — and, said plainly, not that the result is correct. Solana only
+so far.*
 
 `findPayment` answers "was I paid what I claimed" for the merchant. There is no payer-side
 equivalent, and September is exactly when one was wanted: given a signature and the demand,

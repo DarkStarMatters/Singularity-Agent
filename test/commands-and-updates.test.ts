@@ -40,6 +40,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   build_transfer: 'transfer',
   build_burn: 'burn',
   build_payment: 'paydemand',
+  prove_payment: 'provepay',
   verify_burn: 'verifyburn',
   token_identity: 'identity',
   chain_liveness: 'health',

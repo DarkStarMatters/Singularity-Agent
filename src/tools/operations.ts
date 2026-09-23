@@ -11,9 +11,10 @@ import {
   inspectPaymentDemand,
   simulateUnsigned,
   inspectTokenExit,
+  provePayment as proveSolanaPayment,
   verifyBurn as verifySolanaBurn,
 } from '../adapters/solana.js';
-import type { PaymentDemandReport } from '../pay/types.js';
+import type { PaymentDemandReport, PaymentProof } from '../pay/types.js';
 import { inspectEvmPaymentDemand, simulateUnsignedEvm } from '../adapters/evm.js';
 import type { SimulationOutcome } from '../core/simulation.js';
 import type { TokenExitReport } from '../trade/types.js';
@@ -1580,6 +1581,39 @@ export async function inspectPayment(options: {
     `Payment demands can be checked on EVM and Solana chains, and ${chain.name} is neither.`,
     'Bitcoin and Cosmos payments carry no token-contract layer to check a demand against, so there is nothing here that would not be guesswork.',
   );
+}
+
+/**
+ * Prove a payment you made met the demand it answered, from the chain alone.
+ *
+ * The other end of `build_payment`: that one checks a demand can be paid, and
+ * this one checks it was. Solana only for now, because a payer-side proof needs
+ * the finalized balance deltas and the memo, and that is the family where both
+ * are one read away.
+ */
+export async function provePayment(options: {
+  signature: string;
+  to: string;
+  amount: string;
+  mint?: string;
+  tokenAccount?: string;
+  memo?: string;
+  expiresAt?: string;
+  from?: string;
+  chain?: string;
+}): Promise<PaymentProof> {
+  const { signature, chain: named, ...claim } = options;
+  const chain = getChain(named ?? 'solana');
+
+  if (chain.family !== 'svm') {
+    throw new SingularityError(
+      'PAY_UNSUPPORTED',
+      `Payment proofs are implemented for Solana, and ${chain.name} is not a Solana chain.`,
+      'On an EVM chain, `transaction` shows the transfer and its logs; a checked proof there is not built yet.',
+    );
+  }
+
+  return proveSolanaPayment(chain, signature, claim);
 }
 
 /**

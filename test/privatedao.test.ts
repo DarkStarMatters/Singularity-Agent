@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createExchange, PROBED_REQUIREMENTS } from '../src/exchange/privatedao.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { checkReceipt, createExchange, PROBED_REQUIREMENTS } from '../src/exchange/privatedao.js';
 
 /**
  * A client for a server that does not describe itself.
@@ -253,5 +255,49 @@ describe('watching for the schemas to appear', () => {
     // in the server's own words rather than paraphrased.
     expect(PROBED_REQUIREMENTS.verify_basic).toBe('mint or record is required');
     expect(PROBED_REQUIREMENTS.register_agent).toBe('Invalid URL');
+  });
+});
+
+describe('re-deriving a receipt instead of trusting it', () => {
+  // The first job the exchange credited, recorded whole: 0.03 USDC for
+  // token.intelligence on the USDC mint, 2026-09-23.
+  const job = JSON.parse(
+    readFileSync(join(__dirname, 'fixtures', 'privatedao-job-2026-09-23.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const input = { network: 'solana-mainnet-beta', asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' };
+
+  it('reproduces both hashes of a real receipt', () => {
+    const check = checkReceipt(job, input);
+
+    expect(check.inputHash.derived).toBe('fd2e6b72a91675d741a289236bfe3dfdec286e640fc597ee6ea1b5652d7f41f0');
+    expect(check.resultHash.derived).toBe('7c77e159ea2ec8bdc6b045708765c330bbafe807db6b935ae26eaec8f7e4630f');
+    expect(check.holds).toBe(true);
+    expect(check.paymentSignature).toMatch(/^3C4s5ngi/);
+  });
+
+  it('does not care what order the keys were sent in', () => {
+    const reordered = { asset: input.asset, network: input.network };
+    expect(checkReceipt(job, reordered).inputHash.holds).toBe(true);
+  });
+
+  it('notices a result that is not the one the receipt covers', () => {
+    const tampered = { ...job, result: { ...(job['result'] as object), supply: '1' } };
+
+    const check = checkReceipt(tampered, input);
+
+    expect(check.resultHash.holds).toBe(false);
+    expect(check.holds).toBe(false);
+    expect(check.note).toMatch(/result hash differ/);
+  });
+
+  it('notices an input other than the one sent', () => {
+    const check = checkReceipt(job, { ...input, asset: 'So11111111111111111111111111111111111111112' });
+    expect(check.inputHash.holds).toBe(false);
+  });
+
+  it('says so when there is nothing to check', () => {
+    const check = checkReceipt({ result: {} }, input);
+    expect(check.holds).toBe(false);
+    expect(check.note).toMatch(/no receipt hashes/);
   });
 });

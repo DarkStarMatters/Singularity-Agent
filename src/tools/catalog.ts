@@ -473,6 +473,30 @@ export const TOOLS: ToolDefinition[] = [
     run: (args) => ops.payDemand(args),
   }),
   defineTool({
+    name: 'prove_payment',
+    title: 'Prove a payment you made met the demand',
+    description:
+      "After paying somebody, prove from the chain alone that the payment met the demand it answered — without relying on the payee to say so. Takes the transaction signature and the demand's terms (payee, amount, mint, the exact token account, memo, deadline, payer) and reports each term as its own check: what was expected, what the chain shows, and whether it holds. Only finalized state counts. Reach for it when a counterparty says a payment did not arrive, arrived late, went to the wrong place or lacked a reference, or whenever a payment has to be evidenced to a third party. `verdict` is `proven` only when the transaction finalized and every stated term holds, `contradicted` when at least one does not (a real payment can still be the wrong one), and `unproven` when the chain cannot settle it yet — not found, not finalized, or a block the endpoint will not date — which is never the same as contradicted. Read `checks` before `verdict`. The memo is returned as untrusted text, because whoever signed wrote it. Solana only. This reads: it signs nothing and sends nothing, and it proves what the chain shows, not that the payee credited it.",
+    shape: {
+      signature: z.string().describe('The signature of the payment transaction.'),
+      to: z.string().describe('The wallet the demand said would be paid. Matched by token-account owner.'),
+      amount: z.string().describe('Whole tokens as a decimal string, as the demand stated it.'),
+      mint: z.string().optional().describe('Token address — the mint. Omit for native SOL. Never a ticker.'),
+      tokenAccount: z
+        .string()
+        .optional()
+        .describe('The exact destination token account the demand named, where it named one.'),
+      memo: z.string().optional().describe('Text the demand said the payment must carry.'),
+      expiresAt: z
+        .string()
+        .optional()
+        .describe('When the demand stopped being valid, ISO 8601. The payment must have landed before it.'),
+      from: z.string().optional().describe('The wallet that should have paid. Checked against whoever the funds left.'),
+      chain: z.string().optional().describe('Solana chain id or alias. Defaults to "solana".'),
+    },
+    run: (args) => ops.provePayment(args),
+  }),
+  defineTool({
     name: 'receipt_art',
     title: 'What a payment receipt looks like, and whether an image is it',
     description:

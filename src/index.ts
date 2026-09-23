@@ -78,11 +78,15 @@ export type {
   MintRisk,
   PaymentClaim,
   PaymentDemand,
+  PaymentCheck,
   PaymentDemandReport,
+  PaymentProof,
+  PaymentProofClaim,
   PaymentSettlement,
+  ProofVerdict,
   SettlementLevel,
 } from './pay/types.js';
-export { assessMintRisk, buildPayment, findPayment } from './adapters/solana.js';
+export { assessMintRisk, buildPayment, findPayment, provePayment } from './adapters/solana.js';
 
 /**
  * The payer's side of the table: whether an invoice handed to you can be paid
