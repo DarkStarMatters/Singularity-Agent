@@ -889,12 +889,9 @@ beside them.
 | `/mcp` → `/api/mcp` | `POST`, `GET` | The hosted MCP server. `POST` speaks JSON-RPC; `GET` returns name, version and tool count. |
 | `/api/pay` | `GET`, `POST` | The Solana Pay transaction request for a payment. Needs `SINGULARITY_PAY_RECIPIENTS`. |
 | `/api/burn` | `GET`, `POST` | The Solana Pay transaction request for a burn. |
-| `/api/ping` | any | Deployment probe: does a function in this repo run at all? |
-| `/api/ping-src` | any | Deployment probe: does an import from `../src` survive the build? |
-| `/api/ping-solana` | any | Deployment probe: does `@solana/web3.js` load? |
 
-The three probes are diagnostics for a deployment that would not serve `/api/burn`, and
-are marked in their own source for deletion once it does.
+`npm run smoke:burn` asks the deployed `/api/burn` the questions a wallet would, and is
+the check to run after a deploy.
 
 ---
 

@@ -32,9 +32,10 @@ const ROOT = resolve(__dirname, '..');
 /**
  * Building a ts.Program over the whole source tree takes seconds on its own and
  * longer when the rest of the suite is running beside it. The default 5s passes
- * in isolation and fails under load, which is the worst of both.
+ * in isolation and fails under load, which is the worst of both. A minute was
+ * not enough either: under the full suite on Windows it measured seventy seconds.
  */
-const SLOW = 60_000;
+const SLOW = 180_000;
 
 /** Compare emit paths without caring which separator the platform uses. */
 const slashes = (path: string): string => path.split(sep).join('/');

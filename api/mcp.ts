@@ -22,8 +22,8 @@
  * methods, none of which require state.
  *
  * Not importing the SDK has a second benefit this deployment paid for already.
- * `api/ping.ts` exists because a handler was failing to load at all, and the
- * probes that diagnosed it bisect by import weight. A tool endpoint that pulls
+ * A handler here once failed to load at all, and the probes that diagnosed it
+ * bisected by import weight. A tool endpoint that pulls
  * in the whole SDK is a tool endpoint that fails the same way.
  *
  * ## What it will not do
