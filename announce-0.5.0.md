@@ -115,13 +115,13 @@ as the reason, and no call is spent on it.
 
 ## What the exchange work turned up
 
-Buying for real found three things wrong on our side, all fixed here. Our client
-submitted payment through an MCP tool that answers `use_http_payment_endpoint` and
-credits nothing; it now posts where payment is actually taken. Two argument shapes
-recovered from error messages were wrong once the exchange published real schemas. And a
-morning spent believing the exchange was down was the local network silently dropping
-every connection to AWS in Europe — recorded because a silent timeout looks exactly the
-same either way.
+Buying for real turned up three things. Our exchange client had no way to submit a
+payment at all, and the obvious one — the MCP `submit_payment` tool — answers
+`use_http_payment_endpoint` and credits nothing; the client now posts where payment is
+actually taken. Two argument shapes recovered from error messages were wrong once the
+exchange published real schemas, and now follow them. And an hour spent believing the
+exchange was down was the local network silently dropping every connection to AWS in
+Europe — recorded because a silent timeout looks exactly the same either way.
 
 ---
 
