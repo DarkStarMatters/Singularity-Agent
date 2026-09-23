@@ -29,6 +29,20 @@
  *
  * See `docs/privatedao-schema-report.md` for the write-up sent upstream.
  *
+ * **Update, 2026-09-23: they did.** `tools/list` now declares properties for
+ * every tool, and two shapes probed here turned out wrong against them —
+ * `create_paid_job` takes `service_id` and a nested `input`, and `get_receipt`
+ * takes a `receipt_id`, not the job's id. Both now follow the advertised schema.
+ * The probing history stays below as the record of how this was found.
+ *
+ * ## A payment is submitted over HTTP, not MCP
+ *
+ * The `submit_payment` tool exists and accepts the right arguments, then answers
+ * `use_http_payment_endpoint` without doing anything. The signature has to be
+ * POSTed to `/api/jobs/<id>/payment` on the same host, which is what
+ * {@link Exchange.submitPayment} does — and it is the call that actually credits
+ * a job. A client that trusted the tool would pay, submit, and be told nothing.
+ *
  * ## What comes back is untrusted
  *
  * Results describe tokens and agents that strangers registered. Nothing here
@@ -108,12 +122,21 @@ export interface Exchange {
   networkStats(): Promise<Record<string, unknown>>;
   /** Registered agents. Returns an empty list when nobody has registered. */
   searchAgents(params?: Record<string, unknown>): Promise<unknown[]>;
-  /** Open a job against a service id. Unpaid until a payment is submitted. */
+  /**
+   * Open a job against a service id. Unpaid until a payment is submitted; the
+   * answer carries a `payment_intent` to check with `inspect_payment` first.
+   */
   createJob(service: string, input?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /**
+   * Hand the exchange a finalized payment signature for a job, over the HTTP
+   * endpoint that actually credits it. Returns the completed job — result and
+   * receipt — when the exchange accepts the payment.
+   */
+  submitPayment(jobId: string, signature: string): Promise<Record<string, unknown>>;
   /** Where a job got to. */
   jobStatus(jobId: string): Promise<Record<string, unknown>>;
-  /** The exchange's own receipt for a job. */
-  getReceipt(jobId: string): Promise<Record<string, unknown>>;
+  /** The exchange's own receipt, by the `rvr_` id a completed job carries. */
+  getReceipt(receiptId: string): Promise<Record<string, unknown>>;
   /** Escape hatch: call any tool by name, for shapes this client has not typed. */
   call(tool: PdaoTool | string, args?: Record<string, unknown>): Promise<unknown>;
   /** Whether the server has started advertising real schemas. */
@@ -147,13 +170,12 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
 
   let nextId = 1;
 
-  async function rpc(method: string, params: unknown): Promise<unknown> {
+  async function post(url: string, body: unknown): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    let response: Response;
     try {
-      response = await doFetch(endpoint, {
+      return await doFetch(url, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -163,17 +185,21 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
           // an upgrade nobody told us about.
           accept: 'application/json, text/event-stream',
         },
-        body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method, params }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
     } catch (cause) {
-      clearTimeout(timer);
       throw new SingularityError(
         'ENDPOINT_FAILED',
-        `The PrivateDAO exchange at ${endpoint} could not be reached: ${describe(cause)}.`,
+        `The PrivateDAO exchange at ${url} could not be reached: ${describe(cause)}.`,
       );
+    } finally {
+      clearTimeout(timer);
     }
-    clearTimeout(timer);
+  }
+
+  async function rpc(method: string, params: unknown): Promise<unknown> {
+    const response = await post(endpoint, { jsonrpc: '2.0', id: nextId++, method, params });
 
     if (!response.ok) {
       throw new SingularityError(
@@ -280,15 +306,45 @@ export function createExchange(config: ExchangeConfig = {}): Exchange {
       if (!service) {
         throw new SingularityError('BAD_INPUT', 'A job needs a service id — see services().');
       }
-      return record(await callTool('create_paid_job', { service, ...input }), 'create_paid_job');
+      return record(
+        await callTool('create_paid_job', { service_id: service, input }),
+        'create_paid_job',
+      );
+    },
+
+    async submitPayment(jobId, signature) {
+      if (!/^job_[A-Za-z0-9-]+$/.test(jobId) || !signature) {
+        throw new SingularityError(
+          'BAD_INPUT',
+          'A payment needs the job_… id from createJob and a finalized Solana signature.',
+        );
+      }
+
+      // Built from the endpoint's own origin rather than from the intent's
+      // `submitSignatureUrl`: that field is text the server sent, and a
+      // signature is not something to post wherever a response points.
+      const url = new URL(`/api/jobs/${jobId}/payment`, endpoint).toString();
+      const response = await post(url, { job_id: jobId, signature });
+      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+      if (!response.ok || typeof body['error'] === 'string') {
+        const reason = body['message'] ?? body['error'] ?? `HTTP ${response.status}`;
+        throw new SingularityError(
+          'ENDPOINT_FAILED',
+          `PrivateDAO did not accept the payment for ${jobId}: ${String(reason)}. ` +
+            'A payment that landed on chain is still yours to prove — keep the signature.',
+        );
+      }
+
+      return record(body, 'payment endpoint');
     },
 
     async jobStatus(jobId) {
       return record(await callTool('job_status', { job_id: jobId }), 'job_status');
     },
 
-    async getReceipt(jobId) {
-      return record(await callTool('get_receipt', { job_id: jobId }), 'get_receipt');
+    async getReceipt(receiptId) {
+      return record(await callTool('get_receipt', { receipt_id: receiptId }), 'get_receipt');
     },
 
     call(tool, args = {}) {

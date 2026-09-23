@@ -18,9 +18,9 @@ import { createExchange, PROBED_REQUIREMENTS } from '../src/exchange/privatedao.
 function fakeFetch(handler: (body: any) => unknown, status = 200) {
   const calls: any[] = [];
 
-  const fetch = (async (_url: string, init: any) => {
+  const fetch = (async (url: string, init: any) => {
     const body = JSON.parse(init.body);
-    calls.push(body);
+    calls.push({ ...body, url });
 
     return {
       ok: status >= 200 && status < 300,
@@ -88,6 +88,65 @@ describe('reading the exchange', () => {
 
     const services = await createExchange({ fetch }).services();
     expect(services[0]?.id).toBe('only.text');
+  });
+});
+
+describe('buying a job', () => {
+  const JOB = 'job_33640e3c-5bdb-42bb-a250-129840776b37';
+  const SIG = '3C4s5ngiJP23vABg8h3rKWwZVnUaYNmaa3EhY3NhrdcBrMBdgqk3hkpdFEBqytGFEnZrVnQLRt6nHYb3nYXsYq6f';
+
+  it('opens a job with the service_id and nested input the schema advertises', async () => {
+    // The probed shape spread the input beside `service`; the advertised one
+    // nests it and names the field `service_id`, with additionalProperties off.
+    const { fetch, calls } = fakeFetch(() => toolResult({ status: 'awaiting_payment' }));
+
+    await createExchange({ fetch }).createJob('token.intelligence', { asset: 'EPjF' });
+
+    expect(calls[0].params.arguments).toEqual({
+      service_id: 'token.intelligence',
+      input: { asset: 'EPjF' },
+    });
+  });
+
+  it('submits the payment over HTTP, on the endpoint host, not through the MCP tool', async () => {
+    // The MCP tool answers use_http_payment_endpoint and credits nothing. This
+    // response is the recorded shape of a real 0.03 USDC job being credited.
+    const { fetch, calls } = fakeFetch(() => ({
+      job_id: JOB,
+      status: 'completed',
+      receipt: { receipt_id: 'rvr_fe53c65da876a1798a5b6ae36af3f27e', status: 'VERIFIED' },
+    }));
+
+    const job = await createExchange({ fetch }).submitPayment(JOB, SIG);
+
+    expect(calls[0].url).toBe(`https://agents.privatedao.org/api/jobs/${JOB}/payment`);
+    expect(calls[0].signature).toBe(SIG);
+    expect(calls[0].method).toBeUndefined();
+    expect(job['status']).toBe('completed');
+  });
+
+  it('says a refused payment is still provable, in the words the server used', async () => {
+    const { fetch } = fakeFetch(() => ({ error: 'request_failed', message: 'job not found' }), 404);
+
+    await expect(createExchange({ fetch }).submitPayment(JOB, SIG)).rejects.toThrow(
+      /job not found.*keep the signature/,
+    );
+  });
+
+  it('refuses to post a signature for something that is not a job id', async () => {
+    // The id goes into a URL path, so a crafted one is a different request.
+    const { fetch, calls } = fakeFetch(() => ({}));
+
+    await expect(createExchange({ fetch }).submitPayment('../admin', SIG)).rejects.toThrow(/job_/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('fetches a receipt by its receipt id', async () => {
+    const { fetch, calls } = fakeFetch(() => toolResult({ status: 'VERIFIED' }));
+
+    await createExchange({ fetch }).getReceipt('rvr_fe53c65da876a1798a5b6ae36af3f27e');
+
+    expect(calls[0].params.arguments).toEqual({ receipt_id: 'rvr_fe53c65da876a1798a5b6ae36af3f27e' });
   });
 });
 

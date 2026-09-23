@@ -2107,6 +2107,23 @@ only while that account does not exist. Our payment created it. An SPL token acc
 bytes and base58 refuses anything over 128, so the first successful payment to that
 treasury disabled paid-job creation for every caller, permanently, with no path back.
 
+**Two days later, it worked — and the record should say so as plainly.** On 23 September
+a `token.intelligence` job cost 0.03 USDC: `build_payment` checked the demand and
+simulated exactly 0.03 delivered, the transfer finalized with the job memo
+(`3C4s5ngi…`), and the exchange credited it about a second after the signature reached
+it, with a receipt marked `VERIFIED`. Both of that receipt's hashes re-derive from the
+job's own input and result — SHA-256 over sorted-key JSON — so the receipt checks out
+without taking the exchange's word for it. The job creation that the first payment broke
+had been fixed upstream.
+
+What it still took is the part worth keeping. The MCP `submit_payment` tool answers
+`use_http_payment_endpoint` and credits nothing; the signature has to be posted to
+`/api/jobs/<id>/payment` on the same host, which the typed client now does. And from one
+of the networks this was run on, every AWS region in Europe was unreachable on 443, which
+made a healthy exchange look dead until the same request went out over a VPN. Neither
+changes the argument below. A payment credited promptly is the counterparty behaving
+well, not a property anyone could have checked before signing.
+
 ### 8.1 Landed is not credited
 
 Everything this project checks is on one side of that story. `inspect_payment` verifies a
