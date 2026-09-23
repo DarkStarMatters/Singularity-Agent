@@ -1,6 +1,6 @@
 # PrivateDAO registry: three things only your side can change
 
-**Server:** `pdao-agent-exchange` v1.4.0 at `https://agents.privatedao.org/mcp`
+**Server:** PrivateDAO Agent Exchange v1.5.0 at `https://agents.privatedao.org/mcp`
 **Protocol:** 2025-06-18
 **Agent:** SingularityAgent, `agent_3884f6355724a1e850d31f45`
 **Observed:** 23 September 2026
@@ -22,8 +22,9 @@ things are left that `register_agent` cannot do, so we need your help:
    points at an address we no longer use.
 2. **Allow `mint_audit` and `verify_burn`.** Both only read, but the allowlist
    dropped them.
-3. **Tell us how pricing is set**, since `register_agent` has no field for it and
-   our listing carries `pricing: {}` and `acceptedAssets: []`.
+3. **Tell us how a listing gets a price.** Our marketplace listing carries
+   `price: null` and `asset: null`, `register_agent` has no field for either, and
+   `POST /api/marketplace/listings` has no published schema.
 
 A fourth, smaller item is under [Also worth knowing](#also-worth-knowing).
 
@@ -71,10 +72,14 @@ read-only allowlist.
 | `agent_3884f6355724a1e850d31f45` | `https://mcp-singularity.cicada71.net/mcp` | v0.4.0, 22 tools | 17 | 2026-09-23 |
 | `agent_724dd89f22ee9f4527ef1f16` | `https://singularity-agent.cicada71.net/api/mcp` | v0.2.0, 18 tools | 1 (`chains`) | 2026-09-20 |
 
-**The request:** please delete `agent_724dd89f22ee9f4527ef1f16`.
+**The request:** please delete `agent_724dd89f22ee9f4527ef1f16` and its listing
+`external_agent_724dd89f22ee9f4527ef1f16`.
 
 Why it matters: an agent searching the registry sees two SingularityAgents that
-disagree about what they can do, and nothing marks which one is current. The old
+disagree about what they can do, and nothing marks which one is current. Both
+also appear in `GET /api/marketplace/listings` as `active`,
+`MCP_HANDSHAKE_VERIFIED` listings — `external_agent_724dd89f…` advertising only
+`chains`, beside the current one. The old
 entry will not be evicted by a health check either, because the old address
 still answers — it serves the same deployment under a legacy hostname. From
 outside it looks healthy and simply out of date.
@@ -113,10 +118,15 @@ make this easier to classify — tell us which one.
 **The request:** add `mint_audit` and `verify_burn` to our `allowed_tools`, or
 tell us what would get them through the policy.
 
-## 3. How does pricing get set?
+## 3. How does a listing get a price?
 
-Our listing carries `pricing: {}` and `acceptedAssets: []`. `register_agent`
-advertises no field for either — its schema is `name`, `protocol`, `mcpUrl` (or
+Our registry entry carries `pricing: {}` and `acceptedAssets: []`, and our
+marketplace listing, `external_agent_3884f6355724a1e850d31f45`, carries
+`price: null`, `asset: null` and `commercialStatus: "Standard Listing"`.
+Your first-party listings use the same fields with real values, so the model is
+clearly there. What we cannot find is how an external agent sets them.
+
+`register_agent` advertises no field for either — its schema is `name`, `protocol`, `mcpUrl` (or
 `mcp_url` / `endpoint`), `allowedTools`, `tags`, `networks`, `forceRefresh` and
 `persistUnavailable`, with `additionalProperties: false`, so a pricing field we
 invented would be rejected.
@@ -135,13 +145,21 @@ limits: `mint_audit`, `inspect_exit`, `inspect_payment`, `prove_payment` and
 - **How a sold call is run.** Does the exchange call our endpoint on the buyer's
   behalf after payment, as `agent.match` suggests, or does the buyer?
 
-Whatever the shape, we would suggest it goes into `register_agent` (for example
+Your OpenAPI document (v1.5.0) lists `POST /api/marketplace/listings`, and also
+`/api/agreements` and `/api/partnerships/{id}/payment-intent`, which look like the
+commercial side of this — but none of them carries a request schema, so we have
+not called them. We would rather ask than guess at a write endpoint on your
+server.
+
+Whatever the shape, we would suggest it goes into `register_agent` or a
+documented listings schema (for example
 `pricing: { "<tool>": { "amount": "0.02", "asset": "USDC" } }` alongside
 `acceptedAssets` and a payout address), so an agent can price itself without a
 manual step on your side.
 
-**The request:** tell us how pricing is meant to be set, or set it on your side
-once we agree numbers.
+**The request:** publish the request schema for `POST /api/marketplace/listings`
+(or tell us that listings, agreements or partnerships are the intended path and
+how to use it), or set the price on our listing on your side once we agree numbers.
 
 ## The paid job that worked
 
@@ -164,11 +182,13 @@ same for the payment side, from the chain alone.
 
 ## Also worth knowing
 
-**The MCP `submit_payment` tool does not submit.** Called with a valid `job_id`
+**The MCP `submit_payment` tool does not submit.** Observed on v1.4.0; the tool
+and its description are unchanged in v1.5.0. Called with a valid `job_id`
 and a finalized signature, it returns
 `{"status":"use_http_payment_endpoint","required":["job_id","signature"]}` and
 the job stays unpaid. The payment only counts when it is POSTed to
-`/api/jobs/<id>/payment`. A client that follows the MCP tool, which is the only
+`/api/jobs/<id>/payment`. Your new `execution_guide` tool now names that endpoint
+as the way to submit payment proof, which helps any agent that reads it first. A client that follows the MCP tool, which is the only
 thing a model sees, pays and then is told nothing. Two fixes would each close it:
 have the tool perform the same submission the HTTP endpoint does, or say in its
 description (currently `"PrivateDAO submit_payment"`) that it will not, and where
