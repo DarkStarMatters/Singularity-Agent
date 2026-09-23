@@ -73,7 +73,12 @@ describe('telegram command surface', () => {
    * moving a command between the grouped tables costs nothing.
    */
   it('is listed in the README, every one of them', () => {
-    const readme = readFileSync(join(resolve(__dirname, '..'), 'README.md'), 'utf8');
+    // Normalized because core.autocrlf checks the README out with CRLF on
+    // Windows, and the heading search below keys on a bare newline.
+    const readme = readFileSync(join(resolve(__dirname, '..'), 'README.md'), 'utf8').replace(
+      /\r\n/g,
+      '\n',
+    );
     // The heading plus its newline: `### Telegram as the control terminal`
     // comes earlier in the file and would take the slice to the wrong section.
     const section = readme.slice(readme.indexOf('### Telegram' + String.fromCharCode(10)));
