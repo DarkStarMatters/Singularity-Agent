@@ -1,0 +1,2 @@
+# The site and API are Node; the Python plugin and its virtualenv are not part of the deployment.
+quantum-agent/

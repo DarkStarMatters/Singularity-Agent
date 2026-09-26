@@ -16,6 +16,17 @@
       "category": "development",
       "version": "0.5.0",
       "homepage": "https://github.com/DarkStarMatters/Singularity-Agent"
+    },
+    {
+      "name": "quantum-agent",
+      "description": "Quantum agentic systems over MCP: IBM Quantum backends and calibration, circuits classified by what their results could ever prove, cost estimates and local simulation. Never submits jobs or spends QPU time.",
+      "author": {
+        "name": "Deadsg"
+      },
+      "source": "./quantum-agent",
+      "category": "development",
+      "version": "0.1.0",
+      "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/quantum-agent"
     }
   ]
 }
