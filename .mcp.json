@@ -14,16 +14,6 @@
     "singularity-hosted": {
       "type": "http",
       "url": "https://mcp-singularity.cicada71.net/mcp"
-    },
-    "quantum-agent": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--quiet",
-        "--directory",
-        "quantum-agent",
-        "quantum-agent-mcp"
-      ]
     }
   }
 }
