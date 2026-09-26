@@ -130,8 +130,16 @@ Running from a clone instead, point it at the built server:
 claude mcp add singularity -- node /absolute/path/to/Singularity-Agent/dist/mcp/server.js
 ```
 
-Working inside this repo, the committed `.mcp.json` already does this with a relative
-path, so Claude Code offers the server on startup with nothing to configure.
+Working inside this repo, install the plugin (above) rather than adding a project server.
+The plugin runs `dist/mcp/server.bundle.js`, a single-file build of the same server that
+`npm run build` produces beside the tsc output. The unbundled server reads 1,363 files on
+start, which from a cold file cache took long enough to miss Claude Code's 30-second
+connect limit; the bundle reads one.
+
+The committed `.mcp.json` carries only the hosted endpoint. Keep private or dev-only
+servers out of it: the marketplace installs this directory as the plugin, and the plugin
+has been seen to load that file as its own server list. Add them with
+`claude mcp add --scope local …` instead.
 
 ---
 

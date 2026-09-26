@@ -38,7 +38,7 @@
     "node": ">=20.10.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.eliza.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.eliza.json && node scripts/bundle-mcp.mjs",
     "dev": "tsx src/cli/index.ts",
     "mcp": "tsx src/mcp/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.eliza.json --noEmit && tsc -p tsconfig.api.json",
@@ -80,6 +80,7 @@
   "devDependencies": {
     "@elizaos/core": "^1.7.2",
     "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

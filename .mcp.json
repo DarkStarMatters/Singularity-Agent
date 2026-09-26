@@ -1,16 +1,5 @@
 {
   "mcpServers": {
-    "singularity": {
-      "command": "node",
-      "args": [
-        "dist/mcp/server.js"
-      ],
-      "env": {}
-    },
-    "privatedao-agents": {
-      "type": "http",
-      "url": "https://agents.privatedao.org/mcp"
-    },
     "singularity-hosted": {
       "type": "http",
       "url": "https://mcp-singularity.cicada71.net/mcp"
