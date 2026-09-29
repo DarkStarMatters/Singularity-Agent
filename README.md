@@ -858,9 +858,9 @@ Full documentation: **[singularity-sdk/README.md](singularity-sdk/README.md)**.
 
 The marketplace carries a second plugin, in Python: an MCP server for quantum agentic
 systems. It reads IBM Quantum backends and calibration, builds circuits, and says **before
-a circuit runs** what its result could ever prove, as ThinLine label ceilings. It also
-estimates cost and simulates locally with Aer. It never submits a job and never spends QPU
-time. It is a separate plugin so that nothing about it can weaken this one's "holds no
+a circuit runs** what its result could ever prove, as ThinLine label ceilings, and **after
+it runs** whether the counts earned that label. It also estimates cost and simulates
+locally with Aer. It never submits a job and never spends QPU time. It is a separate plugin so that nothing about it can weaken this one's "holds no
 keys, moves nothing".
 
 ```bash

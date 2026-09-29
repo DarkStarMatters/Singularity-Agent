@@ -1,6 +1,6 @@
 [project]
 name = "quantum-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP plugin for quantum agentic systems: read IBM Quantum backends, build and classify circuits, simulate before spending QPU time."
 readme = "README.md"
 license = "MIT"

@@ -73,6 +73,37 @@ def job(job_id: str) -> dict[str, Any]:
     return out
 
 
+def full_counts(job_id: str) -> tuple[dict[str, int], str | None]:
+    """
+    The complete histogram of a finished single-register job, for verification.
+
+    `job` cuts its histograms to the top outcomes, which is right for reading and
+    wrong for scoring: a score over a cut histogram is a score over the part
+    that was kept. This returns every outcome, or refuses.
+    """
+    service = ibm_service()
+    try:
+        j = service.job(job_id)
+    except Exception as exc:
+        raise QuantumAgentError("job_not_found", f"IBM Quantum has no job {job_id!r} visible here: {exc}") from exc
+    status = j.status()
+    status = str(getattr(status, "name", status))
+    if status != "DONE":
+        raise QuantumAgentError("job_not_done", f"Job {job_id} is {status}; only finished jobs have counts to verify.")
+    registers = extract_counts(j.result())
+    if len(registers) != 1:
+        raise QuantumAgentError(
+            "counts_multiple_registers",
+            f"Job {job_id} measured into {len(registers)} registers: {', '.join(registers)}.",
+            "Verification reads one register; measure into a single register.",
+        )
+    try:
+        backend = j.backend().name
+    except Exception:
+        backend = None
+    return next(iter(registers.values())), backend
+
+
 def usage() -> dict[str, Any]:
     service = ibm_service()
     try:

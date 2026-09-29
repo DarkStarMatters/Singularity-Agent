@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "description": "Verifier vectors for Tessarq Q2. Count keys are Qiskit's: classical bit 0 is the rightmost character. Integer scores and verdicts are exact; pass iff numerator * 1000000 >= threshold_ppm * denominator. Constraints are in reduced row echelon form over classical bits, pivoting on the lowest bit. Hellinger fidelity matches within `tolerance`.",
+  "generated_by": "quantum-agent: uv run python -m quantum_agent.vectors",
+  "cases": [
+    {
+      "name": "mirror-pass-at-threshold",
+      "why": "Exactly at the threshold passes: 900 * 10^6 >= 900000 * 1000.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "11110": 900,
+        "00000": 60,
+        "01110": 40
+      },
+      "threshold_ppm": 900000,
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 1000,
+        "threshold_ppm": 900000,
+        "verdict": "pass",
+        "labels": {
+          "result_is_correct": "verified_implementation",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "11110",
+        "score": {
+          "numerator": 900,
+          "denominator": 1000,
+          "ppm": 900000
+        }
+      }
+    },
+    {
+      "name": "mirror-fail-one-ppm-over",
+      "why": "One ppm above the score fails. No rounding before the comparison.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "11110": 900,
+        "00000": 60,
+        "01110": 40
+      },
+      "threshold_ppm": 900001,
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 1000,
+        "threshold_ppm": 900001,
+        "verdict": "fail",
+        "labels": {
+          "result_is_correct": "rejected",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "11110",
+        "score": {
+          "numerator": 900,
+          "denominator": 1000,
+          "ppm": 900000
+        }
+      }
+    },
+    {
+      "name": "mirror-score-floors",
+      "why": "2/3 is 666666.67 ppm; the reported ppm floors to 666666 and the verdict is exact: 2*10^6 < 666667*3.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "11110": 2,
+        "00000": 1
+      },
+      "threshold_ppm": 666667,
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 3,
+        "threshold_ppm": 666667,
+        "verdict": "fail",
+        "labels": {
+          "result_is_correct": "rejected",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "11110",
+        "score": {
+          "numerator": 2,
+          "denominator": 3,
+          "ppm": 666666
+        }
+      }
+    },
+    {
+      "name": "mirror-stuck-at-zero",
+      "why": "A device that returns all-zeros cannot pass: the X layer moves the target off it.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "00000": 1000
+      },
+      "threshold_ppm": 1,
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 1000,
+        "threshold_ppm": 1,
+        "verdict": "fail",
+        "labels": {
+          "result_is_correct": "rejected",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "11110",
+        "score": {
+          "numerator": 0,
+          "denominator": 1000,
+          "ppm": 0
+        }
+      }
+    },
+    {
+      "name": "mirror-not-judged",
+      "why": "No threshold: the score is reported and no label is earned.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "11110": 7,
+        "11111": 3
+      },
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 10,
+        "threshold_ppm": null,
+        "verdict": "not_judged",
+        "labels": {
+          "result_is_correct": null,
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "11110",
+        "score": {
+          "numerator": 7,
+          "denominator": 10,
+          "ppm": 700000
+        }
+      }
+    },
+    {
+      "name": "mirror-24-qubits",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[24] meas;\nqubit[24] q;\ny q[0];\ns q[1];\nz q[2];\nh q[4];\nh q[5];\ny q[6];\nsdg q[8];\nh q[10];\nz q[11];\nz q[12];\nh q[13];\nsdg q[14];\nh q[15];\nz q[16];\nh q[18];\nsdg q[19];\nz q[21];\nsdg q[23];\ncx q[12], q[14];\ncx q[11], q[7];\ncx q[6], q[18];\ncx q[0], q[5];\ncx q[16], q[15];\ncx q[23], q[2];\ncx q[10], q[19];\ncx q[8], q[20];\ncx q[3], q[22];\ncx q[21], q[13];\ncx q[9], q[4];\ncx q[17], q[1];\nsx q[0];\nz q[1];\ny q[2];\nsx q[3];\nsx q[4];\ny q[5];\nx q[6];\nsdg q[7];\ns q[8];\nsdg q[9];\nh q[10];\nx q[11];\nsx q[12];\ny q[13];\nsx q[14];\nx q[15];\nh q[16];\nh q[17];\nz q[18];\ns q[19];\ny q[20];\ns q[21];\nsx q[22];\nz q[23];\ncx q[6], q[14];\ncx q[8], q[3];\ncx q[22], q[5];\ncx q[0], q[20];\ncx q[13], q[4];\ncx q[16], q[23];\ncx q[7], q[12];\ncx q[9], q[15];\ncx q[11], q[19];\ncx q[10], q[18];\ncx q[17], q[2];\ncx q[21], q[1];\ny q[0];\nsx q[2];\ny q[3];\ns q[4];\nh q[5];\nsx q[6];\nsdg q[8];\nx q[9];\ns q[10];\nsdg q[11];\nz q[12];\nz q[13];\nsx q[14];\nh q[15];\ns q[16];\nsx q[17];\nz q[18];\nx q[19];\ns q[20];\nz q[21];\nx q[22];\nz q[23];\ncx q[6], q[17];\ncx q[23], q[14];\ncx q[13], q[1];\ncx q[22], q[8];\ncx q[16], q[18];\ncx q[9], q[15];\ncx q[0], q[3];\ncx q[10], q[20];\ncx q[19], q[5];\ncx q[2], q[4];\ncx q[7], q[12];\ncx q[21], q[11];\ns q[0];\nsx q[2];\nz q[3];\nz q[4];\nz q[5];\nz q[6];\nh q[7];\nsx q[8];\nz q[9];\nsdg q[11];\nh q[12];\nsdg q[13];\nsx q[14];\ns q[15];\nh q[16];\ny q[17];\nh q[19];\ns q[21];\nh q[22];\ny q[23];\ncx q[13], q[20];\ncx q[17], q[10];\ncx q[22], q[21];\ncx q[3], q[16];\ncx q[14], q[18];\ncx q[15], q[1];\ncx q[7], q[5];\ncx q[9], q[11];\ncx q[8], q[4];\ncx q[12], q[23];\ncx q[6], q[2];\ncx q[0], q[19];\nx q[0];\nsx q[1];\ns q[2];\nsdg q[4];\ny q[5];\ns q[6];\nx q[8];\nh q[9];\nx q[10];\ny q[11];\ns q[12];\ny q[13];\nsdg q[14];\ny q[15];\nsdg q[16];\nsdg q[17];\nsdg q[18];\nz q[19];\nsdg q[20];\nsdg q[21];\nsx q[22];\ny q[23];\ncx q[4], q[21];\ncx q[17], q[13];\ncx q[2], q[18];\ncx q[7], q[9];\ncx q[10], q[3];\ncx q[1], q[19];\ncx q[5], q[16];\ncx q[12], q[14];\ncx q[11], q[6];\ncx q[20], q[15];\ncx q[8], q[22];\ncx q[0], q[23];\nsx q[0];\ny q[1];\nh q[2];\nh q[3];\nz q[4];\nsdg q[5];\nsx q[6];\ns q[7];\nz q[8];\ny q[9];\nh q[10];\nz q[11];\nsx q[12];\nz q[13];\nh q[14];\ns q[15];\ns q[16];\ns q[17];\ns q[19];\nsx q[20];\ns q[21];\nsx q[22];\ny q[23];\ncx q[10], q[8];\ncx q[5], q[2];\ncx q[14], q[1];\ncx q[7], q[9];\ncx q[11], q[15];\ncx q[18], q[12];\ncx q[21], q[13];\ncx q[6], q[20];\ncx q[16], q[3];\ncx q[19], q[0];\ncx q[23], q[22];\ncx q[17], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15], q[16], q[17], q[18], q[19], q[20], q[21], q[22], q[23];\ncx q[17], q[4];\ncx q[23], q[22];\ncx q[19], q[0];\ncx q[16], q[3];\ncx q[6], q[20];\ncx q[21], q[13];\ncx q[18], q[12];\ncx q[11], q[15];\ncx q[7], q[9];\ncx q[14], q[1];\ncx q[5], q[2];\ncx q[10], q[8];\ny q[23];\nsxdg q[22];\nsdg q[21];\nsxdg q[20];\nsdg q[19];\nsdg q[17];\nsdg q[16];\nsdg q[15];\nh q[14];\nz q[13];\nsxdg q[12];\nz q[11];\nh q[10];\ny q[9];\nz q[8];\nsdg q[7];\nsxdg q[6];\ns q[5];\nz q[4];\nh q[3];\nh q[2];\ny q[1];\nsxdg q[0];\ncx q[0], q[23];\ncx q[8], q[22];\ncx q[20], q[15];\ncx q[11], q[6];\ncx q[12], q[14];\ncx q[5], q[16];\ncx q[1], q[19];\ncx q[10], q[3];\ncx q[7], q[9];\ncx q[2], q[18];\ncx q[17], q[13];\ncx q[4], q[21];\ny q[23];\nsxdg q[22];\ns q[21];\ns q[20];\nz q[19];\ns q[18];\ns q[17];\ns q[16];\ny q[15];\ns q[14];\ny q[13];\nsdg q[12];\ny q[11];\nx q[10];\nh q[9];\nx q[8];\nsdg q[6];\ny q[5];\ns q[4];\nsdg q[2];\nsxdg q[1];\nx q[0];\ncx q[0], q[19];\ncx q[6], q[2];\ncx q[12], q[23];\ncx q[8], q[4];\ncx q[9], q[11];\ncx q[7], q[5];\ncx q[15], q[1];\ncx q[14], q[18];\ncx q[3], q[16];\ncx q[22], q[21];\ncx q[17], q[10];\ncx q[13], q[20];\ny q[23];\nh q[22];\nsdg q[21];\nh q[19];\ny q[17];\nh q[16];\nsdg q[15];\nsxdg q[14];\ns q[13];\nh q[12];\ns q[11];\nz q[9];\nsxdg q[8];\nh q[7];\nz q[6];\nz q[5];\nz q[4];\nz q[3];\nsxdg q[2];\nsdg q[0];\ncx q[21], q[11];\ncx q[7], q[12];\ncx q[2], q[4];\ncx q[19], q[5];\ncx q[10], q[20];\ncx q[0], q[3];\ncx q[9], q[15];\ncx q[16], q[18];\ncx q[22], q[8];\ncx q[13], q[1];\ncx q[23], q[14];\ncx q[6], q[17];\nz q[23];\nx q[22];\nz q[21];\nsdg q[20];\nx q[19];\nz q[18];\nsxdg q[17];\nsdg q[16];\nh q[15];\nsxdg q[14];\nz q[13];\nz q[12];\ns q[11];\nsdg q[10];\nx q[9];\ns q[8];\nsxdg q[6];\nh q[5];\nsdg q[4];\ny q[3];\nsxdg q[2];\ny q[0];\ncx q[21], q[1];\ncx q[17], q[2];\ncx q[10], q[18];\ncx q[11], q[19];\ncx q[9], q[15];\ncx q[7], q[12];\ncx q[16], q[23];\ncx q[13], q[4];\ncx q[0], q[20];\ncx q[22], q[5];\ncx q[8], q[3];\ncx q[6], q[14];\nz q[23];\nsxdg q[22];\nsdg q[21];\ny q[20];\nsdg q[19];\nz q[18];\nh q[17];\nh q[16];\nx q[15];\nsxdg q[14];\ny q[13];\nsxdg q[12];\nx q[11];\nh q[10];\ns q[9];\nsdg q[8];\ns q[7];\nx q[6];\ny q[5];\nsxdg q[4];\nsxdg q[3];\ny q[2];\nz q[1];\nsxdg q[0];\ncx q[17], q[1];\ncx q[9], q[4];\ncx q[21], q[13];\ncx q[3], q[22];\ncx q[8], q[20];\ncx q[10], q[19];\ncx q[23], q[2];\ncx q[16], q[15];\ncx q[0], q[5];\ncx q[6], q[18];\ncx q[11], q[7];\ncx q[12], q[14];\ns q[23];\nz q[21];\ns q[19];\nh q[18];\nz q[16];\nh q[15];\ns q[14];\nh q[13];\nz q[12];\nz q[11];\nh q[10];\ns q[8];\ny q[6];\nh q[5];\nh q[4];\nz q[2];\nsdg q[1];\ny q[0];\nbarrier q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15], q[16], q[17], q[18], q[19], q[20], q[21], q[22], q[23];\nx q[1];\nx q[9];\nx q[10];\nx q[16];\nx q[17];\nx q[19];\nx q[20];\nx q[23];\nbarrier q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15], q[16], q[17], q[18], q[19], q[20], q[21], q[22], q[23];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\nmeas[5] = measure q[5];\nmeas[6] = measure q[6];\nmeas[7] = measure q[7];\nmeas[8] = measure q[8];\nmeas[9] = measure q[9];\nmeas[10] = measure q[10];\nmeas[11] = measure q[11];\nmeas[12] = measure q[12];\nmeas[13] = measure q[13];\nmeas[14] = measure q[14];\nmeas[15] = measure q[15];\nmeas[16] = measure q[16];\nmeas[17] = measure q[17];\nmeas[18] = measure q[18];\nmeas[19] = measure q[19];\nmeas[20] = measure q[20];\nmeas[21] = measure q[21];\nmeas[22] = measure q[22];\nmeas[23] = measure q[23];\n",
+      "commitment": "sha3-256:379c7508658d7197a44c01f8ca92fdaf397b663fd1de15032aea1b28e202ad6e",
+      "counts": {
+        "100110110000011000000010": 3500,
+        "100111110000011000000010": 300,
+        "100110110000011001000010": 200
+      },
+      "threshold_ppm": 850000,
+      "expected": {
+        "class": "deterministic",
+        "method": "success_probability",
+        "shots": 4000,
+        "threshold_ppm": 850000,
+        "verdict": "pass",
+        "labels": {
+          "result_is_correct": "verified_implementation",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "ideal_outcome": "100110110000011000000010",
+        "score": {
+          "numerator": 3500,
+          "denominator": 4000,
+          "ppm": 875000
+        }
+      }
+    },
+    {
+      "name": "ghz4-support",
+      "why": "0001 breaks parity on bits {0,3}: the weakest constraint.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nbit[4] meas;\nqubit[4] q;\nh q[0];\ncx q[0], q[1];\ncx q[1], q[2];\ncx q[2], q[3];\nbarrier q[0], q[1], q[2], q[3];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\n",
+      "commitment": "sha3-256:4fea79d5f6810b074e6f27fbb771c18e89717366ab5a92fe5e09cbe39da9b71c",
+      "counts": {
+        "0000": 480,
+        "1111": 470,
+        "0001": 50
+      },
+      "threshold_ppm": 950000,
+      "expected": {
+        "class": "clifford",
+        "method": "stabilizer_support",
+        "shots": 1000,
+        "threshold_ppm": 950000,
+        "verdict": "pass",
+        "labels": {
+          "result_is_correct": "verified_implementation",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "weakest_constraint": {
+          "bits": [
+            0,
+            3
+          ],
+          "parity": 0,
+          "agreement_ppm": 950000
+        },
+        "score": {
+          "numerator": 950,
+          "denominator": 1000,
+          "ppm": 950000
+        },
+        "support": {
+          "dimension": 1,
+          "constraints": [
+            {
+              "bits": [
+                0,
+                3
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                1,
+                3
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                2,
+                3
+              ],
+              "parity": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ghz16-support-fail",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nbit[16] meas;\nqubit[16] q;\nh q[0];\ncx q[0], q[1];\ncx q[1], q[2];\ncx q[2], q[3];\ncx q[3], q[4];\ncx q[4], q[5];\ncx q[5], q[6];\ncx q[6], q[7];\ncx q[7], q[8];\ncx q[8], q[9];\ncx q[9], q[10];\ncx q[10], q[11];\ncx q[11], q[12];\ncx q[12], q[13];\ncx q[13], q[14];\ncx q[14], q[15];\nbarrier q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], q[8], q[9], q[10], q[11], q[12], q[13], q[14], q[15];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\nmeas[5] = measure q[5];\nmeas[6] = measure q[6];\nmeas[7] = measure q[7];\nmeas[8] = measure q[8];\nmeas[9] = measure q[9];\nmeas[10] = measure q[10];\nmeas[11] = measure q[11];\nmeas[12] = measure q[12];\nmeas[13] = measure q[13];\nmeas[14] = measure q[14];\nmeas[15] = measure q[15];\n",
+      "commitment": "sha3-256:a18d4620d0f1adef4378e32d474dd07e40a14aab87c50a383251f9d55293d9ed",
+      "counts": {
+        "0000000000000000": 400,
+        "1111111111111111": 400,
+        "0000000000000001": 100,
+        "1111111111111110": 100
+      },
+      "threshold_ppm": 900000,
+      "expected": {
+        "class": "clifford",
+        "method": "stabilizer_support",
+        "shots": 1000,
+        "threshold_ppm": 900000,
+        "verdict": "fail",
+        "labels": {
+          "result_is_correct": "rejected",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "weakest_constraint": {
+          "bits": [
+            0,
+            15
+          ],
+          "parity": 0,
+          "agreement_ppm": 800000
+        },
+        "score": {
+          "numerator": 800,
+          "denominator": 1000,
+          "ppm": 800000
+        },
+        "support": {
+          "dimension": 1,
+          "constraints": [
+            {
+              "bits": [
+                0,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                1,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                2,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                3,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                4,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                5,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                6,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                7,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                8,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                9,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                10,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                11,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                12,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                13,
+                15
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                14,
+                15
+              ],
+              "parity": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "clifford-partial-measurement",
+      "why": "q[1] is not measured and c[1] is never written, so c[1] must read 0.",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nbit[3] c;\nqubit[3] q;\nh q[0];\ncx q[0], q[1];\ncx q[1], q[2];\nc[0] = measure q[0];\nc[2] = measure q[2];\n",
+      "commitment": "sha3-256:5544d46373802356b10af35fdc81d3fa0efc9ea296c484272f2477b596623a71",
+      "counts": {
+        "000": 500,
+        "101": 490,
+        "001": 10
+      },
+      "threshold_ppm": 990000,
+      "expected": {
+        "class": "clifford",
+        "method": "stabilizer_support",
+        "shots": 1000,
+        "threshold_ppm": 990000,
+        "verdict": "pass",
+        "labels": {
+          "result_is_correct": "verified_implementation",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "weakest_constraint": {
+          "bits": [
+            0,
+            2
+          ],
+          "parity": 0,
+          "agreement_ppm": 990000
+        },
+        "score": {
+          "numerator": 990,
+          "denominator": 1000,
+          "ppm": 990000
+        },
+        "support": {
+          "dimension": 1,
+          "constraints": [
+            {
+              "bits": [
+                0,
+                2
+              ],
+              "parity": 0
+            },
+            {
+              "bits": [
+                1
+              ],
+              "parity": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "small-hellinger",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nbit[2] c;\nqubit[2] q;\nrx(pi/3) q[0];\ncx q[0], q[1];\nc = measure q;\n",
+      "commitment": "sha3-256:f15b5cb1184c17f935dab5c2c09d8878d94c6941d02da4c39a4b182eb4817a2a",
+      "counts": {
+        "00": 700,
+        "11": 250,
+        "01": 50
+      },
+      "threshold_ppm": 950000,
+      "expected": {
+        "class": "small",
+        "method": "hellinger_fidelity",
+        "shots": 1000,
+        "threshold_ppm": 950000,
+        "verdict": "fail",
+        "labels": {
+          "result_is_correct": "rejected",
+          "ran_on_claimed_qpu": "preliminary",
+          "hardware_is_quantum": "hypothetical"
+        },
+        "fidelity": 0.949784419,
+        "tolerance": 1e-06,
+        "score": {
+          "ppm": 949784
+        }
+      }
+    },
+    {
+      "name": "error-attested",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nbit[14] c;\nqubit[14] q;\nrx(0.3) q[0];\nrx(0.3) q[1];\nrx(0.3) q[2];\nrx(0.3) q[3];\nrx(0.3) q[4];\nrx(0.3) q[5];\nrx(0.3) q[6];\nrx(0.3) q[7];\nrx(0.3) q[8];\nrx(0.3) q[9];\nrx(0.3) q[10];\nrx(0.3) q[11];\nrx(0.3) q[12];\nrx(0.3) q[13];\nc = measure q;\n",
+      "commitment": "sha3-256:a26ce3f8784e3095ec41c50de9d258d9e1e08ff2b78af0abf0c837c4532edfb0",
+      "counts": {
+        "00000000000000": 1
+      },
+      "expected": {
+        "error": "not_verifiable"
+      }
+    },
+    {
+      "name": "error-truncated-histogram",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "11110": 900
+      },
+      "shots": 1000,
+      "expected": {
+        "error": "counts_incomplete"
+      }
+    },
+    {
+      "name": "error-key-width",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "0000": 1
+      },
+      "expected": {
+        "error": "counts_key_invalid"
+      }
+    },
+    {
+      "name": "error-multiple-registers",
+      "qasm": "OPENQASM 3.0;\ninclude \"stdgates.inc\";\ngate sxdg _gate_q_0 {\n  s _gate_q_0;\n  h _gate_q_0;\n  s _gate_q_0;\n}\nbit[5] meas;\nqubit[5] q;\nh q[1];\nh q[2];\ny q[3];\ns q[4];\ncx q[1], q[0];\ncx q[3], q[4];\ns q[1];\nz q[2];\nz q[3];\ny q[4];\ncx q[0], q[1];\ncx q[2], q[3];\ny q[2];\nsx q[3];\ny q[4];\ncx q[1], q[0];\ncx q[2], q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\ncx q[2], q[4];\ncx q[1], q[0];\ny q[4];\nsxdg q[3];\ny q[2];\ncx q[2], q[3];\ncx q[0], q[1];\ny q[4];\nz q[3];\nz q[2];\nsdg q[1];\ncx q[3], q[4];\ncx q[1], q[0];\nsdg q[4];\ny q[3];\nh q[2];\nh q[1];\nbarrier q[0], q[1], q[2], q[3], q[4];\nx q[1];\nx q[2];\nx q[3];\nx q[4];\nbarrier q[0], q[1], q[2], q[3], q[4];\nmeas[0] = measure q[0];\nmeas[1] = measure q[1];\nmeas[2] = measure q[2];\nmeas[3] = measure q[3];\nmeas[4] = measure q[4];\n",
+      "commitment": "sha3-256:896819f75a3e74ca5388c963efd673292b7d31859d4d32fdf69b1e47a823975e",
+      "counts": {
+        "00 000": 1
+      },
+      "expected": {
+        "error": "counts_multiple_registers"
+      }
+    }
+  ]
+}

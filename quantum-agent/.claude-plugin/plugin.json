@@ -1,7 +1,7 @@
 {
   "name": "quantum-agent",
   "description": "Quantum agentic systems over MCP: read IBM Quantum backends and calibration, build and classify circuits by what their results could ever prove, estimate cost, and simulate locally. Never submits jobs or spends QPU time.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Deadsg"
   },

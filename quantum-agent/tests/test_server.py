@@ -19,6 +19,7 @@ EXPECTED_TOOLS = {
     "classify_circuit",
     "estimate",
     "simulate",
+    "verify_result",
 }
 
 
@@ -79,3 +80,29 @@ def test_noisy_simulation_refuses_live_backends():
 
     result = run(go)
     assert result.is_error and "noise_backend_not_fake" in result.content[0].text
+
+
+def test_verify_result_scores_a_simulated_run():
+    async def go(s):
+        built = payload(await s.call_tool("build_circuit", {"template": "mirror", "qubits": 6, "seed": 3}))
+        ideal = built["template"]["ideal_outcome"]
+        return built, payload(
+            await s.call_tool(
+                "verify_result",
+                {"qasm": built["qasm"], "counts": {ideal: 95, "0" * 6: 5}, "threshold_ppm": 900_000},
+            )
+        )
+
+    built, r = run(go)
+    assert r["commitment"] == built["commitment"]
+    assert r["verdict"] == "pass" and r["score"]["ppm"] == 950_000
+    assert r["labels"]["result_is_correct"] == "verified_implementation"
+
+
+def test_verify_result_needs_exactly_one_of_counts_and_job():
+    async def go(s):
+        built = payload(await s.call_tool("build_circuit", {"template": "bell"}))
+        return await s.call_tool("verify_result", {"qasm": built["qasm"]})
+
+    result = run(go)
+    assert result.is_error and "counts_or_job" in result.content[0].text

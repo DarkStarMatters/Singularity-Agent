@@ -1,7 +1,7 @@
 """
 The quantum-agent MCP server.
 
-Every tool here reads, builds or computes locally. None submits a job, so none
+Every tool here reads, builds, computes or verifies. None submits a job, so none
 spends QPU time. Submission will be a separate, explicitly gated tool; until it
 exists, that sentence is true of the whole server, and `tests/test_server.py`
 holds it to that by pinning the tool list.
@@ -18,9 +18,11 @@ from mcp.types import ToolAnnotations
 
 from . import __version__, backends, circuits, jobs
 from .classify import classify
+from .commit import circuit_commitment
 from .envelope import LOCAL, QuantumAgentError, Source, exhaustive
 from .estimate import estimate as estimate_on
 from .simulate import simulate as simulate_on
+from .verify import verify as verify_counts
 
 INSTRUCTIONS = """\
 quantum-agent reads IBM Quantum backends, builds and classifies circuits, and \
@@ -33,6 +35,8 @@ evidence label a result from that circuit could ever earn. A circuit classed \
 Backends named `fake_*` are recorded snapshots of real devices; every answer \
 built on one carries the date it was recorded, and none describes the device \
 today. IBM credentials come from the server's environment only.
+
+After a run, `verify_result` scores its counts against the circuit and, given a threshold, says whether the result earns `verified_implementation`.
 
 Circuits travel as OpenQASM 3 text with a `sha3-256:` commitment to that text. \
 Pass the text back unchanged to keep the commitment valid."""
@@ -141,8 +145,6 @@ def classify_circuit(qasm: str) -> dict[str, Any]:
     """Before running a circuit, say what its result could ever prove: its class
     (deterministic, clifford, small, attested), the ideal outcome when there is exactly
     one, and the ThinLine label ceiling for each of Tessarq's three claims."""
-    from .commit import circuit_commitment
-
     qc = circuits.load_qasm(qasm)
     return _with_source({"commitment": circuit_commitment(qasm), **classify(qc)}, LOCAL)
 
@@ -175,6 +177,41 @@ def simulate(qasm: str, shots: int = 1000, seed: int = 0, noise_backend: str | N
         )
     b, src = backends.get_backend(noise_backend)
     return _with_source(simulate_on(qc, shots, seed, noise_backend=b), src)
+
+
+@server.tool(annotations=READ_ONLY_REMOTE)
+@structured
+def verify_result(
+    qasm: str,
+    counts: dict[str, int] | None = None,
+    job_id: str | None = None,
+    threshold_ppm: int | None = None,
+    shots: int | None = None,
+) -> dict[str, Any]:
+    """Check a run's counts against the circuit it was meant to run. Pass the complete
+    histogram as `counts`, or a finished IBM `job_id` to read it from IBM. Scores are ppm:
+    success probability for deterministic circuits, the share of shots inside the ideal
+    support for Clifford ones, Hellinger fidelity for small ones; attested circuits are
+    refused. With `threshold_ppm` the verdict is pass or fail and earns or loses
+    `verified_implementation`; without one it is reported only. Give `shots` to refuse a
+    histogram that is missing outcomes."""
+    if (counts is None) == (job_id is None):
+        raise QuantumAgentError("counts_or_job", "Pass exactly one of `counts` and `job_id`.")
+    qc = circuits.load_qasm(qasm)
+    if job_id is None:
+        result = verify_counts(qc, counts, threshold_ppm, shots)
+        return _with_source({"commitment": circuit_commitment(qasm), **result}, LOCAL)
+    job_counts, backend = jobs.full_counts(job_id)
+    result = verify_counts(qc, job_counts, threshold_ppm, shots)
+    result["job"] = {
+        "job_id": job_id,
+        "backend": backend,
+        "note": "Counts are IBM's record of this job. That the job ran this circuit is not checked here.",
+    }
+    return _with_source(
+        {"commitment": circuit_commitment(qasm), **result},
+        Source("ibm_quantum", f"counts of job {job_id}, read live; verified on this machine"),
+    )
 
 
 def main() -> None:

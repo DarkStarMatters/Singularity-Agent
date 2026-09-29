@@ -52,6 +52,7 @@ alone, and a device stuck at |0⟩ cannot pass.
 | `classify_circuit` | the class, the ideal outcome, and the three label ceilings | local |
 | `estimate` | seeded transpile: depth, 2q count, layout, estimated success probability, lower bound on QPU seconds | IBM / local |
 | `simulate` | Aer, ideal or noisy under a fake backend's recorded calibration | local |
+| `verify_result` | score a run's counts against the circuit and, given a threshold, pass or fail it | local / IBM |
 
 Every answer carries a `source`: `ibm_quantum`, `fake_backend_snapshot` (with the date the
 calibration was recorded, which says nothing about the device today), or `local`. Lists
@@ -74,6 +75,47 @@ nothing on-chain fixes their byte format yet. Until it does, this is the definit
 Both are spelled `sha3-256:<hex>`. Tessarq's `Hash32::from_hex` strips only `0x`, so strip
 the prefix before putting one on-chain.
 
+## Verifying a run
+
+`classify_circuit` says what a result could prove. `verify_result` checks whether one did:
+it takes the circuit and the run's complete histogram (as `counts`, or read from IBM by
+`job_id`), and scores it by the method the circuit's class allows.
+
+| Class | Method | Score |
+|---|---|---|
+| `deterministic` | `success_probability` | shots on the one ideal outcome / shots |
+| `clifford` | `stabilizer_support` | shots inside the ideal support / shots |
+| `small` | `hellinger_fidelity` | Hellinger fidelity to the ideal distribution |
+| `attested` | refused | nothing here can check it |
+
+Scores are parts per million. With `threshold_ppm` the verdict is `pass` or `fail`, taken in
+integers with no rounding first: pass iff `numerator × 1,000,000 ≥ threshold_ppm ×
+denominator`. A pass earns `result_is_correct` at `verified_implementation`, and a fail
+earns `rejected`. Without a threshold, the score is reported and no label is earned. The
+other two claims keep their ceilings whatever the score: a pass checks counts against a
+circuit, not where the counts came from, and a circuit that can be checked classically can
+be simulated classically.
+
+A Clifford circuit's ideal support is an affine subspace of bitstrings. It is found with
+Aaronson–Gottesman tableau arithmetic, in integers, at any width (a 100-qubit GHZ state is
+checked in milliseconds). The support is returned as parity constraints over classical bits,
+in reduced row echelon form, which is unique, so another implementation can compare it
+directly. `weakest_constraint` names the parity the run broke most often.
+
+A histogram with outcomes missing cannot be scored. `job` cuts its histograms to the top
+outcomes for reading, so `verify_result` with `job_id` reads the complete one. Pass `shots`
+with hand-supplied counts to refuse a histogram that doesn't add up.
+
+### Test vectors for Tessarq
+
+[`vectors/verify-v1.json`](vectors/verify-v1.json) holds the cases Tessarq's Rust Q2
+verifiers must reproduce: circuit text and commitment, counts, and the expected score,
+verdict, labels and constraints. Includes the boundaries (exactly at the threshold, one
+ppm over, a score that floors), a device stuck at all-zeros, partial measurement, and the
+refusals. Integer methods must match exactly. Hellinger cases carry a tolerance until
+Tessarq fixes its fixed-point format. The file is generated from the Python verifiers
+(`uv run python -m quantum_agent.vectors`), and a test fails if the two drift apart.
+
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). Sync once before first use: the first sync
@@ -82,7 +124,7 @@ downloads qiskit and Aer, which takes longer than an MCP client waits for a serv
 ```bash
 cd quantum-agent
 uv sync
-uv run pytest            # 42 tests; no network, no credentials
+uv run pytest            # 107 tests; no network, no credentials
 ```
 
 IBM credentials come from the environment the server runs in, never from a tool argument:
@@ -116,13 +158,10 @@ claude mcp add quantum-agent -- uv run --quiet --directory /path/to/Singularity-
 
 In order. See the plan in the repository's roadmap discussion:
 
-1. **Verifiers.** Mirror success probability first, then Clifford support and small-circuit
-   Hellinger fidelity. Each ships with JSON test vectors that Tessarq's Rust Q2 verifiers
-   must reproduce.
-2. **Gated submission.** `submit_job`: dry run by default, a hard cap on QPU seconds,
+1. **Gated submission.** `submit_job`: dry run by default, a hard cap on QPU seconds,
    optional Q-CTRL Fire Opal, and the first real mirror batch measured raw against Fire
    Opal.
-3. **Onto the chain.** A ThinLine experiment record as an unsigned Tessarq payload, and
+2. **Onto the chain.** A ThinLine experiment record as an unsigned Tessarq payload, and
    `QuantumJobStake.isEligible` read through Singularity.
-4. **Agentics.** Singularity's evidence-scored mesh with quantum tools as its moves, and
+3. **Agentics.** Singularity's evidence-scored mesh with quantum tools as its moves, and
    budget-bounded variational loops.
