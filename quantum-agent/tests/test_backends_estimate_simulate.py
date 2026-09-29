@@ -114,3 +114,26 @@ def test_wide_non_clifford_simulation_is_refused():
     with pytest.raises(QuantumAgentError) as e:
         simulate(qc, 10, 0)
     assert e.value.code == "simulation_too_wide"
+
+
+def test_ideal_simulation_does_not_depend_on_the_process_hash_seed():
+    # Transpiling for Aer at higher optimisation levels varied with PYTHONHASHSEED, and some
+    # variants failed under the stabilizer method. It only shows across processes.
+    import json
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "import json\n"
+        "from quantum_agent.circuits import build\n"
+        "from quantum_agent.simulate import simulate\n"
+        "qc, _ = build('mirror', 6, 5, 9)\n"
+        "print(json.dumps(simulate(qc, 200, seed=1)['counts']))\n"
+    )
+    seen = set()
+    for hashseed in ("0", "2", "4"):
+        env = {**os.environ, "PYTHONHASHSEED": hashseed}
+        out = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True)
+        seen.add(json.dumps(json.loads(out.stdout), sort_keys=True))
+    assert len(seen) == 1

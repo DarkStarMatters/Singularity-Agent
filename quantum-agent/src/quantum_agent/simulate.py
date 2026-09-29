@@ -71,7 +71,11 @@ def simulate(qc: QuantumCircuit, shots: int, seed: int, noise_backend=None) -> d
 
     if noise_backend is None:
         sim = AerSimulator(method="stabilizer" if clifford else "automatic", seed_simulator=seed)
-        runnable = transpile(qc, sim, seed_transpiler=seed)
+        # Level 0: translate gates Aer lacks, and resynthesise nothing. At higher levels the
+        # output against Aer's target varies with Python's per-process hash seed, and some
+        # variants carry rotations the stabilizer method rejects, so a Clifford circuit
+        # failed at random and a seeded run was not reproducible from its output.
+        runnable = transpile(qc, sim, seed_transpiler=seed, optimization_level=0)
         mode = "ideal"
     else:
         sim = AerSimulator.from_backend(noise_backend, seed_simulator=seed)
