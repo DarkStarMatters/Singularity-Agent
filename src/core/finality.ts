@@ -199,9 +199,9 @@ export function finalityFromConfirmations(height: number, tipHeight: number): Fi
  * own double-signing. This is the only family here that gets `final` without a
  * checkpoint to compare against.
  */
-export function finalityFromCommit(height: number): Finality {
+export function finalityFromCommit(height: number, engine = 'Tendermint'): Finality {
   return finality.final(
-    `Block ${height} is committed. Tendermint finalizes on commit, so there is no reorganization window to wait out on this chain.`,
+    `Block ${height} is committed. ${engine} finalizes on commit, so there is no reorganization window to wait out on this chain.`,
     { height },
   );
 }

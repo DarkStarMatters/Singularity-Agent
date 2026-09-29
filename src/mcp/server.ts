@@ -53,6 +53,8 @@ export function createServer(): McpServer {
         'Start with `resolve` when you are handed a bare string: it identifies whether it is an address, a transaction hash, or a name, and which chains it could belong to. `chains` lists everything supported.',
         '',
         'Balances are returned without fiat pricing. On EVM chains, token lists cover a curated set of major tokens — never present them as a complete holdings list.',
+        '',
+        'Tessarq (chain "tessarq") has no public endpoint: it reads a node the user runs or reaches, at 127.0.0.1:8650 unless SINGULARITY_RPC_TESSARQ says otherwise. Its RPC cannot look a transaction up by hash, and its transfers are signed by the tessarq CLI, so `build_transfer` there returns the command to run.',
       ].join('\n'),
     },
   );

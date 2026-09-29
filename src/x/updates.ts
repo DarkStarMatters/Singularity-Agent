@@ -188,6 +188,13 @@ function chainNote(chain: ReturnType<typeof allChains>[number]): ChainNote {
         'bank balances DO enumerate fully, unlike EVM, so an empty result really does mean the account holds nothing',
       );
       break;
+    case 'tessarq':
+      details.push(
+        'no public endpoint: it reads a node you run or reach, at localhost:8650 unless SINGULARITY_RPC_TESSARQ says otherwise',
+        'addresses are 64 hex characters, the hash of an ML-DSA-65 post-quantum public key',
+        'blocks are final on commit, Tendermint-style; there is no transaction lookup by hash on its RPC, and the tool says so rather than searching',
+      );
+      break;
     case 'svm':
       details.push(
         'token accounts are owned by the wallet, so Solana holdings really can be enumerated in full',

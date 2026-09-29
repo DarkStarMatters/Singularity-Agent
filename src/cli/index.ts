@@ -52,7 +52,7 @@ const program = new Command();
 program
   .name('singularity')
   .description(
-    'Universal blockchain CLI across EVM, Solana, Bitcoin and Cosmos. Read-only: it holds no keys and never signs.',
+    'Universal blockchain CLI across EVM, Solana, Bitcoin and Cosmos, and Tessarq through a node you run. Read-only: it holds no keys and never signs.',
   )
   .version(VERSION)
   .option('--json', 'Output raw JSON instead of formatted text.')

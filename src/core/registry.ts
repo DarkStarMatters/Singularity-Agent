@@ -61,7 +61,7 @@ export function allChains(force = false): ChainSpec[] {
   const byId = new Map<string, ChainSpec>();
 
   for (const chain of BUILTIN_CHAINS) {
-    byId.set(chain.id, { ...chain, rpc: [...chain.rpc] });
+    byId.set(chain.id, { ...chain, rpc: [...chain.rpc], rpcSource: 'builtin' });
   }
 
   // User entries either patch a built-in or define a brand new chain.
@@ -71,7 +71,11 @@ export function allChains(force = false): ChainSpec[] {
     }
     const existing = byId.get(patch.id);
     if (existing) {
-      byId.set(patch.id, { ...existing, ...patch } as ChainSpec);
+      byId.set(patch.id, {
+        ...existing,
+        ...patch,
+        rpcSource: patch.rpc?.length ? 'config' : existing.rpcSource,
+      } as ChainSpec);
       continue;
     }
     if (!patch.family || !patch.nativeCurrency || !patch.rpc?.length) {
@@ -81,13 +85,16 @@ export function allChains(force = false): ChainSpec[] {
         'A new chain needs at least: id, family, nativeCurrency {name,symbol,decimals}, rpc[].',
       );
     }
-    byId.set(patch.id, { name: patch.id, ...patch } as ChainSpec);
+    byId.set(patch.id, { name: patch.id, ...patch, rpcSource: 'config' } as ChainSpec);
   }
 
   // Env overrides win over both built-ins and the config file.
   for (const chain of byId.values()) {
     const override = envRpcOverride(chain.id);
-    if (override) chain.rpc = override.split(',').map((s) => s.trim()).filter(Boolean);
+    if (override) {
+      chain.rpc = override.split(',').map((s) => s.trim()).filter(Boolean);
+      chain.rpcSource = 'env';
+    }
   }
 
   cachedChains = [...byId.values()];
@@ -112,6 +119,15 @@ export function getChain(ref: string | number): ChainSpec {
   if (byName) return byName;
 
   throw new UnknownChainError(String(ref), chains.map((c) => c.id));
+}
+
+/**
+ * The chains a sweep covers when it was not told which: every chain, except one
+ * that needs your own node and has not been pointed at one. See
+ * `ChainSpec.requiresOwnNode`.
+ */
+export function sweepChains(): ChainSpec[] {
+  return allChains().filter((c) => !c.requiresOwnNode || c.rpcSource !== 'builtin');
 }
 
 export function chainsByFamily(family: ChainFamily): ChainSpec[] {

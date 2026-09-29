@@ -1048,8 +1048,9 @@ it expanded, either way.
 
 ## Supported chains
 
-Thirty-two: twenty-eight mainnets and four testnets. Every mainnet answers from at least
-two verified endpoints, and a test holds it there.
+Thirty-three: twenty-eight mainnets, four testnets, and Tessarq. Every mainnet answers from
+at least two verified endpoints, and a test holds it there. Tessarq is the exception, and it
+is one because it has no public endpoints at all (below).
 
 **EVM** (18) — Ethereum, Base, Arbitrum One, OP Mainnet, Polygon PoS, BNB Smart Chain,
 Avalanche C-Chain, Gnosis, Scroll, Linea, ZKsync Era, Blast, Mantle, Mode, Fraxtal, opBNB,
@@ -1061,6 +1062,33 @@ plus Sepolia and Base Sepolia. Any other EVM chain works via the config file.
 
 **Cosmos** (9) — Cosmos Hub, Osmosis, Celestia, Injective, dYdX, Sei, Neutron, Stride,
 Kava.
+
+**Tessarq** (1) — through a node you run or can reach. Tessarq is a proof-of-stake chain with
+post-quantum (ML-DSA-65) signatures and its own REST RPC, and no public endpoint: operators
+reach a node on localhost, over an SSH tunnel, or over their validators' private network.
+Singularity reads `http://127.0.0.1:8650`, where a node listens by default, until you say
+otherwise:
+
+```bash
+export SINGULARITY_RPC_TESSARQ=http://127.0.0.1:8650                         # your node
+export SINGULARITY_RPC_TESSARQ=http://10.77.0.1:8650,http://10.77.0.2:8650   # two, for failover
+singularity balance <address> --chain tessarq
+```
+
+- **Reads:** TSRQ and bridged-asset balances, blocks (final on commit, with the commit
+  certificate's round and precommits), the chain tip, and the minimum fee under the protocol
+  version the node is running. Balances run to 10¹⁸ base units, past what a JavaScript number
+  holds exactly, so the node's JSON is parsed without rounding.
+- **Transfers:** `build` checks the recipient, the amount and the sender's balance, and hands
+  back the `tessarq transfer` command with the amount in base units. No wallet signs
+  ML-DSA-65; the tessarq CLI builds and signs its own transaction.
+- **Not available:** looking a transaction up by hash (the RPC has no such endpoint),
+  history, and reads at a past block. Each is refused with the reason, never answered empty.
+- **Which network:** every Tessarq network runs the same software. Set `"chainId"` for
+  `tessarq` in the config file and a node serving any other network is refused.
+- **Sweeps:** `doctor` and the liveness tool leave Tessarq out until an endpoint is
+  configured, so nobody without a node is told theirs is down. Naming it always checks it.
+- **Hosted endpoint:** can't reach your node. Use the local server for Tessarq.
 
 Not included, on purpose: **Polygon zkEVM**, whose endpoints answer with a head block
 seventy-six days old — a stopped chain returns history wearing a current-state label.

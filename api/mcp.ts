@@ -56,6 +56,8 @@ const INSTRUCTIONS = [
   'Start with `resolve` when you are handed a bare string: it identifies whether it is an address, a transaction hash, or a name, and which chains it could belong to. `chains` lists everything supported.',
   '',
   'Balances are returned without fiat pricing. On EVM chains, token lists cover a curated set of major tokens — never present them as a complete holdings list.',
+  '',
+  "Tessarq (chain \"tessarq\") has no public endpoint, and this hosted server cannot reach a node on the user's machine or network. For Tessarq, the user runs the local server (npx -p singularity-agent singularity-mcp) with SINGULARITY_RPC_TESSARQ pointing at their node.",
 ].join('\n');
 
 interface Request {

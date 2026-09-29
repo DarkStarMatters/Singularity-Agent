@@ -89,14 +89,21 @@ export function detect(input: string): Detection {
   if (HEX_64.test(value)) {
     const evmChains = chains.filter((c) => c.family === 'evm').map((c) => c.id);
     const cosmosChains = chains.filter((c) => c.family === 'cosmos').map((c) => c.id);
+    const tessarqChains = chains.filter((c) => c.family === 'tessarq').map((c) => c.id);
     const prefixed = value.startsWith('0x');
+    // Tessarq writes both account addresses and transaction hashes as 64 bare
+    // hex characters, so on that chain this shape is as likely an account as a
+    // transaction. It is listed last, with the reason saying so, rather than
+    // letting a hash search imply it was the only reading.
     return {
       kind: 'tx',
-      families: prefixed ? ['evm'] : ['evm', 'utxo', 'cosmos'],
-      chains: prefixed ? evmChains : [...evmChains, 'bitcoin', ...cosmosChains],
+      families: prefixed ? ['evm', 'tessarq'] : ['evm', 'utxo', 'cosmos', 'tessarq'],
+      chains: prefixed
+        ? [...evmChains, ...tessarqChains]
+        : [...evmChains, 'bitcoin', ...cosmosChains, ...tessarqChains],
       reason: prefixed
-        ? '0x + 64 hex characters is an EVM transaction hash. Which EVM chain it is on cannot be told from the hash alone.'
-        : '64 hex characters with no prefix could be an EVM tx hash, a Bitcoin txid, or a Cosmos tx hash.',
+        ? '0x + 64 hex characters is an EVM transaction hash. Which EVM chain it is on cannot be told from the hash alone. On Tessarq the same shape is also an account address: pass chain "tessarq" to read it as one.'
+        : '64 hex characters with no prefix could be an EVM tx hash, a Bitcoin txid, or a Cosmos tx hash. On Tessarq it is also how an account address is written: pass chain "tessarq" to read it as one.',
     };
   }
 
@@ -132,7 +139,7 @@ export function detect(input: string): Detection {
   if (/^\d+$/.test(value)) {
     return {
       kind: 'block',
-      families: ['evm', 'svm', 'utxo', 'cosmos'],
+      families: ['evm', 'svm', 'utxo', 'cosmos', 'tessarq'],
       chains: [],
       reason: 'A bare number is a block height or slot — it needs a chain to mean anything.',
     };

@@ -1752,6 +1752,31 @@ Two separate pieces of work, and the second is the one that matters:
 Until the second exists, "every mainnet has failover" remains a sentence rather than a
 guarantee, and this file has been specific about what those are worth.
 
+### Shipped: Tessarq, a fifth family, through a node you run
+
+Tessarq is its own chain, with ML-DSA-65 signatures and a REST RPC every node serves, and
+no public endpoint at all. That made it the first chain here whose endpoint the user
+supplies, so it got a flag rather than an exemption by name: `requiresOwnNode`. Its
+default is where a node listens out of the box (a test holds it to loopback), and sweeps
+leave it out until an endpoint is configured, so nobody without a node is told theirs is
+down. Its failover is the nodes you list.
+
+Every shape was checked against a local four-validator testnet, not read off the Rust
+types, and the testnet found three things the types did not say:
+
+- **Amounts past 2^53, as bare JSON integers.** A faucet balance of 49995998749999990
+  parses as …992, and prints as …990, so the error survives inspection. The node's JSON is
+  now parsed without rounding.
+- **The fee depends on the protocol version.** A transfer cost 10 base units under
+  version 1. After the testnet was voted to version 2, the predicted 5,217,774 matched
+  what the chain charged exactly.
+- **One network looks like another.** Every Tessarq network runs the same software, so a
+  balance from the wrong one is well formed. With `chainId` configured, the endpoint that
+  actually answered is checked, including after failover.
+
+Not available, and refused with the reason: transaction lookup by hash (the RPC has
+none), history, and reads at a past block.
+
 ### Still to come
 
 - **EVM L2s:** Polygon zkEVM, when it produces blocks again. That was a standing memory

@@ -27,7 +27,7 @@ import {
   type BurnCriteria,
   type Redemption,
 } from '../core/burn-ledger.js';
-import { allChains, getChain, portfolioChains } from '../core/registry.js';
+import { allChains, getChain, portfolioChains, sweepChains } from '../core/registry.js';
 import {
   classify,
   hostOf,
@@ -881,6 +881,7 @@ export async function resolveFinality(
   if (height === undefined || !Number.isFinite(height)) return undefined;
 
   if (chain.family === 'cosmos') return finalityFromCommit(height);
+  if (chain.family === 'tessarq') return finalityFromCommit(height, 'Tessarq (Tendermint-style BFT)');
 
   const heads = await headsFor(chain);
 
@@ -1045,7 +1046,7 @@ export interface EndpointHealthResult {
  * status of the other forty.
  */
 export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthResult[]> {
-  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : allChains();
+  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : sweepChains();
 
   return Promise.all(
     targets.map(async (chain): Promise<EndpointHealthResult> => {
@@ -1083,7 +1084,7 @@ export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthR
  * failover's whole job is to paper over the difference between them.
  */
 export async function checkLiveness(chains?: string[]): Promise<ChainLiveness[]> {
-  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : allChains();
+  const targets = chains?.length ? chains.map((ref) => getChain(ref)) : sweepChains();
 
   const jobs = targets.flatMap((chain) => chain.rpc.map((endpoint) => ({ chain, endpoint })));
 

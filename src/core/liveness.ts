@@ -98,6 +98,11 @@ const STALE_AFTER_SECONDS: Record<ChainFamily, number> = {
   /** Tendermint targets ~6s and halts outright rather than slowing down. */
   cosmos: 900,
   /**
+   * Tessarq's BFT commits about a block a second and, like Tendermint, halts
+   * outright when fewer than two thirds of validators are up.
+   */
+  tessarq: 900,
+  /**
    * Bitcoin targets 10 minutes and the interval is exponential — an hour
    * between blocks is unremarkable luck. Three hours is not.
    */

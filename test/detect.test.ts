@@ -41,13 +41,14 @@ describe('detect', () => {
   it('treats a 0x-prefixed 64-hex string as an EVM tx hash', () => {
     const result = detect(`0x${'a'.repeat(64)}`);
     expect(result.kind).toBe('tx');
-    expect(result.families).toEqual(['evm']);
+    // Tessarq writes addresses and hashes in the same shape, 0x optional.
+    expect(result.families).toEqual(['evm', 'tessarq']);
   });
 
   it('reports ambiguity for an unprefixed 64-hex hash rather than guessing', () => {
     const result = detect('a'.repeat(64));
     expect(result.kind).toBe('tx');
-    expect(result.families).toEqual(['evm', 'utxo', 'cosmos']);
+    expect(result.families).toEqual(['evm', 'utxo', 'cosmos', 'tessarq']);
   });
 
   it('identifies ENS and SNS names', () => {

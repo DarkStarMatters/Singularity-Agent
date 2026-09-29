@@ -10,7 +10,7 @@ import type { Impersonation } from './impersonation.js';
 import type { Completeness, UntrustedText } from './envelope.js';
 import type { Finality } from './finality.js';
 
-export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos';
+export type ChainFamily = 'evm' | 'svm' | 'utxo' | 'cosmos' | 'tessarq';
 
 export interface NativeCurrency {
   name: string;
@@ -36,6 +36,21 @@ export interface ChainSpec {
   denom?: string;
   /** Free-form aliases accepted on the CLI / in tool args. */
   aliases?: string[];
+  /**
+   * The chain has no public endpoint: you run a node, or reach one you trust.
+   *
+   * `rpc` then holds where a node listens by default, which is a fact about the
+   * node software and not a service anybody operates. Sweeps across every chain
+   * (liveness, endpoint checks) leave such a chain out until an endpoint is
+   * configured for it, because reporting "down" for a node the user never ran
+   * would be a finding about nothing. Naming the chain always queries it.
+   */
+  requiresOwnNode?: true;
+  /**
+   * Where `rpc` came from: this tool's registry, the user's config file, or an
+   * environment variable. Set by the registry, never by a chain entry.
+   */
+  rpcSource?: 'builtin' | 'config' | 'env';
 }
 
 /** A quantity expressed in both raw base units and human decimal form. */

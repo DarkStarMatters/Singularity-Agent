@@ -87,7 +87,7 @@ export const TOOLS: ToolDefinition[] = [
     shape: {
       query: z.string().optional().describe('Filter by name, id, alias, symbol, or chain id.'),
       family: z
-        .enum(['evm', 'svm', 'utxo', 'cosmos'])
+        .enum(['evm', 'svm', 'utxo', 'cosmos', 'tessarq'])
         .optional()
         .describe('Restrict to one chain family.'),
     },
@@ -389,7 +389,9 @@ export const TOOLS: ToolDefinition[] = [
       chain: z
         .array(z.string())
         .optional()
-        .describe('Chain ids or aliases to check. Defaults to every configured chain.'),
+        .describe(
+          'Chain ids or aliases to check. Defaults to every chain, except Tessarq until an endpoint is configured for it (it has no public one).',
+        ),
     },
     run: ({ chain }) => ops.checkLiveness(chain),
   }),

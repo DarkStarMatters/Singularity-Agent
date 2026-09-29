@@ -10,6 +10,14 @@ export interface FetchOptions {
   timeoutMs?: number;
   /** Treat a 404 as a null result rather than an error (common for "not found"). */
   nullOn404?: boolean;
+  /**
+   * Parse the body with this instead of `JSON.parse`.
+   *
+   * For sources that write integers past 2^53 as bare JSON numbers: `JSON.parse`
+   * rounds them to the nearest double without a sound, and the balance that
+   * comes back is a different balance.
+   */
+  parse?: (text: string) => unknown;
 }
 
 async function once(url: string, options: FetchOptions): Promise<Response> {
@@ -86,7 +94,7 @@ export async function fetchWithFailoverDetail<T>(
       const text = await response.text();
       if (!text) return { data: null, headers: response.headers, url };
       try {
-        return { data: JSON.parse(text) as T, headers: response.headers, url };
+        return { data: (options.parse ?? JSON.parse)(text) as T, headers: response.headers, url };
       } catch {
         // Esplora returns bare strings (block hashes, heights) with no JSON quoting.
         return { data: text.trim() as unknown as T, headers: response.headers, url };

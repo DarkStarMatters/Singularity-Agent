@@ -387,6 +387,28 @@ export const BUILTIN_CHAINS: ChainSpec[] = [
     // because it is a property of the lookup rather than of this entry.
     denom: 'ukava',
   },
+
+  // ------------------------------------------------------------- Tessarq
+  {
+    // Tessarq is its own chain with its own RPC: REST over HTTP, served by
+    // every node, with no public endpoint. Operators reach theirs on
+    // localhost, over an SSH tunnel, or over the validators' private network,
+    // so the only honest default is where a node listens out of the box.
+    // Point it elsewhere with SINGULARITY_RPC_TESSARQ (comma-separated for
+    // failover across nodes) or `chains` in ~/.singularity/config.json.
+    //
+    // No chainId: each network names its own (`tessarq-local` for a local
+    // testnet), and the adapter reports the one the node serves rather than
+    // assuming it. Set `chainId` in config to have a node serving a different
+    // network refused.
+    id: 'tessarq',
+    name: 'Tessarq',
+    family: 'tessarq',
+    nativeCurrency: { name: 'Tessarq', symbol: 'TSRQ', decimals: 9 },
+    rpc: ['http://127.0.0.1:8650'],
+    aliases: ['tsrq'],
+    requiresOwnNode: true,
+  },
 ];
 
 /** Chains queried by default when a portfolio request names no chains. */

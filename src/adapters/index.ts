@@ -5,12 +5,14 @@ import { evmAdapter } from './evm.js';
 import { solanaAdapter } from './solana.js';
 import { bitcoinAdapter } from './bitcoin.js';
 import { cosmosAdapter } from './cosmos.js';
+import { tessarqAdapter } from './tessarq.js';
 
 const ADAPTERS: Record<ChainFamily, ChainAdapter> = {
   evm: evmAdapter,
   svm: solanaAdapter,
   utxo: bitcoinAdapter,
   cosmos: cosmosAdapter,
+  tessarq: tessarqAdapter,
 };
 
 export function adapterFor(chain: ChainSpec): ChainAdapter {
@@ -25,4 +27,4 @@ export function adapterForFamily(family: ChainFamily): ChainAdapter {
   return ADAPTERS[family];
 }
 
-export { evmAdapter, solanaAdapter, bitcoinAdapter, cosmosAdapter };
+export { evmAdapter, solanaAdapter, bitcoinAdapter, cosmosAdapter, tessarqAdapter };

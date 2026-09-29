@@ -50,7 +50,8 @@ describe('families', () => {
       chainsByFamily('evm').length +
       chainsByFamily('svm').length +
       chainsByFamily('utxo').length +
-      chainsByFamily('cosmos').length;
+      chainsByFamily('cosmos').length +
+      chainsByFamily('tessarq').length;
     expect(grouped).toBe(total);
   });
 });
@@ -154,12 +155,29 @@ describe('failover is a guarantee or it is not', () => {
   ]);
 
   it('gives every mainnet chain somewhere to fail over to', () => {
+    // A chain that needs your own node has no public endpoints for this list to
+    // hold: its failover is the nodes you configure, and `doctor` reports a
+    // single one as `single`. The next test holds what its default may be.
     const thin = allChains()
       .filter((chain) => !chain.testnet && !SINGLE_ENDPOINT_BY_NECESSITY.has(chain.id))
+      .filter((chain) => !chain.requiresOwnNode)
       .filter((chain) => chain.rpc.length < 2)
       .map((chain) => chain.id);
 
     expect(thin).toEqual([]);
+  });
+
+  it('lets a chain that needs your own node default only to this machine', () => {
+    // The exemption above is for having no public endpoint, so a default that
+    // pointed anywhere but loopback would be a server this tool had quietly
+    // chosen for you, which is the thing the exemption does not excuse.
+    const ownNode = allChains().filter((chain) => chain.requiresOwnNode);
+    expect(ownNode.map((chain) => chain.id)).toContain('tessarq');
+    for (const chain of ownNode) {
+      for (const endpoint of chain.rpc) {
+        expect(new URL(endpoint).hostname).toBe('127.0.0.1');
+      }
+    }
   });
 
   it('keeps the exemption list honest about what is on it', () => {
