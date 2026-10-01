@@ -872,6 +872,28 @@ Full documentation: **[quantum-agent/README.md](quantum-agent/README.md)**.
 
 ---
 
+## `singularity-lean-agent` — the third plugin
+
+The third plugin links Singularity to the [lean-worker](https://github.com/meta-introspector/lean-worker)
+Lean 4 prover. It compiles Lean and reports the axioms each theorem rests on, so "proved"
+means the kernel accepted it with no `sorryAx`, not that a grep found no `sorry`.
+
+It runs lean-worker's certified prover-call protocol between real machines, as
+**lean-link/1**: a byte-exact encoding, pinned by kernel-checked vectors on the Lean side,
+with HMAC-SHA256 tags. It also seals and opens Kant zk-relay envelopes. It never posts to
+the relay on its own. It runs a compiler and holds keys, so it lives outside this plugin.
+
+```bash
+npm run build -w singularity-lean-agent
+claude plugin install singularity-lean-agent@singularity
+npx singularity-lean worker fetch && npx singularity-lean worker build
+```
+
+Full documentation, including an assessment of lean-worker built against its pinned
+toolchain: **[singularity-lean-agent/README.md](singularity-lean-agent/README.md)**.
+
+---
+
 ## Singularity Pay
 
 Solana only, and structurally so: it is built on Solana Pay's transaction-request
@@ -1247,6 +1269,8 @@ Every script in `package.json`:
 | `npm run agent` | The elizaOS agent. |
 | `npm run build:sdk` | Build the agent, then `singularity-sdk` against it. |
 | `npm run typecheck:sdk` | Build the agent, then typecheck `singularity-sdk`. |
+| `npm run build:lean` | Build `singularity-lean-agent`, including the bundled MCP server its plugin runs. |
+| `npm run typecheck:lean` | Typecheck `singularity-lean-agent`. |
 | `npm run smoke:burn [-- <url>]` | Ask the deployed `/api/burn` whether it is alive, the way a wallet would. Burns nothing. |
 | `npm run verify:builders` | Build, then simulate every transaction builder against mainnet. Signs and sends nothing; needs the network, so not part of `npm test`. |
 | `npm run prepublishOnly` | Runs `build`; npm calls it before a publish. |

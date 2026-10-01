@@ -1,0 +1,17 @@
+{
+  "name": "singularity-lean-agent",
+  "description": "Lean 4 proof checking for agents, linked to the lean-worker prover: compile and kernel-check Lean, list the axioms a theorem rests on, call a prover node and verify its signed certificate, and seal or open Kant zk-relay envelopes. Runs the Lean compiler on your machine; never posts to the relay on its own.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Deadsg"
+  },
+  "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-lean-agent",
+  "license": "MIT",
+  "keywords": ["lean4", "theorem-proving", "formal-verification", "lean-worker", "mcp"],
+  "mcpServers": {
+    "singularity-lean": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp.bundle.js"]
+    }
+  }
+}

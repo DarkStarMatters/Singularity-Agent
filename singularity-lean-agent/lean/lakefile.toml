@@ -1,0 +1,8 @@
+name = "SingularityLean"
+version = "0.1.0"
+defaultTargets = ["SingularityLean"]
+
+# No dependencies: the wire format needs nothing beyond core Lean, and a link
+# that pulled in Mathlib would take an hour to build for a few string functions.
+[[lean_lib]]
+name = "SingularityLean"

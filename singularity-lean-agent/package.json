@@ -1,0 +1,37 @@
+{
+  "name": "singularity-lean-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Links Singularity Agent to the lean-worker Lean 4 prover: certified prover calls over lean-link/1, local kernel checks, and the Kant zk-relay envelope.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Deadsg",
+  "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-lean-agent#readme",
+  "bin": {
+    "singularity-lean": "./dist/cli.js",
+    "singularity-lean-mcp": "./dist/mcp.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/bundle-mcp.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vectors": "tsx scripts/write-vectors.ts",
+    "lean": "cd lean && lake build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "commander": "^14.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3"
+  }
+}

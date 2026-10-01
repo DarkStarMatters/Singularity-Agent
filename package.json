@@ -19,7 +19,8 @@
     "singularity-mcp": "./dist/mcp/server.js"
   },
   "workspaces": [
-    "singularity-sdk"
+    "singularity-sdk",
+    "singularity-lean-agent"
   ],
   "main": "./dist/index.js",
   "exports": {
@@ -51,7 +52,9 @@
     "x-bot": "tsx src/x/bot.ts",
     "agent": "tsx src/agent.ts",
     "smoke:burn": "node scripts/smoke-burn.mjs",
-    "verify:builders": "npm run build && node scripts/verify-builders.mjs"
+    "verify:builders": "npm run build && node scripts/verify-builders.mjs",
+    "build:lean": "npm run build -w singularity-lean-agent",
+    "typecheck:lean": "npm run typecheck -w singularity-lean-agent"
   },
   "keywords": [
     "mcp",

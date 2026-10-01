@@ -27,6 +27,17 @@
       "category": "development",
       "version": "0.2.0",
       "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/quantum-agent"
+    },
+    {
+      "name": "singularity-lean-agent",
+      "description": "Lean 4 proof checking linked to the lean-worker prover: kernel-check Lean and report the axioms a theorem rests on, call a prover node and verify its signed certificate, and seal or open Kant zk-relay envelopes. Runs the Lean compiler locally; never posts to the relay on its own.",
+      "author": {
+        "name": "Deadsg"
+      },
+      "source": "./singularity-lean-agent",
+      "category": "development",
+      "version": "0.1.0",
+      "homepage": "https://github.com/DarkStarMatters/Singularity-Agent/tree/main/singularity-lean-agent"
     }
   ]
 }
