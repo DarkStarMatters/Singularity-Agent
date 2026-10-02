@@ -777,6 +777,7 @@ export const cosmosAdapter: ChainAdapter = {
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'cosmos',
       summary: `Send ${params.amount} ${info.symbol} from ${shortAddress(from)} to ${shortAddress(to)} on ${chain.name}.`,
       payload: {

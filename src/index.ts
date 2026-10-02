@@ -49,6 +49,21 @@ export {
 } from './core/liveness-history.js';
 
 /**
+ * The response invariants, as checks. `checkShape` needs only a response, so an
+ * application can hold what it receives to the same claims the test suite does.
+ */
+export type { InvariantId, SearchRecord, Violation } from './core/invariants.js';
+export {
+  checkCut,
+  checkFailedRead,
+  checkNotFoundClaim,
+  checkNotStronger,
+  checkSearched,
+  checkShape,
+  INVARIANTS,
+} from './core/invariants.js';
+
+/**
  * Polling. One loop, shared by `singularity watch` and `singularity-sdk`,
  * because the dependency only runs one way and two loops would be two sets of
  * backoff semantics. Read the note in `core/watch.ts` on what a poll can and

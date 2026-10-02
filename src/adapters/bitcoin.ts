@@ -423,6 +423,7 @@ export const bitcoinAdapter: ChainAdapter = {
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'utxo',
       summary: `Spend ${selected.length} UTXO(s) from ${shortAddress(from)} to send ${params.amount} ${chain.nativeCurrency.symbol} to ${shortAddress(to)} on ${chain.name}, paying ~${nativeAmount(fee, chain).formatted} in fees.`,
       payload: {

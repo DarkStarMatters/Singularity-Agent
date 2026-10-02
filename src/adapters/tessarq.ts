@@ -518,6 +518,7 @@ export const tessarqAdapter: ChainAdapter = {
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'tessarq',
       summary: `Send ${params.amount} ${symbol} to ${shortAddress(to)} on ${chain.name}${from ? ` from ${shortAddress(from)}` : ''}.`,
       payload: {

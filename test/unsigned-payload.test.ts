@@ -16,6 +16,7 @@ import type { UnsignedTx } from '../src/core/types.js';
  * fix in place.
  */
 const PAYLOAD: UnsignedTx = {
+  unsigned: true,
   chain: 'solana',
   family: 'svm',
   summary: 'Burn 100000 tokens of mint 5pTy48…pump held by BTaPke…QFeH on Solana.',

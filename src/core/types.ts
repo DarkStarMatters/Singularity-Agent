@@ -364,6 +364,16 @@ export interface FeeEstimate {
  * it hands back a payload for the user's own wallet.
  */
 export interface UnsignedTx {
+  /**
+   * Always `true`, and required, so a payload says it is unsigned in a field.
+   *
+   * The roadmap claimed every unsigned payload states that it is unsigned. It
+   * was true of some `signingHint` sentences and not of others: the Solana
+   * hint said "sign, then sendRawTransaction" and never "unsigned", and a
+   * caller reading JSON has no business parsing prose for it anyway. A literal
+   * type makes every builder say so, and the compiler is what asks.
+   */
+  unsigned: true;
   chain: string;
   family: ChainFamily;
   /** What this transaction will do, in one sentence, for human review. */

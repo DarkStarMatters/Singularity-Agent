@@ -788,6 +788,7 @@ export const solanaAdapter: ChainAdapter = {
 
       return {
         chain: chain.id,
+        unsigned: true,
         family: 'svm',
         summary,
         payload: {
@@ -1799,6 +1800,7 @@ export async function buildBurn(
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'svm',
       // The mint address, never its name: nothing read off the chain is
       // interpolated into a summary, and a burn is the last place to start.
@@ -2258,6 +2260,7 @@ export async function buildPayment(
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'svm',
       summary,
       payload: {

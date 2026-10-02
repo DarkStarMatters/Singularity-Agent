@@ -1879,6 +1879,14 @@ none), history, and reads at a past block.
 - **Non-EVM:** Sui, Aptos (Move-family account model), TON, Tron
 - **UTXO:** Dogecoin and Bitcoin Cash, behind a Blockbook adapter that does not exist yet
 - **Cosmos:** more of the same, now that the shape is proven
+- **Solana, off `@solana/web3.js` 1.x.** It is the one runtime dependency `npm audit`
+  flags: jayson's old `uuid` and `stream-json`. Neither is reachable, because web3.js
+  loads only jayson's browser client, which calls `uuid.v4()` with no buffer and never
+  loads stream-json. But reachability is a claim that has to be re-checked on every
+  upgrade, and the fix the audit offers is a jump to 3.0.0. `npm audit fix --force`
+  makes that jump, downgrades `@elizaos/core` to the version carrying nine other
+  advisories, and moves vitest two majors in one go. It is a migration of the Solana
+  adapter, to be done on purpose against mainnet, not a command to run.
 
 Explicitly deferred: chains whose only public RPC is a single vendor endpoint. Failover
 is a core guarantee, and one endpoint is not failover.
@@ -2259,7 +2267,25 @@ run through it by hand.
 
 Review does not catch this class. It is not a discipline problem.
 
-### 7.2 The invariants, written as code
+### 7.2 The invariants, written as code — **shipped, after v0.7.0**
+
+*Shipped as `src/core/invariants.ts`, exported from the package. `checkShape` walks any
+response and holds what every response must hold, wherever it sits. A truncated
+completeness has its counts, a caveat is not empty, a payload says it is unsigned, and a
+total adds up in one unit. Five relational checks (`checkFailedRead`, `checkCut`,
+`checkNotStronger`, `checkSearched`, `checkNotFoundClaim`) compare a response with what
+the adapters did. `test/invariants.test.ts` holds each one against the shape its bug
+shipped in.*
+
+*Writing the sixth claim down found it false. "Every unsigned payload states that it is
+unsigned" was true of some `signingHint` sentences and not others. The Solana hint said
+"sign, then sendRawTransaction" and never "unsigned". `UnsignedTx` now has a required
+`unsigned: true` field, so the compiler is what asks, and it found eight builders.*
+
+*Three of the five are this class (1, 2 and 4). The X filter (3) was a classifier's
+recall, held by its own corpus. The disabled asset check (5) was an alias that stopped
+a check running, held by the payment tests that pin it. Neither was a response claiming
+more than it knew, and these checks would not have caught them.*
 
 The claims this project makes are small in number and mostly mechanical:
 
@@ -2273,7 +2299,21 @@ The claims this project makes are small in number and mostly mechanical:
 Each is checkable. None is checked today except by the tests that happen to have been
 written for the specific function that once broke.
 
-### 7.3 Property tests across adapters, not examples within them
+### 7.3 Property tests across adapters, not examples within them — **begun, after v0.7.0**
+
+*`test/invariants.property.test.ts` runs eight tools through their catalogue entries, as
+the MCP server does, against fast-check-generated adapters: `balance`, `portfolio`,
+`transaction`, `history`, `balance_series`, `block`, `fees` and `chain_liveness`. Each
+read answers, comes back empty, comes back cut, times out, or says "not here", and every
+output is held to the invariants. To check that the suite catches anything, five bugs
+were put back one at a time and each failed it by name. They included violation four
+(rejected chains counted as searched), violation two (a failed token scan reported as
+curated), and a portfolio that dropped its failed chains.*
+
+*Not yet covered: the Solana payment and trade tools (`mint_audit`, `inspect_exit`,
+`verify_burn`, `inspect_payment`, `prove_payment`, `build_payment`). They read through
+their own RPC path rather than the adapter, so they need a fake at the connection, which
+is the next piece.*
 
 The shape that fits is property-based: generate adapter responses — empty, partial,
 throwing, half-throwing — and assert the invariants hold for *every* tool, rather than

@@ -776,6 +776,7 @@ export const evmAdapter: ChainAdapter = {
 
     return {
       chain: chain.id,
+      unsigned: true,
       family: 'evm',
       summary: `Send ${params.amount} ${symbol} to ${shortAddress(to)} on ${chain.name}.`,
       payload: {
@@ -893,6 +894,7 @@ async function buildTokenTransfer(
 
   return {
     chain: chain.id,
+    unsigned: true,
     family: 'evm',
     summary: `Send ${params.amount} ${symbol} (${shortAddress(tokenAddress)}) to ${shortAddress(params.to)} on ${chain.name}.`,
     payload: {
