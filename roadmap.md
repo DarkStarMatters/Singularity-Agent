@@ -19,9 +19,44 @@ enforcement, where they are not optional.
 One constraint holds across every phase below: **no signing, ever.** See "Explicit
 non-goals."
 
-Phases 1 through 5 are shipped. Phases 6 through 8 are not, apart from 8.2 and our side of
+Phases 1 through 6 are shipped. Phases 7 and 8 are not, apart from 8.2 and our side of
 8.3, and the quarters attached to them are horizons rather than commitments — see "Horizons", which says why this document
 declines to pretend it knows what a year from now contains.
+
+---
+
+## Shipped — v0.7.0, state over time
+
+Every answer Singularity gave until now was about the moment it was asked. "Is this chain
+live" had an answer; "when did it stop", "is its failover still real" and "what did this
+address hold a month ago" did not, because nothing held anything between calls. This
+release is Phase 6, all of it, and the first thing it found was a defect in v0.6.0.
+
+**Liveness, kept.** `doctor --record` appends one sample per chain to a JSON-lines file,
+and `doctor --history [days]` reads it back: when each chain stopped being live, as the
+interval it happened in, and a verdict per endpoint — `unproven`, `dead`, `silent`,
+`load-bearing`, `lagging`, `flaky` or `healthy`. The store is a port, as `IntentStore`
+is, with an in-memory implementation and a file one that only that flag writes. Nothing
+records by default; a read-only client does not grow a data directory behind its user's
+back. See 6.1 and 6.2.
+
+**Failover that answers.** The first history run showed Ethereum answering from one
+endpoint of three, and Polygon and Sepolia from one of two. That is the state v0.6.0
+shipped in. Each dead endpoint was replaced by a provider that answered with the right
+chain id and a current head, and `test/endpoint-snapshot.test.ts` now holds every
+mainnet configured with failover to two endpoints that served current state in a
+snapshot taken for the current version. `npm run snapshot:endpoints` is part of cutting a
+release, because the test refuses a snapshot taken for an older one. See Phase 3.
+
+**`balance_series`, the twenty-third tool.** The native balance at up to 32 evenly spaced
+past heights, each one dated by its own block. A height the endpoint no longer keeps is a
+labelled hole, never a zero and never its neighbour's value; a change of zero means the
+same balance at both readings, not that nothing happened between them; and the series is
+never called `exhaustive`. The CLI prints a table rather than a chart, because a chart
+draws the line between points. `series` in the CLI and `/series` in the bot. Token series
+are still open. See 6.3.
+
+23 tools, 33 chains, 35 bot commands.
 
 ---
 
@@ -1775,7 +1810,7 @@ alongside two known-good Esplora instances as a control, and none answered. Ship
 means writing a Blockbook adapter, which is a real piece of work and a separate decision,
 not "the same adapter, different params" as this file previously claimed.
 
-### Endpoints that answer, rather than endpoints that are listed — **shipped, after v0.6.0**
+### Endpoints that answer, rather than endpoints that are listed — **shipped in v0.7.0**
 
 *Both pieces landed on 2 October, and the history work in Phase 6 is what found them
 still open. The first `doctor --history` run showed Ethereum answering from one endpoint
@@ -2083,8 +2118,8 @@ it are **horizons rather than commitments** — an ordering with a rough sense o
 not a set of dates anybody should hold this project to.
 
 The reason for saying so plainly: this repository is seventeen days old. It went from the
-initial commit to v0.6.0 in seventeen of them, across five phases and a hundred and
-thirty-six commits, and every numbered item written down as future work so far has shipped within
+initial commit to v0.7.0 in seventeen of them, across six phases and a hundred and
+forty commits, and every numbered item written down as future work so far has shipped within
 days of being written. A roadmap that claimed to know what Q3 2027 contains would be
 making exactly the kind of confident, unfalsifiable statement the rest of this document
 exists to argue against.
@@ -2092,8 +2127,13 @@ exists to argue against.
 Phase 5 is the sharpest case so far, and the reason this paragraph is not being softened.
 It was given a horizon of Q4 2026 and shipped the same day it was written, which is
 roughly a year early. The labels are the part that should be corrected rather than the
-work reordered to fit them, so: Phase 6 is next, Phase 8 is furthest, and the gap between
+work reordered to fit them, so: Phase 7 is next, Phase 8 is furthest, and the gap between
 them is larger than the gap within them.
+
+Phase 6 repeated it. Its horizon was Q1 2027, and all three items shipped on 2 October
+2026, the day v0.6.0 was cut. The horizons below have not been moved to match, for the
+same reason: moving them would turn a record of how wrong the estimate was into a new
+estimate nobody has grounds for.
 
 The ordering principle from the top still governs, and it is why coverage does not own a
 quarter below. **Response discipline before chain coverage.** Sui, Aptos, TON, Tron, and
@@ -2103,7 +2143,7 @@ it. See Phase 3, "Still to come".
 
 ---
 
-## Phase 6 — State over time
+## Phase 6 — State over time — **shipped**
 
 *Horizon: Q1 2027. Goal: answer questions about change, not only questions about now.*
 
@@ -2117,7 +2157,7 @@ Phase 4 closed with `chain_liveness` and an admission that is the whole of this 
 Every one of those is a question somebody actually has, and none of them can be answered
 by a tool that holds nothing between calls.
 
-### 6.1 The first real persistence question — **shipped, after v0.6.0**
+### 6.1 The first real persistence question — **shipped in v0.7.0**
 
 *Shipped as `LivenessHistory`, a port in `src/core/liveness-history.ts`, with
 `InMemoryLivenessHistory` and a JSON-lines `FileLivenessHistory` that only
@@ -2137,7 +2177,7 @@ that says what it is in its name. A roadmap item that quietly turned a read-only
 into something with a data directory would be the same category of mistake as a guarantee
 that lives in prose.
 
-### 6.2 Endpoint history, and decay — **shipped, after v0.6.0**
+### 6.2 Endpoint history, and decay — **shipped in v0.7.0**
 
 *Shipped as `summarizeHistory` and `doctor --history [days]`. Each endpoint gets a
 verdict: `unproven` under three observations, `dead` after three failures spanning a
@@ -2158,7 +2198,7 @@ that are listed," checked at the moment a chain is added. Nothing re-checks it a
 so a chain admitted on two healthy providers can decay to one, or to none, and the config
 will keep asserting failover it no longer has.
 
-### 6.3 Balances over time, carefully — **shipped, after v0.6.0**
+### 6.3 Balances over time, carefully — **shipped in v0.7.0**
 
 *Shipped as `balance_series`, the twenty-third tool (`series` in the CLI and the bot). It
 reads the native balance at up to 32 evenly spaced heights, each one with `atBlock` and

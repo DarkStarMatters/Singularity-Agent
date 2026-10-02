@@ -1,6 +1,6 @@
 {
-  "version": "0.6.0",
-  "takenAt": "2026-10-02T07:05:16.096Z",
+  "version": "0.7.0",
+  "takenAt": "2026-10-02T10:01:06.323Z",
   "chains": {
     "ethereum": {
       "family": "evm",
@@ -181,8 +181,9 @@
           "current": true
         },
         "https://1rpc.io/sepolia": {
-          "ok": true,
-          "current": true
+          "ok": false,
+          "current": false,
+          "error": "RPC call failed on sepolia: eth_getBlockByNumber: RPC Request failed."
         },
         "https://sepolia.gateway.tenderly.co": {
           "ok": true,
