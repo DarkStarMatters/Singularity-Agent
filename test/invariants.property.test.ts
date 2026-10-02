@@ -46,6 +46,11 @@ interface ChainWorld {
   pastUnsupported: boolean;
   /** One per configured endpoint, for liveness. */
   endpoints: Array<'fresh' | 'stale' | 'undated' | 'fail'>;
+  /** What a forward name lookup does: an address, no record, or a failed read. */
+  name: 'resolves' | 'none' | 'fail';
+  /** The same for a reverse lookup, which `resolve` treats as a nicety. */
+  reverse: 'name' | 'none' | 'fail';
+  contract: boolean;
 }
 
 const state = vi.hoisted(() => ({
@@ -55,6 +60,8 @@ const state = vi.hoisted(() => ({
 }));
 
 const HEAD = 1_000_000;
+/** Where a name resolves, when it resolves. Not either of ADDRESSES. */
+const NAMED = '0x1111111111111111111111111111111111111111';
 const NOW = () => new Date().toISOString();
 
 vi.mock('../src/adapters/index.js', async () => {
@@ -81,8 +88,15 @@ vi.mock('../src/adapters/index.js', async () => {
       family: spec.family,
       isValidAddress: (_c: unknown, a: string) => /^0x[0-9a-fA-F]{40}$/.test(a),
       addressExpectation: () => 'Expected 0x and 40 hex characters.',
-      resolveName: async () => null,
-      lookupName: async () => null,
+      async resolveName() {
+        log('resolveName');
+        if (w.name === 'fail') throw fail(spec.id, 'name lookup');
+        return w.name === 'resolves' ? NAMED : null;
+      },
+      async lookupName() {
+        if (w.reverse === 'fail') throw fail(spec.id, 'reverse lookup');
+        return w.reverse === 'name' ? 'fake.eth' : null;
+      },
 
       async getNativeBalance(_c: unknown, address: string, options?: { atBlock?: number }) {
         if (options?.atBlock !== undefined) {
@@ -152,8 +166,25 @@ vi.mock('../src/adapters/index.js', async () => {
         return { chain: spec.id, simpleTransfer: amount(21000n, 18, 'ETH'), details: { gasPrice: '1 gwei' } };
       },
 
-      async buildTransfer() {
-        throw new Error('not exercised');
+      async readContract(_c: unknown, params: { atBlock?: number }) {
+        log('readContract', params.atBlock);
+        if (!w.contract) throw fail(spec.id, 'eth_call');
+        return { result: '42', ...(params.atBlock === undefined ? {} : { atBlock: params.atBlock }) };
+      },
+
+      // The adapter's own payload is pinned by the EVM builder tests. What is
+      // under test here is what reaches it: the address a name became.
+      async buildTransfer(_c: unknown, params: { to: string; from?: string }) {
+        log('buildTransfer');
+        return {
+          chain: spec.id,
+          unsigned: true,
+          family: spec.family,
+          summary: `Send to ${params.to}.`,
+          payload: { to: params.to, ...(params.from ? { from: params.from } : {}) },
+          signingHint: 'Sign it in your wallet.',
+          warnings: [],
+        };
       },
     };
 
@@ -214,6 +245,9 @@ const chainWorld = (endpointCount: number): fc.Arbitrary<ChainWorld> =>
       minLength: endpointCount,
       maxLength: endpointCount,
     }),
+    name: fc.constantFrom<ChainWorld['name']>('resolves', 'none', 'fail'),
+    reverse: fc.constantFrom<ChainWorld['reverse']>('name', 'none', 'fail'),
+    contract: fc.boolean(),
   });
 
 const world = fc.record(Object.fromEntries(EVM.map((id) => [id, chainWorld(getChain(id).rpc.length)]))) as fc.Arbitrary<Record<string, ChainWorld>>;
@@ -463,6 +497,156 @@ describe('every adapter-routed tool, against adapters that fail', () => {
         hold(checkShape(reports), { reports });
       }),
       RUNS,
+    );
+  });
+
+  it('resolve: a failed name lookup is an error, never "did not resolve", and a failed reverse lookup costs nothing', async () => {
+    await fc.assert(
+      fc.asyncProperty(world, oneChain, fc.boolean(), async (w, chain, byName) => {
+        const cw = w[chain]!;
+        const result = await run('resolve', w, { input: byName ? 'vitalik.eth' : ADDRESSES[0], chain });
+
+        if (!byName) {
+          // The address is the answer; a name for it is a nicety.
+          expect(result.ok, cw.reverse).toBe(true);
+          if (!result.ok) return;
+          const out = result.value as { address?: string; name?: string };
+          expect(out.address).toBe(ADDRESSES[0]);
+          expect(out.name).toBe(cw.reverse === 'name' ? 'fake.eth' : undefined);
+          hold(checkShape(out), { out });
+          return;
+        }
+
+        if (cw.name === 'fail') {
+          expect(result.ok, 'A failed name lookup came back as an answer.').toBe(false);
+          return;
+        }
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const out = result.value as { address?: string; note: string };
+        expect(out.address).toBe(cw.name === 'resolves' ? NAMED : undefined);
+        expect(/did not resolve/.test(out.note)).toBe(cw.name === 'none');
+        hold(checkShape(out), { out });
+      }),
+      RUNS,
+    );
+  });
+
+  it('read_contract: a failed call is an error, and "as of" is passed down exactly or not at all', async () => {
+    const atBlock = fc.option(fc.oneof(fc.integer({ min: 1, max: HEAD }), fc.constant('latest' as const)), { nil: undefined });
+
+    await fc.assert(
+      fc.asyncProperty(world, oneChain, atBlock, async (w, chain, at) => {
+        const result = await run('read_contract', w, {
+          chain,
+          address: ADDRESSES[0],
+          method: 'totalSupply',
+          abi: 'function totalSupply() view returns (uint256)',
+          ...(at === undefined ? {} : { atBlock: at }),
+        });
+        const asked = state.calls.filter((c) => c.method === 'readContract');
+        expect(asked).toHaveLength(1);
+        // "latest" is current state; anything else must reach the adapter as that height.
+        expect(asked[0]!.block).toBe(typeof at === 'number' ? at : undefined);
+
+        expect(result.ok).toBe(w[chain]!.contract);
+        if (result.ok) {
+          expect((result.value as { atBlock?: number }).atBlock).toBe(typeof at === 'number' ? at : undefined);
+          hold(checkShape(result.value), { out: result.value });
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it('build_transfer: a payload goes only to an address something answered with, and states it is unsigned', async () => {
+    await fc.assert(
+      fc.asyncProperty(world, oneChain, fc.boolean(), async (w, chain, byName) => {
+        const cw = w[chain]!;
+        const result = await run('build_transfer', w, { chain, to: byName ? 'vitalik.eth' : ADDRESSES[1], amount: '1' });
+
+        if (byName && cw.name !== 'resolves') {
+          expect(result.ok, `Built a transfer to a name whose lookup was ${cw.name}.`).toBe(false);
+          if (!result.ok) {
+            // "Did not resolve" is a claim about the name, and needs a lookup that answered.
+            expect(result.error.code === 'NAME_NOT_RESOLVED', `${result.error.code} on a lookup that was ${cw.name}`).toBe(cw.name === 'none');
+          }
+          expect(state.calls.some((c) => c.method === 'buildTransfer')).toBe(false);
+          return;
+        }
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const out = result.value as { payload: { to: string } };
+        expect(out.payload.to).toBe(byName ? NAMED : ADDRESSES[1]);
+        hold(checkShape(out), { out });
+      }),
+      RUNS,
+    );
+  });
+
+  it('mesh: answered only when every fact was proved, never from a read that failed, and no stronger than its steps', async () => {
+    type Step = { tool: string; proved: string[]; completeness?: Completeness; error?: unknown };
+    type MeshOut = {
+      verdict: string;
+      chain?: string;
+      path: Step[];
+      discarded: Step[];
+      facts: Record<string, { value: unknown; source: string }>;
+      unproven: Array<{ fact: string; why: string }>;
+      completeness: Completeness;
+    };
+    const question = fc.oneof(
+      fc.record({ subject: fc.constant(ADDRESSES[0]!), objective: fc.constantFrom('identify', 'holdings', 'activity') }),
+      fc.record({ subject: fc.constant(HASH), objective: fc.constant('settlement') }),
+      fc.record({ subject: oneChain as fc.Arbitrary<string>, objective: fc.constant('liveness') }),
+    );
+
+    await fc.assert(
+      fc.asyncProperty(world, question, fc.option(oneChain, { nil: undefined }), async (w, q, hint) => {
+        const chainArg = q.objective === 'liveness' ? q.subject : hint;
+        const result = await run('mesh', w, { ...q, ...(chainArg ? { chain: chainArg } : {}), maxCalls: 16 });
+        expect(result.ok, result.ok ? '' : result.error.message).toBe(true);
+        if (!result.ok) return;
+        const out = result.value as MeshOut;
+        const steps = [...out.path, ...out.discarded];
+        const violations = [...checkShape(out)];
+
+        if ((out.verdict === 'answered') !== (out.unproven.length === 0)) {
+          violations.push({ invariant: 'absence-needs-completeness', path: '$.verdict', detail: `${out.verdict} with ${out.unproven.length} unproven.` });
+        }
+        if (out.verdict === 'answered' && out.completeness.kind === 'failed') {
+          violations.push({ invariant: 'absence-needs-completeness', path: '$.completeness', detail: 'Answered, over a read that failed.' });
+        }
+        violations.push(...checkNotStronger(steps.flatMap((s) => (s.completeness ? [s.completeness] : [])), out.completeness, '$.completeness'));
+
+        // Each fact, against the world it was read from.
+        const cw = out.chain ? w[out.chain] : undefined;
+        if (cw && 'tokens' in out.facts && !cw.tokens.ok) {
+          violations.push({ invariant: 'failure-is-not-empty', path: '$.facts.tokens', detail: `Token holdings on ${out.chain} proved by a scan that failed.` });
+        }
+        if (cw && 'activity' in out.facts && (cw.history === 'missing' || !cw.history.ok)) {
+          violations.push({ invariant: 'failure-is-not-empty', path: '$.facts.activity', detail: `Activity on ${out.chain} proved by a history read that ${cw.history === 'missing' ? 'does not exist' : 'failed'}.` });
+        }
+        if (cw && 'nativeBalance' in out.facts && !cw.native.ok) {
+          violations.push({ invariant: 'failure-is-not-empty', path: '$.facts.nativeBalance', detail: `A native balance on ${out.chain} that nobody read.` });
+        }
+        if (cw && 'fees' in out.facts && !cw.fees) {
+          violations.push({ invariant: 'failure-is-not-empty', path: '$.facts.fees', detail: `Fees on ${out.chain} that nobody read.` });
+        }
+        if ('txSummary' in out.facts) {
+          const chain = (out.facts.txSummary.value as { chain?: string }).chain;
+          if (!chain || w[chain]?.tx !== 'found') {
+            violations.push({ invariant: 'searched-means-answered', path: '$.facts.txSummary', detail: `A transaction summarized from ${chain}, which never returned it.` });
+          }
+        }
+        for (const step of steps) {
+          if (step.error && step.proved.length) {
+            violations.push({ invariant: 'failure-is-not-empty', path: '$.path', detail: `${step.tool} errored and proved ${step.proved.join(', ')}.` });
+          }
+        }
+        hold(violations, { q, hint, out: { verdict: out.verdict, facts: out.facts, unproven: out.unproven, completeness: out.completeness } });
+      }),
+      { numRuns: 100 },
     );
   });
 });

@@ -270,6 +270,13 @@ export const MOVES: Move[] = [
 
       const tokens = Array.isArray(balance.tokens) ? balance.tokens : [];
       const scan = record(balance.tokenCompleteness);
+
+      // The same rule `history` follows below. A token scan that failed comes
+      // back as no tokens, and binding that let `holdings` answer with a list
+      // nobody read. The native read can still stand on its own; the slot it
+      // cannot fill goes to `unproven`, with the scan's own reason.
+      if (text(scan.kind) === 'failed') return bound;
+
       if (
         board.bind(
           'tokens',
@@ -305,10 +312,11 @@ export const MOVES: Move[] = [
       const entries = Array.isArray(history.entries) ? history.entries : [];
       const scan = record(history.completeness);
 
-      // An empty list from a failed scan is not activity anybody may reason
-      // about, so it does not get to fill the slot. Leaving it unproved is
-      // what puts it in `unproven` with a reason instead.
-      if (entries.length === 0 && text(scan.kind) === 'failed') return [];
+      // A scan that says it failed has not established what the address has
+      // been doing, whatever it returned before it stopped, so it does not get
+      // to fill the slot. Leaving it unproved is what puts it in `unproven`
+      // with a reason instead.
+      if (text(scan.kind) === 'failed') return [];
 
       return board.bind(
         'activity',

@@ -2299,7 +2299,7 @@ The claims this project makes are small in number and mostly mechanical:
 Each is checkable. None is checked today except by the tests that happen to have been
 written for the specific function that once broke.
 
-### 7.3 Property tests across adapters, not examples within them — **fifteen of twenty-three tools, after v0.7.0**
+### 7.3 Property tests across adapters, not examples within them — **all twenty-three tools, after v0.7.0**
 
 *`test/invariants.property.test.ts` runs eight tools through their catalogue entries, as
 the MCP server does, against fast-check-generated adapters: `balance`, `portfolio`,
@@ -2330,8 +2330,24 @@ answers, report the chain unreadable (`unproven`). Two properties hold that an
 absence is stated only when its read answered, and both failed against the code
 before the fix. Checked afterwards on mainnet: a real USDC demand is still `payable`.*
 
-*Still outside both suites: `chains`, `token_identity`, `resolve`, `read_contract`,
-`decode`, `receipt_art`, `build_transfer` and `mesh`.*
+*The last eight are now covered. `resolve`, `read_contract` and `build_transfer` run
+against the generated EVM adapters, and the Solana suite also covers `token_identity`,
+`read_contract` and `build_transfer` there. A failed name lookup is an error and never
+"did not resolve". A payload goes only to an address something answered with. An
+account is "not found" only when the read of it answered. `chains`, `decode` and
+`receipt_art` read no chain, so `test/invariants.pure.property.test.ts` holds them to
+claims of their own: a 4-byte directory answer never becomes `signature`, `decode`
+without `lookup` makes no request, and an image counts as evidence of a payment only when
+it is exactly what that payment generates.*
+
+*`mesh` was violation seven, and the suite caught it on its first run as well. Asked
+for `holdings` with the token scan failing, it returned `verdict: "answered"` and
+counted `tokens` as proved, from an empty list whose own completeness said `failed`.
+`history` already refused to bind a failed scan, and `balance` never had the same rule.
+Now neither slot is filled by a read that says it failed. The fact goes to `unproven`
+with the scan's reason, and the verdict is `partial`. Each new property was checked
+against a bug reintroduced by hand (a swallowed name lookup, a swallowed account read, a
+promoted directory guess, the old move table), and each failed.*
 
 The shape that fits is property-based: generate adapter responses — empty, partial,
 throwing, half-throwing — and assert the invariants hold for *every* tool, rather than

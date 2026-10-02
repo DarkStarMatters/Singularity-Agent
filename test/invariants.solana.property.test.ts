@@ -266,6 +266,54 @@ describe('the Solana payment and trade tools, with no evidence on chain', () => 
     );
   });
 
+  // The three tools left on Solana. Each reads an account that is either
+  // unreadable or absent here, so each may answer "it is not there" only when
+  // the read of it answered, and only build_transfer of native SOL, which
+  // needs nothing but a blockhash, may build at all.
+  const ABSENCE = /NOT_A_MINT|NOT_FOUND|DOES_NOT_EXIST/;
+
+  it('build_transfer builds native SOL exactly when a blockhash was read, and a token transfer never', async () => {
+    await fc.assert(
+      fc.asyncProperty(world, amount, fc.boolean(), async (w, amt, token) => {
+        const result = await run('build_transfer', w, { chain: 'solana', from: PAYER, to: WALLET, amount: amt, ...(token ? { token: USDC } : {}) });
+        if (token) {
+          expect(result.ok, 'Built a token transfer without reading the mint.').toBe(false);
+          if (!result.ok && w.fates.getAccountInfo === 'fail') expect((result.error as { code?: string }).code ?? '').not.toMatch(ABSENCE);
+          return;
+        }
+        expect(result.ok).toBe(w.fates.getLatestBlockhash === 'empty');
+        noGreenLight(result, () => null);
+      }),
+      RUNS,
+    );
+  });
+
+  it('read_contract says an account does not exist only when the read of it answered', async () => {
+    await fc.assert(
+      fc.asyncProperty(world, async (w) => {
+        const result = await run('read_contract', w, { chain: 'solana', address: WALLET });
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        const code = (result.error as { code?: string }).code ?? '';
+        expect(ABSENCE.test(code), `${code} with getParsedAccountInfo ${w.fates.getParsedAccountInfo}`).toBe(w.fates.getParsedAccountInfo === 'empty');
+      }),
+      RUNS,
+    );
+  });
+
+  it('token_identity never declares an identity for a mint nobody read', async () => {
+    await fc.assert(
+      fc.asyncProperty(world, fc.boolean(), async (w, fetchDocument) => {
+        const result = await run('token_identity', w, { mint: USDC, fetch: fetchDocument });
+        expect(result.ok, 'An identity from a mint account nobody read.').toBe(false);
+        if (result.ok) return;
+        const code = (result.error as { code?: string }).code ?? '';
+        if (w.fates.getAccountInfo === 'fail') expect(code, 'a failed read reported as no mint').not.toMatch(ABSENCE);
+      }),
+      RUNS,
+    );
+  });
+
   it('asked the fake only for methods it knows', () => {
     // A tool calling a method this file never heard of would have failed for
     // that reason alone and passed every property above for the wrong one.
