@@ -19,9 +19,60 @@ enforcement, where they are not optional.
 One constraint holds across every phase below: **no signing, ever.** See "Explicit
 non-goals."
 
-Phases 1 through 4 are shipped. Phases 5 through 8 are not, and the quarters attached to
-them are horizons rather than commitments — see "Horizons", which says why this document
+Phases 1 through 5 are shipped. Phases 6 through 8 are not, apart from 8.2 and our side of
+8.3, and the quarters attached to them are horizons rather than commitments — see "Horizons", which says why this document
 declines to pretend it knows what a year from now contains.
+
+---
+
+## Shipped — v0.6.0, a fifth family, and two plugins that keep the first one honest
+
+Singularity's promise is that it holds no keys and moves nothing. Two things this
+release adds could not keep that promise: a quantum tool that will one day spend QPU
+time, and a prover link that runs a compiler and holds HMAC keys. So they are not in it.
+They are the second and third plugins in the same marketplace, each with its own
+version, and the agent itself gains a chain and starts eight times faster.
+
+**Tessarq, through a node you run.** The fifth chain family, and the first chain here with
+no public endpoint at all. It gets a flag rather than an exemption by name,
+`requiresOwnNode`: the default stays on loopback, and sweeps leave it out until
+`SINGULARITY_RPC_TESSARQ` or the config names a node. Every response shape was checked
+against a four-validator testnet, which found three things the Rust types did not say:
+balances that are bare JSON integers past 2^53 (now parsed without rounding), a minimum
+fee that depends on the protocol version, and networks that look identical (checked
+against `chainId` on whichever endpoint answered, failover included). Lookup by hash,
+history and past-block reads are refused with the reason. Transfers come back as the
+`tessarq transfer` command, because no wallet signs ML-DSA-65. See Phase 3.
+
+**The MCP server starts from one file.** The plugin had been losing the race to Claude
+Code's 30-second connect limit in five sessions of eight. It was never hung: importing
+the catalogue read 1,363 files, 1,221 of them viem and ox. `npm run build` now also writes
+an esbuild bundle and the plugin runs that, 0.35 s warm against 2.7 s.
+`test/mcp-bundle.test.ts` holds that nothing was left external and that the bundle
+serves the whole catalogue over real stdio. The root `.mcp.json` stopped starting a
+second copy beside the plugin.
+
+**`quantum-agent` 0.2.0, the second plugin.** Python, for IBM Quantum. It reads
+backends, calibration (with a hash), usage and jobs. It builds circuits as OpenQASM 3
+with a SHA3-256 commitment and classifies each one, *before it runs*, by what its result
+could ever prove. It estimates cost, simulates with Aer, and with `verify_result` scores a
+run's counts by the method its class allows, as integer verdicts. `vectors/verify-v1.json`
+is the contract Tessarq's Rust verifiers must match. It never submits a job; the server
+test pins the tool list so that stays true until submission arrives behind its gate.
+
+**`singularity-lean-agent` 0.1.0, the third plugin.** A link to lean-worker's certified
+prover protocol, ported line for line, over a byte-exact wire format (lean-link/1) whose
+vectors a Lean file kernel-checks. "Proved" means the kernel accepted it with no
+`sorryAx` among the axioms, not that a grep found no `sorry`. Building lean-worker itself
+found its own build broken at the pinned commit, 178 theorems that hold once staged, and
+45 plugin contexts of which none compile. All of that is written down in its README and
+rerunnable with `lean_worker_build`.
+
+**And what a seller lists.** Five tools have prices on the PrivateDAO exchange, with
+schemas and a payout wallet, in `src/exchange/listings.ts`. That is our side of Phase
+8.3. The exchange's side, an owner token to publish with, has not arrived.
+
+Still 22 tools in the agent. 33 chains, counting Tessarq.
 
 ---
 
@@ -2023,9 +2074,9 @@ Everything above this line is shipped. What follows is not, and the quarters att
 it are **horizons rather than commitments** — an ordering with a rough sense of distance,
 not a set of dates anybody should hold this project to.
 
-The reason for saying so plainly: this repository is eight days old. It went from the
-initial commit to v0.5.0 in eight of them, across five phases and a hundred and twenty-six
-commits, and every numbered item written down as future work so far has shipped within
+The reason for saying so plainly: this repository is seventeen days old. It went from the
+initial commit to v0.6.0 in seventeen of them, across five phases and a hundred and
+thirty-six commits, and every numbered item written down as future work so far has shipped within
 days of being written. A roadmap that claimed to know what Q3 2027 contains would be
 making exactly the kind of confident, unfalsifiable statement the rest of this document
 exists to argue against.
@@ -2234,6 +2285,11 @@ Most of the machinery exists. `receipt_art` already makes the case that evidence
 re-derivable rather than served by whoever benefits from it.
 
 ### 8.3 Selling, not only buying
+
+*Our side shipped on 23 September: five tools listed with prices, schemas and a payout
+wallet in `src/exchange/listings.ts`, published by `exchange listings --json`. Publishing
+them on the exchange waits on an owner token that only the exchange can issue, and the
+next check is an end-to-end buy of each one once it is live.*
 
 The other half, and the one with a standing blocker that is nobody's fault but ours to
 notice. Singularity is registered on that exchange, healthy, with all eighteen tools
