@@ -19,9 +19,50 @@ enforcement, where they are not optional.
 One constraint holds across every phase below: **no signing, ever.** See "Explicit
 non-goals."
 
-Phases 1 through 6 are shipped. Phases 7 and 8 are not, apart from 8.2 and our side of
+Phases 1 through 7 are shipped. Phase 8 is not, apart from 8.2 and our side of
 8.3, and the quarters attached to them are horizons rather than commitments — see "Horizons", which says why this document
 declines to pretend it knows what a year from now contains.
+
+---
+
+## Shipped — v0.7.1, two wrong answers the build found
+
+Phase 7, all of it, and two fixes that change what live calls return. Each of them was
+the bug class this project keeps finding: code that was right about what it did and
+wrong about what it claimed. Both were found by property tests, not by a person.
+
+**`inspect_payment` no longer calls a working mint missing.** With every Solana
+endpoint down, it reported "No SPL mint exists" at USDC's address and called the demand
+`unpayable`. That is word for word the answer for a mint that really is not there. Eight
+reads in the Solana adapter turned a failed call into `null`, and `null` into an absence.
+They covered the mint, the payee's account, the payer's token account, a simulation's
+starting balance, and the status lookup behind `verify_burn`. They now fail over, and
+when nothing answers the verdict is `unproven`. This was in every release up to v0.7.0.
+Checked on mainnet afterwards: a real USDC demand is still `payable`.
+
+**`mesh` no longer answers from a scan that failed.** Asked for `holdings` while the
+token scan failed, it returned `verdict: "answered"`. It had counted an empty list whose
+own completeness said `failed` as proof of the token holdings. A read that says it failed
+now proves nothing. The fact is listed in `unproven` with the scan's reason, and the
+verdict is `partial`.
+
+**The guarantees, as code.** `src/core/invariants.ts` states the six claims a response
+must keep and exports the checks for them. `checkShape` needs only a response, so an
+application can run it on what it receives. Every unsigned payload now carries
+`unsigned: true` as a field, so being unsigned is stated rather than inferred from a
+hint. See 7.2.
+
+**Every tool under property tests.** Three fast-check suites run all twenty-three tools
+against generated adapters, a faked Solana connection, and a 4-byte directory anyone can
+write to. In each, every read can fail, come back empty or come back cut. To show each
+property can fail, a bug was reintroduced by hand for it and checked to fail it. See 7.3.
+
+**CI.** `.github/workflows/ci.yml` runs the build, the three typechecks and every test
+suite on Node 20, 22 and 24 (and on Windows), plus the quantum-agent's pytest suite. The
+properties used to run only when somebody ran them. `.gitattributes` pins LF, because a
+Windows checkout had been failing two tests that CI would pass.
+
+23 tools, 33 chains, 35 bot commands.
 
 ---
 
@@ -2143,6 +2184,9 @@ Phase 6 repeated it. Its horizon was Q1 2027, and all three items shipped on 2 O
 same reason: moving them would turn a record of how wrong the estimate was into a new
 estimate nobody has grounds for.
 
+Phase 7 made it three. Its horizon was Q2 2027, and it shipped in v0.7.1 on 2 October
+2026, the same day as v0.7.0.
+
 The ordering principle from the top still governs, and it is why coverage does not own a
 quarter below. **Response discipline before chain coverage.** Sui, Aptos, TON, Tron, and
 Dogecoin and Bitcoin Cash behind a Blockbook adapter are all linear work with a known
@@ -2233,7 +2277,7 @@ readings with unknown holes.
 
 ---
 
-## Phase 7 — Guarantees that cannot be merged away
+## Phase 7 — Guarantees that cannot be merged away — **shipped**
 
 *Horizon: Q2 2027. Goal: make response discipline a property of the build rather than of
 whoever happened to review.*
@@ -2267,7 +2311,7 @@ run through it by hand.
 
 Review does not catch this class. It is not a discipline problem.
 
-### 7.2 The invariants, written as code — **shipped, after v0.7.0**
+### 7.2 The invariants, written as code — **shipped in v0.7.1**
 
 *Shipped as `src/core/invariants.ts`, exported from the package. `checkShape` walks any
 response and holds what every response must hold, wherever it sits. A truncated
@@ -2299,7 +2343,7 @@ The claims this project makes are small in number and mostly mechanical:
 Each is checkable. None is checked today except by the tests that happen to have been
 written for the specific function that once broke.
 
-### 7.3 Property tests across adapters, not examples within them — **all twenty-three tools, after v0.7.0**
+### 7.3 Property tests across adapters, not examples within them — **all twenty-three tools, shipped in v0.7.1**
 
 *`test/invariants.property.test.ts` runs eight tools through their catalogue entries, as
 the MCP server does, against fast-check-generated adapters: `balance`, `portfolio`,
@@ -2357,6 +2401,15 @@ anyone having thought to check for that particular swallow.
 
 The measure of this phase is not a number of tests. It is whether violation number six is
 caught by CI instead of by a person reading output and finding it odd.
+
+*Met, twice, and with a qualification. Violations six and seven were each caught by a
+property on its first run, before anyone had seen either one in output. But they were
+caught by the suite run locally: the repository had no CI until v0.7.1, and
+`.github/workflows/ci.yml` is what makes "caught by CI" literally true from here on.
+"Fails to merge" still needs one more thing that does not live in this repository:
+changes land directly on `main`, so CI reports a failure after the push rather than
+blocking it. Turning that into a gate is branch protection on GitHub, and it is the
+owner's call.*
 
 ---
 

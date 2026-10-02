@@ -2,9 +2,9 @@
 
 **Read-only blockchain access for agents, and the enforcement that makes it safe to act on**
 
-Version 0.7.0 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
+Version 0.7.1 · MIT licensed · [github.com/DarkStarMatters/Singularity-Agent](https://github.com/DarkStarMatters/Singularity-Agent)
 
-*The current release is v0.7.0; this paper describes v0.0.9 and has not been revised
+*The current release is v0.7.1; this paper describes v0.0.9 and has not been revised
 since. Everything in it is implemented and tested, and where something landed between
 v0.0.8 and v0.0.9 it is marked. What shipped after — Singularity Pay, the mesh, the payer's
 side of a payment, Tessarq as a fifth chain family, the two plugins beside this one,

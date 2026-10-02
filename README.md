@@ -1236,13 +1236,13 @@ These are real boundaries, not bugs — worth knowing before you rely on a resul
 
 | Package | Version | What it is |
 | --- | --- | --- |
-| `singularity-agent` | `0.7.0` | the CLI, the MCP server, the Claude Code plugin, the Telegram and X bots |
+| `singularity-agent` | `0.7.1` | the CLI, the MCP server, the Claude Code plugin, the Telegram and X bots |
 | `singularity-sdk` | `0.2.0` | the application SDK, in this repository and released separately |
 | `quantum-agent` | `0.2.0` | the second plugin, in Python; versioned in its own `pyproject.toml` |
 | `singularity-lean-agent` | `0.1.0` | the third plugin, an npm workspace; versioned in its own `package.json` |
 
-**Separate numbers on purpose.** The agent has fourteen releases behind it and the SDK has two.
-Giving them one number would make the SDK look twelve releases more settled than it is,
+**Separate numbers on purpose.** The agent has fifteen releases behind it and the SDK has two.
+Giving them one number would make the SDK look thirteen releases more settled than it is,
 which is a claim about stability nobody made. The SDK takes the agent as a *peer*
 dependency rather than bundling it — the chain registry is module state, and two copies
 in one tree would mean configuring a registry the operations are not reading from.
@@ -1258,11 +1258,11 @@ manifest check cannot see them.
 
 Every release has a `## Shipped — v…` section in [the roadmap](roadmap.md) with what
 changed and why, newest first. A bump with no entry fails the same test. Releases from
-v0.3.0 on are also git tags (`v0.3.0`, `v0.4.0`, `v0.5.0`, `v0.6.0`, `v0.7.0`); earlier ones exist
+v0.3.0 on are also git tags (`v0.3.0`, `v0.4.0`, `v0.5.0`, `v0.6.0`, `v0.7.0`, `v0.7.1`); earlier ones exist
 only as roadmap entries. The two plugins beside the agent keep their own numbers, which
 move when they change, and the marketplace manifest lists all three.
 
-**The SDK's pin on the agent.** `singularity-sdk` declares `singularity-agent >=0.7.0` as
+**The SDK's pin on the agent.** `singularity-sdk` declares `singularity-agent >=0.7.1` as
 its peer range. A scaffolded project pins the SDK version that generated it, and the
 templates themselves stay at `0.0.0` because they are not packages anyone installs.
 
