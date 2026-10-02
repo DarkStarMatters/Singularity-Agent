@@ -524,6 +524,8 @@ singularity mesh safety <mint> -c solana --art run.png --series "Genesis Mesh" -
 # Which chains are actually producing blocks, not just answering?
 singularity doctor
 singularity doctor --endpoints          # every endpoint, not only the broken ones
+singularity doctor --record             # ...and append this sweep to the liveness history
+singularity doctor --history 30         # what 30 days of recorded sweeps say, endpoint by endpoint
 
 # Poll something and report what changes. Ctrl-C to stop.
 singularity watch balance vitalik.eth -c ethereum
@@ -609,7 +611,7 @@ input hash cannot be checked and the best it can say is `credited`.
 
 | Command | What it does |
 | --- | --- |
-| `doctor` | Which chains are producing blocks, not just answering. `--endpoints` shows every one. |
+| `doctor` | Which chains are producing blocks, not just answering. `--endpoints` shows every one. `--record` appends the sweep to a history, `--history [days]` summarises it, and `--snapshot <file>` writes the built-in endpoints' standing for the failover test. |
 | `watch balance <address>` | Poll an address and report when its balance moves. |
 | `watch tip` | Poll a chain's head and report each new block. |
 | `watch tx <hash>` | Poll one transaction to a confirmation depth, then stop. |
@@ -999,6 +1001,27 @@ from it is historical state with nothing marking it as historical. `doctor` prob
 endpoint separately, which also surfaces the endpoint that answers but lags, and the chain
 whose second endpoint quietly stopped working.
 
+**A sweep is a point measurement, so it can also be kept.** `doctor --record` appends each
+chain's result to `~/.singularity/liveness.jsonl` (or `SINGULARITY_LIVENESS_HISTORY`), and
+nothing is written unless you ask. Run it on a schedule and `doctor --history` answers what
+one sweep cannot: which endpoint failover actually rested on, which has been dead long
+enough to remove, which usually lags, and when a chain stopped being live, dated to the
+interval it happened in rather than the end of it. An endpoint seen fewer than three times
+is `unproven`, not healthy, and every summary states its sample count and its largest gap,
+because nothing between two samples is known. It exits 1 when a configured endpoint is
+dead, so a cron job can fail on it. Libraries get the same thing as a port:
+`LivenessHistory`, with `InMemoryLivenessHistory` and `FileLivenessHistory`, and
+`summarizeHistory` over whatever store the application already has.
+
+**Failover is checked against what answers, not what is listed.** A test that counted
+configured endpoints passed while Ethereum answered from one of three. The built-in list
+is now probed by `npm run snapshot:endpoints` before a release, and the result is committed
+as `test/endpoint-snapshot.json`. The test suite holds every mainnet configured with
+failover to two endpoints that served current state in that snapshot, holds the snapshot
+to the configured list, and requires it to be taken for the current version. A dead
+endpoint becomes a reviewable diff instead of a silent fact, and CI never touches the
+network.
+
 **Errors carry hints.** An unknown chain suggests near misses; a rate-limited endpoint
 names the env var to override.
 
@@ -1277,6 +1300,7 @@ Every script in `package.json`:
 | `npm run typecheck:lean` | Typecheck `singularity-lean-agent`. |
 | `npm run smoke:burn [-- <url>]` | Ask the deployed `/api/burn` whether it is alive, the way a wallet would. Burns nothing. |
 | `npm run verify:builders` | Build, then simulate every transaction builder against mainnet. Signs and sends nothing; needs the network, so not part of `npm test`. |
+| `npm run snapshot:endpoints` | Probe every built-in endpoint and rewrite `test/endpoint-snapshot.json`, which the failover test reads. Run it before a release; needs the network. |
 | `npm run prepublishOnly` | Runs `build`; npm calls it before a publish. |
 
 And the three binaries the package installs:

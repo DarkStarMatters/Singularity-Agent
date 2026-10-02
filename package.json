@@ -53,6 +53,7 @@
     "agent": "tsx src/agent.ts",
     "smoke:burn": "node scripts/smoke-burn.mjs",
     "verify:builders": "npm run build && node scripts/verify-builders.mjs",
+    "snapshot:endpoints": "tsx src/cli/index.ts doctor --snapshot test/endpoint-snapshot.json",
     "build:lean": "npm run build -w singularity-lean-agent",
     "typecheck:lean": "npm run typecheck -w singularity-lean-agent"
   },

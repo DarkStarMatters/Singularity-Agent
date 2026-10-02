@@ -3,7 +3,8 @@ import { Command } from 'commander';
 import * as ops from '../tools/operations.js';
 import { SingularityError } from '../core/errors.js';
 import { toJson } from '../core/format.js';
-import { allChains } from '../core/registry.js';
+import { allChains, getChain } from '../core/registry.js';
+import { FileLivenessHistory, livenessHistoryPath, sampleOf, summarizeHistory } from '../core/liveness-history.js';
 import { adapterFor } from '../adapters/index.js';
 import { VERSION } from '../version.js';
 import * as render from './render.js';
@@ -1448,13 +1449,67 @@ program
   .description('Check whether each chain is serving current state, not just answering.')
   .option('-c, --chain <chain...>', 'Chains to check. Defaults to all of them.')
   .option('--endpoints', 'Show every endpoint rather than only the degraded ones.')
-  .action(async (options: { chain?: string[]; endpoints?: boolean }) => {
+  .option('--record', `Append this sweep to the liveness history (${livenessHistoryPath()}).`)
+  .option('--history [days]', 'Summarise the recorded history instead of probing. Defaults to the last 7 days.')
+  .option('--snapshot <file>', 'Probe the built-in endpoints (never your overrides) and write what answered to <file>.')
+  .action(async (options: { chain?: string[]; endpoints?: boolean; record?: boolean; history?: boolean | string; snapshot?: string }) => {
+    const history = new FileLivenessHistory();
+
+    if (options.snapshot) {
+      const snapshot = await ops.snapshotEndpoints();
+      writeFileSync(options.snapshot, `${JSON.stringify(snapshot, null, 2)}
+`, 'utf8');
+
+      const thin = Object.entries(snapshot.chains)
+        // A chain configured with one endpoint is single by necessity, and the
+        // registry test names each one; this reports failover that was configured and lost.
+        .filter(([, chain]) => !chain.testnet && Object.keys(chain.endpoints).length >= 2)
+        .map(([id, chain]) => ({ id, answering: Object.values(chain.endpoints).filter((e) => e.current).length }))
+        .filter((chain) => chain.answering < 2);
+
+      const total = Object.values(snapshot.chains).reduce((n, chain) => n + Object.keys(chain.endpoints).length, 0);
+      console.log(`  Wrote ${total} endpoints across ${Object.keys(snapshot.chains).length} chains to ${options.snapshot}.`);
+      for (const chain of thin) {
+        console.log(`  ${render.yellow(chain.id)} ${render.dim(`has ${chain.answering} endpoint${chain.answering === 1 ? '' : 's'} serving current state.`)}`);
+      }
+      process.exitCode = thin.length ? 1 : 0;
+      return;
+    }
+
+    if (options.history !== undefined) {
+      const days = options.history === true ? 7 : Number(options.history);
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new SingularityError('BAD_HISTORY_WINDOW', `"${options.history}" is not a number of days.`, 'Pass a positive number, e.g. --history 30.');
+      }
+
+      const chains = options.chain?.map((ref) => getChain(ref).id);
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+      const summary = summarizeHistory(await history.read({ ...(chains ? { chains } : {}), since }), {
+        configured: allChains(),
+      });
+
+      if (program.opts().json) console.log(toJson(summary));
+      else {
+        console.log(render.heading(`Liveness history, last ${days} day${days === 1 ? '' : 's'}`));
+        console.log(render.renderLivenessHistory(summary));
+      }
+
+      // A configured endpoint that has been dead for a day is the decay this
+      // exists to catch, and a scheduled run should be able to fail on it.
+      process.exitCode = summary.chains.some((c) => c.endpoints.some((e) => e.verdict === 'dead' && e.configured))
+        ? 1
+        : 0;
+      return;
+    }
+
     const report = await ops.checkLiveness(options.chain);
+    if (options.record) await history.record(report.map((chain) => sampleOf(chain)));
 
     if (program.opts().json) console.log(toJson(report));
     else {
       console.log(render.heading('Chain liveness'));
       console.log(render.renderLiveness(report, { endpoints: options.endpoints ?? false }));
+      if (options.record) console.log(`\n  ${render.dim(`Recorded ${report.length} samples to ${livenessHistoryPath()}.`)}`);
     }
 
     // A stale chain is worse than a down one and must not exit 0: down is loud

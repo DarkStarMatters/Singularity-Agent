@@ -1775,10 +1775,18 @@ alongside two known-good Esplora instances as a control, and none answered. Ship
 means writing a Blockbook adapter, which is a real piece of work and a separate decision,
 not "the same adapter, different params" as this file previously claimed.
 
-### Endpoints that answer, rather than endpoints that are listed
+### Endpoints that answer, rather than endpoints that are listed — **shipped, after v0.6.0**
 
-*Open, and the highest-value thing in this phase — it is about the 32 chains already
-claimed rather than the next one.*
+*Both pieces landed on 2 October, and the history work in Phase 6 is what found them
+still open. The first `doctor --history` run showed Ethereum answering from one endpoint
+of three, Polygon from one of two and Sepolia from one of two. llamarpc still answered
+525, Ankr still wanted a key, `polygon-rpc.com` now answers 401 and `rpc.sepolia.org`
+404. Each was replaced by a different provider (drpc, 1rpc, Tenderly) after answering
+with the right chain id and a current head. `npm run snapshot:endpoints` now writes
+`test/endpoint-snapshot.json`, and `test/endpoint-snapshot.test.ts` holds every mainnet
+configured with failover to two endpoints that served current state in it, holds the
+snapshot to the configured list, and requires it to be taken for the current version.
+Standing is recorded, not heights, so the diff moves only when an endpoint's does.*
 
 "Failover is a guarantee or it is not" is held by a test asserting `chain.rpc.length >= 2`.
 That counts entries in a config file. It cannot see whether any of them answer, and on the
@@ -2109,7 +2117,13 @@ Phase 4 closed with `chain_liveness` and an admission that is the whole of this 
 Every one of those is a question somebody actually has, and none of them can be answered
 by a tool that holds nothing between calls.
 
-### 6.1 The first real persistence question
+### 6.1 The first real persistence question — **shipped, after v0.6.0**
+
+*Shipped as `LivenessHistory`, a port in `src/core/liveness-history.ts`, with
+`InMemoryLivenessHistory` and a JSON-lines `FileLivenessHistory` that only
+`doctor --record` writes. A sample never changes, so the file is appended rather than
+rewritten, and an interrupted append is counted as a gap rather than failing every later
+read. Retention is the caller's.*
 
 This is the architectural step, and it deserves more care than the features on top of it.
 Singularity holds almost no state: a burn ledger to stop a signature being redeemed twice,
@@ -2123,7 +2137,15 @@ that says what it is in its name. A roadmap item that quietly turned a read-only
 into something with a data directory would be the same category of mistake as a guarantee
 that lives in prose.
 
-### 6.2 Endpoint history, and decay
+### 6.2 Endpoint history, and decay — **shipped, after v0.6.0**
+
+*Shipped as `summarizeHistory` and `doctor --history [days]`. Each endpoint gets a
+verdict: `unproven` under three observations, `dead` after three failures spanning a
+day, `silent`, `load-bearing` (the only one answering at least once), `lagging`, `flaky`
+or `healthy`. Each chain says when it stopped being live, as the interval it happened in,
+and whether its configured list still has failover. Every summary carries its sample count
+and largest gap, as `curated` completeness, and an empty history is `failed` rather than
+fine. Its first run found the decay described in Phase 3, which is now fixed.*
 
 Once there is somewhere to put it: how often each endpoint answered, how far behind it was
 when it did, and when it stopped. That makes three questions answerable that are currently

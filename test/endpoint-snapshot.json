@@ -1,0 +1,494 @@
+{
+  "version": "0.6.0",
+  "takenAt": "2026-10-02T07:05:16.096Z",
+  "chains": {
+    "ethereum": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://ethereum-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://eth.drpc.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://1rpc.io/eth": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "base": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://mainnet.base.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://base-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "arbitrum": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://arb1.arbitrum.io/rpc": {
+          "ok": true,
+          "current": true
+        },
+        "https://arbitrum-one-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "optimism": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://mainnet.optimism.io": {
+          "ok": true,
+          "current": true
+        },
+        "https://optimism-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "polygon": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://polygon-bor-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://polygon.drpc.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://1rpc.io/matic": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "bsc": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://bsc-dataseed.bnbchain.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://bsc-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "avalanche": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://api.avax.network/ext/bc/C/rpc": {
+          "ok": true,
+          "current": true
+        },
+        "https://avalanche-c-chain-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "gnosis": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.gnosischain.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://gnosis-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "scroll": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.scroll.io": {
+          "ok": true,
+          "current": true
+        },
+        "https://scroll-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://scroll.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "linea": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.linea.build": {
+          "ok": true,
+          "current": true
+        },
+        "https://linea-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://linea.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "zksync": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://mainnet.era.zksync.io": {
+          "ok": true,
+          "current": true
+        },
+        "https://zksync.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "sepolia": {
+      "family": "evm",
+      "testnet": true,
+      "endpoints": {
+        "https://ethereum-sepolia-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://1rpc.io/sepolia": {
+          "ok": true,
+          "current": true
+        },
+        "https://sepolia.gateway.tenderly.co": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "base-sepolia": {
+      "family": "evm",
+      "testnet": true,
+      "endpoints": {
+        "https://sepolia.base.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "blast": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.blast.io": {
+          "ok": true,
+          "current": true
+        },
+        "https://blast-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://blast.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "mantle": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.mantle.xyz": {
+          "ok": true,
+          "current": true
+        },
+        "https://mantle-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://mantle.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "mode": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://mainnet.mode.network": {
+          "ok": true,
+          "current": true
+        },
+        "https://mode.drpc.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://1rpc.io/mode": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "fraxtal": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://rpc.frax.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://fraxtal-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://fraxtal.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "opbnb": {
+      "family": "evm",
+      "testnet": false,
+      "endpoints": {
+        "https://opbnb-mainnet-rpc.bnbchain.org": {
+          "ok": true,
+          "current": true
+        },
+        "https://opbnb-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://opbnb.drpc.org": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "solana": {
+      "family": "svm",
+      "testnet": false,
+      "endpoints": {
+        "https://api.mainnet-beta.solana.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://solana-rpc.publicnode.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://solana.leorpc.com/?api_key=FREE": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "solana-devnet": {
+      "family": "svm",
+      "testnet": true,
+      "endpoints": {
+        "https://api.devnet.solana.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "bitcoin": {
+      "family": "utxo",
+      "testnet": false,
+      "endpoints": {
+        "https://mempool.space/api": {
+          "ok": true,
+          "current": true
+        },
+        "https://blockstream.info/api": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "bitcoin-testnet": {
+      "family": "utxo",
+      "testnet": true,
+      "endpoints": {
+        "https://mempool.space/testnet/api": {
+          "ok": true,
+          "current": true
+        },
+        "https://blockstream.info/testnet/api": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "litecoin": {
+      "family": "utxo",
+      "testnet": false,
+      "endpoints": {
+        "https://litecoinspace.org/api": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "cosmoshub": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/cosmoshub": {
+          "ok": true,
+          "current": true
+        },
+        "https://cosmos-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "osmosis": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/osmosis": {
+          "ok": true,
+          "current": true
+        },
+        "https://osmosis-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "celestia": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/celestia": {
+          "ok": true,
+          "current": true
+        },
+        "https://celestia-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "injective": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/injective": {
+          "ok": true,
+          "current": true
+        },
+        "https://injective-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "dydx": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/dydx": {
+          "ok": true,
+          "current": true
+        },
+        "https://dydx-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "sei": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/sei": {
+          "ok": true,
+          "current": true
+        },
+        "https://rest.sei-apis.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://sei-api.polkachu.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "neutron": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/neutron": {
+          "ok": true,
+          "current": true
+        },
+        "https://neutron-api.polkachu.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "stride": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/stride": {
+          "ok": true,
+          "current": true
+        },
+        "https://stride-api.polkachu.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    },
+    "kava": {
+      "family": "cosmos",
+      "testnet": false,
+      "endpoints": {
+        "https://rest.cosmos.directory/kava": {
+          "ok": true,
+          "current": true
+        },
+        "https://kava-api.polkachu.com": {
+          "ok": true,
+          "current": true
+        },
+        "https://kava-rest.publicnode.com": {
+          "ok": true,
+          "current": true
+        }
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ import type { Holding } from '../core/holdings.js';
 import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
+import type { EndpointVerdict, LivenessHistoryReport } from '../core/liveness-history.js';
 import { shortAddress } from '../core/format.js';
 import type { Finality } from '../core/finality.js';
 import type { MeshResult } from '../mesh/search.js';
@@ -141,6 +142,42 @@ export function renderLiveness(
       : `  ${green(`All ${report.length} chains are live.`)}`,
   );
 
+  return out.join('\n');
+}
+
+/** What a recorded liveness history says, chain by chain. */
+export function renderLivenessHistory(report: LivenessHistoryReport): string {
+  if (!report.chains.length) return `  ${dim(report.completeness.note)}`;
+
+  const mark: Record<EndpointVerdict, string> = {
+    healthy: green('healthy'),
+    'load-bearing': yellow('load-bearing'),
+    lagging: yellow('lagging'),
+    flaky: yellow('flaky'),
+    silent: yellow('silent'),
+    unproven: dim('unproven'),
+    dead: red('DEAD'),
+  };
+
+  const out: string[] = [];
+  for (const chain of report.chains) {
+    out.push(
+      `  ${bold(chain.chain)}  ${dim(`${chain.samples} samples, failover held in ${chain.failoverHeld}, latest ${chain.latest}`)}`,
+    );
+    for (const endpoint of chain.endpoints) {
+      out.push(
+        `    ${pad(mark[endpoint.verdict], 14)} ${pad(endpoint.host, 34)} ` +
+          `${pad(`${endpoint.answered}/${endpoint.observations}`, 8)}` +
+          `${endpoint.medianMs !== undefined ? pad(`${endpoint.medianMs}ms`, 8) : pad(dim('—'), 8)}` +
+          (endpoint.medianBehindSeconds ? dim(`${describeAge(endpoint.medianBehindSeconds)} behind`) : '') +
+          (endpoint.configured === false ? dim(' (no longer configured)') : ''),
+      );
+    }
+    for (const finding of chain.findings) out.push(`    ${dim(finding)}`);
+    out.push('');
+  }
+
+  out.push(`  ${dim(report.completeness.note)}`);
   return out.join('\n');
 }
 

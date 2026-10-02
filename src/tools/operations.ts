@@ -35,7 +35,11 @@ import {
   runSerializedByHost,
   type ChainLiveness,
   type ChainTip,
+  type EndpointProbe,
 } from '../core/liveness.js';
+import { VERSION } from '../version.js';
+import { buildSnapshot, snapshotChains, type EndpointSnapshot } from '../core/endpoint-snapshot.js';
+import { BUILTIN_CHAINS } from '../core/chains.js';
 import {
   finality as finalityOf,
   finalityFromCheckpoint,
@@ -1085,7 +1089,24 @@ export async function checkEndpoints(chains?: string[]): Promise<EndpointHealthR
  */
 export async function checkLiveness(chains?: string[]): Promise<ChainLiveness[]> {
   const targets = chains?.length ? chains.map((ref) => getChain(ref)) : sweepChains();
+  const probes = await probeChains(targets);
+  return targets.map((chain) => classify(chain, probes(chain)));
+}
 
+/**
+ * The built-in endpoints as they answer now, for `doctor --snapshot`.
+ *
+ * Probes `BUILTIN_CHAINS` rather than the registry, so an override in the
+ * environment or the config file, which may carry an API key, never reaches a
+ * file meant to be committed.
+ */
+export async function snapshotEndpoints(): Promise<EndpointSnapshot> {
+  const targets = snapshotChains(BUILTIN_CHAINS);
+  return buildSnapshot(VERSION, targets, await probeChains(targets));
+}
+
+/** Probe every endpoint of every chain, each one on its own, serialized by host. */
+async function probeChains(targets: ChainSpec[]): Promise<(chain: ChainSpec) => EndpointProbe[]> {
   const jobs = targets.flatMap((chain) => chain.rpc.map((endpoint) => ({ chain, endpoint })));
 
   const probes = await runSerializedByHost(
@@ -1094,12 +1115,8 @@ export async function checkLiveness(chains?: string[]): Promise<ChainLiveness[]>
     (job) => probeEndpoint(job.chain, job.endpoint, tipReader(job.chain)),
   );
 
-  return targets.map((chain) =>
-    classify(
-      chain,
-      probes.filter((_, index) => jobs[index]!.chain.id === chain.id),
-    ),
-  );
+  // By identity rather than id: a registry chain and a built-in chain can share one.
+  return (chain) => probes.filter((_, index) => jobs[index]!.chain === chain);
 }
 
 /**

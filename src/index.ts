@@ -29,6 +29,24 @@ export { applyBudget, itemBudget, parseBudget } from './core/budget.js';
 export type { TokenScan, TransactionHistory, HistoryOptions, ScanOptions, StateOptions } from './core/adapter.js';
 export type { ChainLiveness, ChainTip, EndpointProbe, LivenessStatus } from './core/liveness.js';
 export { describeAge, isDegraded } from './core/liveness.js';
+export type {
+  ChainHistory,
+  EndpointHistory,
+  EndpointVerdict,
+  HistoryQuery,
+  HistoryRead,
+  LivenessHistory,
+  LivenessHistoryReport,
+  LivenessSample,
+  SampledEndpoint,
+} from './core/liveness-history.js';
+export {
+  FileLivenessHistory,
+  InMemoryLivenessHistory,
+  livenessHistoryPath,
+  sampleOf,
+  summarizeHistory,
+} from './core/liveness-history.js';
 
 /**
  * Polling. One loop, shared by `singularity watch` and `singularity-sdk`,
