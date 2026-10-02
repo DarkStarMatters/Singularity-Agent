@@ -2299,7 +2299,7 @@ The claims this project makes are small in number and mostly mechanical:
 Each is checkable. None is checked today except by the tests that happen to have been
 written for the specific function that once broke.
 
-### 7.3 Property tests across adapters, not examples within them — **begun, after v0.7.0**
+### 7.3 Property tests across adapters, not examples within them — **fifteen of twenty-three tools, after v0.7.0**
 
 *`test/invariants.property.test.ts` runs eight tools through their catalogue entries, as
 the MCP server does, against fast-check-generated adapters: `balance`, `portfolio`,
@@ -2310,10 +2310,28 @@ were put back one at a time and each failed it by name. They included violation 
 (rejected chains counted as searched), violation two (a failed token scan reported as
 curated), and a portfolio that dropped its failed chains.*
 
-*Not yet covered: the Solana payment and trade tools (`mint_audit`, `inspect_exit`,
-`verify_burn`, `inspect_payment`, `prove_payment`, `build_payment`). They read through
-their own RPC path rather than the adapter, so they need a fake at the connection, which
-is the next piece.*
+*The Solana payment and trade tools read through their own web3.js `Connection`, so
+`test/invariants.solana.property.test.ts` fakes it there. That covers `inspect_payment`,
+`build_payment`, `prove_payment`, `verify_burn`, `inspect_exit`, `mint_audit` and
+`build_burn`. Every RPC method either fails or gives the chain's empty answer, and no tool
+may then say `payable`, `proven`, `canExit: true` or a matched burn, or build a
+payload. A last test fails if a tool calls a method the fake does not know, so no
+property passes because of an unknown call.*
+
+*It found violation six on its first run, which is the measure this phase set itself.
+With every endpoint down, `inspect_payment` reported "No SPL mint exists" at USDC's
+address and called the demand `unpayable`. That is the same answer as a mint that
+really is not there. Eight reads in the Solana adapter turned a failed call into
+`null` and then into an absence. They covered the mint, the payee's account (in the
+inspection and in both builders), the payer's token account ("holds no token account …
+it does not exist"), the balance a simulation measures from, and the status lookup that
+separates a burn that has not finalized from one that is not there. They now fail over and, when no endpoint
+answers, report the chain unreadable (`unproven`). Two properties hold that an
+absence is stated only when its read answered, and both failed against the code
+before the fix. Checked afterwards on mainnet: a real USDC demand is still `payable`.*
+
+*Still outside both suites: `chains`, `token_identity`, `resolve`, `read_contract`,
+`decode`, `receipt_art`, `build_transfer` and `mesh`.*
 
 The shape that fits is property-based: generate adapter responses — empty, partial,
 throwing, half-throwing — and assert the invariants hold for *every* tool, rather than

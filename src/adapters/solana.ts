@@ -751,7 +751,7 @@ export const solanaAdapter: ChainAdapter = {
         const source = deriveAta(from, mint, facts.programId);
         const destination = deriveAta(to, mint, facts.programId);
 
-        const destinationExists = await connection.getAccountInfo(destination).catch(() => null);
+        const destinationExists = await connection.getAccountInfo(destination);
         if (!destinationExists) {
           warnings.push(
             `The recipient has no token account for this mint. The transaction must also create one (associated token account ${destination.toBase58()}), which costs ~0.002 SOL of rent.`,
@@ -1869,10 +1869,9 @@ export async function verifyBurn(chain: ChainSpec, rawSignature: string): Promis
       // Worth one extra call to separate "not yet" from "not there". Telling a
       // holder their burn does not exist when it merely has not finalized is
       // a wrong answer about the one thing they cannot redo.
-      const status = await connection
-        .getSignatureStatuses([signature])
-        .then((result) => result.value[0])
-        .catch(() => null);
+      // Not caught: a lookup that failed cannot separate "not yet" from "not
+      // there", and falling through to TX_NOT_FOUND would say the second.
+      const status = await connection.getSignatureStatuses([signature]).then((result) => result.value[0]);
 
       if (status) {
         throw new SingularityError(
@@ -2155,7 +2154,7 @@ export async function buildPayment(
       const source = deriveAta(payer, mint, facts.programId);
       const destination = deriveAta(to, mint, facts.programId);
 
-      const held = await connection.getAccountInfo(source).catch(() => null);
+      const held = await connection.getAccountInfo(source);
       if (!held?.data || held.data.length < TOKEN_ACCOUNT_AMOUNT_OFFSET + 8) {
         throw new SingularityError(
           'NO_TOKEN_ACCOUNT',
@@ -2173,7 +2172,7 @@ export async function buildPayment(
         );
       }
 
-      const destinationExists = await connection.getAccountInfo(destination).catch(() => null);
+      const destinationExists = await connection.getAccountInfo(destination);
       if (!destinationExists) {
         // Create it, rather than warning that the transfer will fail. Warning
         // alone hands back a transaction that cannot land, which is the thing
@@ -2909,13 +2908,19 @@ export async function inspectPaymentDemand(
 
   try {
     await withConnection(chain, 'inspectPaymentDemand', async (connection) => {
+      delete facts.destination;
+      delete facts.recipientIsTokenAccount;
+      delete facts.tokenMissing;
+      delete facts.transferFee;
+      delete facts.token;
+      delete facts.derivedAta;
       // A mint that was named but would not parse: there is nothing to read,
       // and treating it as a native payment would answer a different question.
       if (demand.mint && !mint) return;
 
       if (!mint) {
         if (to) {
-          const info = await connection.getAccountInfo(to).catch(() => null);
+          const info = await connection.getAccountInfo(to);
           facts.destination = { address: to.toBase58(), exists: Boolean(info) };
           facts.recipientIsTokenAccount = Boolean(
             info && (info.owner.equals(TOKEN_PROGRAM_ID) || info.owner.equals(TOKEN_2022_PROGRAM_ID)),
@@ -2927,9 +2932,17 @@ export async function inspectPaymentDemand(
       let mintFacts: MintFacts;
       try {
         mintFacts = await readMintFacts(connection, mint, chain);
-      } catch {
-        facts.tokenMissing = true;
-        return;
+      } catch (error) {
+        // Only an answer that there is no mint here is evidence of absence. A
+        // read that failed is rethrown, so the next endpoint is tried and, if
+        // none answers, the demand is reported unreadable rather than as naming
+        // a token that does not exist. Found by test/invariants.solana.property.test.ts:
+        // with every endpoint down, USDC was reported as "no SPL mint exists".
+        if (error instanceof SingularityError && error.code === 'NOT_A_MINT') {
+          facts.tokenMissing = true;
+          return;
+        }
+        throw error;
       }
 
       // Structural, not a warning string: a payer needs to branch on this, and
@@ -2952,7 +2965,7 @@ export async function inspectPaymentDemand(
       const target = named ?? derived;
       if (!target) return;
 
-      const info = await connection.getAccountInfo(target).catch(() => null);
+      const info = await connection.getAccountInfo(target);
 
       if (!info?.data || info.data.length < TOKEN_ACCOUNT_STATE_OFFSET + 1) {
         facts.destination = {
@@ -3070,7 +3083,7 @@ export async function simulateUnsigned(
       return info.data.readBigUInt64LE(TOKEN_ACCOUNT_AMOUNT_OFFSET);
     };
 
-    const before = await connection.getAccountInfo(destination).catch(() => null);
+    const before = await connection.getAccountInfo(destination);
     const pre = readBalance(before ? { data: Buffer.from(before.data), lamports: before.lamports } : null);
 
     const transaction = Transaction.from(Buffer.from(params.transaction, 'base64'));
