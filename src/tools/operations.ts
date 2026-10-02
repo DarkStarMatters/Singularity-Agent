@@ -39,6 +39,15 @@ import {
 } from '../core/liveness.js';
 import { VERSION } from '../version.js';
 import { buildSnapshot, snapshotChains, type EndpointSnapshot } from '../core/endpoint-snapshot.js';
+import {
+  assembleSeries,
+  DEFAULT_SERIES_POINTS,
+  refusesWholeSeries,
+  resolveFrom,
+  seriesHeights,
+  type BalanceSeries,
+  type PointOutcome,
+} from '../core/balance-series.js';
 import { BUILTIN_CHAINS } from '../core/chains.js';
 import {
   finality as finalityOf,
@@ -391,6 +400,70 @@ export async function getBalance(options: {
     atBlock,
     explorerUrl: explorerUrl(chain, 'address', address),
   };
+}
+
+/**
+ * Readings in flight at once for a series. Each is an archive read plus a block
+ * header, against public endpoints that rate-limit, so this stays small.
+ */
+const SERIES_CONCURRENCY = 4;
+
+/**
+ * The native balance at evenly spaced past heights.
+ *
+ * `to` defaults to the chain's head, and a negative `from` counts back from
+ * `to`. Each point is read with `atBlock`, so it is served at exactly that
+ * height or it is a hole: a pruned height is `unavailable`, never current
+ * state and never a neighbour's value. A chain that cannot read past state at
+ * all refuses the whole series once, rather than once per point.
+ */
+export async function balanceSeries(options: {
+  address: string;
+  chain: string;
+  from: number;
+  to?: number;
+  points?: number;
+}): Promise<BalanceSeries> {
+  const chain = getChain(options.chain);
+  const adapter = adapterFor(chain);
+  const address = await toAddress(options.address, chain);
+
+  const head = (await tipReader(chain)(chain)).height;
+  const to = options.to ?? head;
+  if (to > head) {
+    throw new SingularityError(
+      'BLOCK_NOT_YET_MINED',
+      `Block ${to} does not exist on ${chain.name} yet — the chain tip is ${head}.`,
+      'Leave `to` out to end the series at the head.',
+    );
+  }
+
+  const heights = seriesHeights(resolveFrom(options.from, to), to, options.points ?? DEFAULT_SERIES_POINTS);
+
+  const readPoint = async (block: number): Promise<PointOutcome> => {
+    // The header only dates the point. A header that cannot be read leaves the
+    // point undated rather than unread, because the balance is still the balance.
+    const timestamp = await adapter
+      .getBlock(chain, block)
+      .then((header) => header.timestamp)
+      .catch(() => undefined);
+    const dated = timestamp ? { timestamp } : {};
+
+    try {
+      const entry = await adapter.getNativeBalance(chain, address, { atBlock: block });
+      return { block, ...dated, amount: entry.amount };
+    } catch (error) {
+      if (refusesWholeSeries(error)) throw error;
+      return { block, ...dated, error };
+    }
+  };
+
+  const outcomes: PointOutcome[] = [];
+  for (let i = 0; i < heights.length; i += SERIES_CONCURRENCY) {
+    outcomes.push(...(await Promise.all(heights.slice(i, i + SERIES_CONCURRENCY).map(readPoint))));
+  }
+
+  return assembleSeries({ address, chain: chain.id, symbol: chain.nativeCurrency.symbol }, outcomes);
 }
 
 /** One address the caller gave, resolved and matched to the chains it works on. */

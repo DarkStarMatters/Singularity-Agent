@@ -29,6 +29,7 @@ const TOOL_TO_COMMAND: Record<string, string> = {
   chains: 'chains',
   resolve: 'resolve',
   balance: 'balance',
+  balance_series: 'series',
   portfolio: 'portfolio',
   transaction: 'tx',
   block: 'block',

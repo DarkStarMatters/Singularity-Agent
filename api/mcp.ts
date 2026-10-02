@@ -7,7 +7,7 @@
  * exchange, which registers agents by endpoint and has nothing to call
  * otherwise.
  *
- * So the same twenty-two tools are served here, from the same catalogue. That
+ * So the same twenty-three tools are served here, from the same catalogue. That
  * sharing is the point rather than a convenience: two hand-maintained tool
  * lists drift, and the one that drifts silently is the one nobody runs
  * locally.

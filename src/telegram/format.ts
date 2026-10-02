@@ -25,6 +25,7 @@ import type {
   ChainSummary,
   PortfolioResult,
 } from '../tools/operations.js';
+import type { BalanceSeries } from '../core/balance-series.js';
 import type { TokenIdentity } from '../core/types.js';
 import type { TokenExitReport } from '../trade/types.js';
 import type { PaymentDemandReport, PaymentProof } from '../pay/types.js';
@@ -86,6 +87,25 @@ export function formatBalance(result: BalanceResult): string {
   if (result.tokenScanNote) lines.push('', `<i>${esc(result.tokenScanNote)}</i>`);
   if (result.explorerUrl) lines.push('', link(result.explorerUrl, 'View on explorer'));
 
+  return lines.join('\n');
+}
+
+/** One line per reading, and holes kept as holes. Never a chart: the line between points is unknown. */
+export function formatBalanceSeries(series: BalanceSeries): string {
+  const lines = [`${bold(series.chain)} — ${code(shortAddress(series.address))}`, ''];
+
+  for (const point of series.points) {
+    const when = point.timestamp ? point.timestamp.slice(0, 10) : 'undated';
+    const value =
+      point.status === 'read'
+        ? `<code>${esc(point.amount!.formatted)}</code> ${esc(series.symbol)}${point.change && point.changeRaw !== '0' ? ` <i>${esc(point.change)}</i>` : ''}`
+        : point.status === 'unavailable'
+          ? '<i>not kept by this endpoint</i>'
+          : '<i>could not be read</i>';
+    lines.push(`#${point.block} · ${esc(when)} — ${value}`);
+  }
+
+  lines.push('', `<i>${esc(series.completeness.note)}</i>`);
   return lines.join('\n');
 }
 

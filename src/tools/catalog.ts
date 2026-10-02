@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import * as ops from './operations.js';
 import { parseBudget } from '../core/budget.js';
+import { DEFAULT_SERIES_POINTS, MAX_SERIES_POINTS } from '../core/balance-series.js';
 
 export interface ToolAnnotations {
   readOnlyHint: boolean;
@@ -131,6 +132,28 @@ export const TOOLS: ToolDefinition[] = [
       budget: budgetArg,
     },
     run: (args) => ops.getBalance({ ...args, budget: parseBudget(args.budget) }),
+  }),
+
+  defineTool({
+    name: 'balance_series',
+    title: 'A native balance at several past blocks',
+    description:
+      'The native balance of one address at evenly spaced past block heights, each point dated by its block, for questions like "how has this wallet\'s ETH moved over the last year". Every point is read at exactly its height or reported as a hole: `unavailable` is a height the endpoint no longer keeps (a pruned node, a hole rather than a zero), and `failed` is any other error. A missing point is never filled in from its neighbours. **Nothing between two points is known**: a deposit and a withdrawal between them leave no trace, so `change` is the difference between two readings, and a change of zero means the same balance at both ends, not that nothing happened. Never draw or describe the series as continuous. Read `completeness`, which is never `exhaustive`. EVM (needs an archive endpoint for old heights) and Cosmos only; Solana and UTXO chains refuse the whole series, because they cannot read past state. Native asset only; for one token at one past block use `balance` with `atBlock`.',
+    shape: {
+      address: z.string().describe('Address, ENS name, or configured alias.'),
+      chain: z.string().describe('Chain id or alias, e.g. "ethereum", "base", "cosmoshub".'),
+      from: z
+        .number()
+        .int()
+        .describe('First block height. Negative counts back from `to`: -100000 means 100,000 blocks before it.'),
+      to: z.number().int().optional().describe('Last block height. Defaults to the chain head.'),
+      points: z
+        .number()
+        .int()
+        .optional()
+        .describe(`How many evenly spaced readings, both ends included: 2 to ${MAX_SERIES_POINTS}, default ${DEFAULT_SERIES_POINTS}. Each one is a separate archive read.`),
+    },
+    run: (args) => ops.balanceSeries(args),
   }),
 
   defineTool({

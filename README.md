@@ -96,7 +96,7 @@ Or by hand, in any MCP client that speaks streamable HTTP:
 
 The `type` field matters: a `url` without one is skipped silently by some clients.
 
-This serves the same twenty-two tools as the local server, from the same catalogue, with
+This serves the same twenty-three tools as the local server, from the same catalogue, with
 full input schemas. It is read-only, holds no keys, and needs no credentials — so the
 trade is the obvious one: your queries reach our endpoint rather than staying on your
 machine. If that matters, use the local route below; it is identical in every other way.
@@ -192,7 +192,7 @@ so on the card instead of vanishing.
 ### Telegram
 
 Every tool the CLI and MCP server expose has a bot command, and a test asserts that
-mapping so the three cannot drift. Thirty-four commands, plus aliases — a second test
+mapping so the three cannot drift. Thirty-five commands, plus aliases — a second test
 asserts every name resolves to exactly one of them, after `/invoice` turned out to be
 claimed by two and silently reachable as only one.
 
@@ -201,6 +201,7 @@ claimed by two and silently reachable as only one.
 | Command | What it does |
 | --- | --- |
 | `/balance <address> [chain]` | Balances for one address on one chain. |
+| `/series <address> <chain> <from> [points]` | The native balance at several past blocks; a negative `from` counts back from the head. Also `/balance_series`. |
 | `/portfolio <address[,…]> [chains]` | One address, or several, across many chains. |
 | `/tx <hash> [chain]` | Look up a transaction. Also `/transaction`. |
 | `/history <address> <chain> [limit]` | What an address has been doing. |
@@ -473,6 +474,9 @@ singularity balance vitalik.eth --chain ethereum
 # The same balances as of a past block, or nothing at all.
 singularity balance vitalik.eth --chain ethereum --at-block 19000000
 
+# The same balance at eight heights over the last ~2M blocks, each dated, holes left as holes.
+singularity series vitalik.eth --chain ethereum --from=-2000000
+
 # One address across every chain its format is valid on.
 singularity portfolio 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 
@@ -546,6 +550,7 @@ Twenty-four commands, four of them with subcommands. `--json` works on all of th
 | `chains [query]` | Every supported chain, filterable by name, id, alias or symbol. |
 | `resolve <input>` | What a string is — address, tx hash, ENS/SNS name, block height — and which chains it could belong to. |
 | `balance <address>` | Native and token balances on one chain. `--at-block` reads the past. |
+| `series <address>` | The native balance at evenly spaced past blocks, read at exactly each height. `--from=-100000` counts back from the head. |
 | `portfolio <address...>` | One address, or several, across many chains at once. |
 | `history <address>` | Recent transactions, newest first. Says so when an EVM indexer key is missing. |
 | `tx <hash>` | A transaction, searched across chains when you do not name one. |
@@ -766,6 +771,7 @@ decision. Rarity falls out of the run rather than out of a table somebody wrote 
 | `chains` | List supported chains, with families, ids, aliases, native assets. |
 | `resolve` | Identify an address / tx hash / name and which chains it belongs to. |
 | `balance` | Native + token balances on one chain, now or `atBlock`, with a `completeness` saying what the list covers. Takes a `budget`. |
+| `balance_series` | The native balance at evenly spaced past blocks, each dated, each read at exactly its height or reported as a hole. EVM and Cosmos. |
 | `portfolio` | One address, or a set of them, across many chains in parallel. Takes a `budget`, applied per chain. |
 | `transaction` | Fetch and normalize a transaction, decoding EVM calldata, with a `finality` saying whether its block can still be discarded. |
 | `history` | What an address has been doing, newest first. Takes a `budget` or an exact `limit`. Reports that it has no answer rather than an empty list when an EVM indexer key is missing. |

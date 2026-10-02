@@ -100,6 +100,7 @@ describe('tool catalogue', () => {
   it('gives the same tools MCP exposes', () => {
     expect(TOOLS.map((t) => t.name).sort()).toEqual([
       'balance',
+      'balance_series',
       'block',
       'build_burn',
       'build_payment',

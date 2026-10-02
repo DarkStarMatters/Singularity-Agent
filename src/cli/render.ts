@@ -17,6 +17,7 @@ import type { CreatedIntent, SettlementResult } from '../pay/operations.js';
 import type { StoredIntent } from '../pay/intent.js';
 import { describeAge, type ChainLiveness } from '../core/liveness.js';
 import type { EndpointVerdict, LivenessHistoryReport } from '../core/liveness-history.js';
+import type { BalanceSeries } from '../core/balance-series.js';
 import { shortAddress } from '../core/format.js';
 import type { Finality } from '../core/finality.js';
 import type { MeshResult } from '../mesh/search.js';
@@ -231,6 +232,46 @@ export function renderResolve(result: ResolvedIdentity): string {
   }
   if (result.note) lines.push(`\n  ${dim(result.note)}`);
   return lines.join('\n');
+}
+
+/**
+ * A balance series as a table, deliberately not as a chart.
+ *
+ * A sparkline would draw a line between readings, and the line is exactly the
+ * part nobody knows. Holes stay in the table as holes.
+ */
+export function renderBalanceSeries(series: BalanceSeries): string {
+  const rows = series.points.map((point) => [
+    `#${point.block}`,
+    point.timestamp ? point.timestamp.slice(0, 16).replace('T', ' ') : dim('undated'),
+    point.status === 'read'
+      ? `${point.amount!.formatted} ${series.symbol}`
+      : point.status === 'unavailable'
+        ? yellow('not kept')
+        : red('failed'),
+    point.change === undefined
+      ? ''
+      : point.changeRaw === '0'
+        ? dim('same')
+        : point.change.startsWith('-')
+          ? red(point.change)
+          : green(point.change),
+  ]);
+
+  const out = [
+    `  ${bold(series.address)} ${dim(`on ${series.chain}`)}`,
+    '',
+    table(rows, ['BLOCK', 'TIME (UTC)', 'BALANCE', 'CHANGE']),
+  ];
+
+  const failed = series.points.filter((p) => p.status !== 'read');
+  if (failed.length) {
+    out.push('');
+    for (const point of failed) out.push(`  ${dim(`#${point.block}  ${truncate(point.reason ?? '', 110)}`)}`);
+  }
+
+  out.push('', `  ${dim(series.completeness.note)}`);
+  return out.join('\n');
 }
 
 export function renderBalance(result: BalanceResult): string {

@@ -28,6 +28,7 @@ describe('MCP server', () => {
 
     expect(tools.map((t) => t.name).sort()).toEqual([
       'balance',
+      'balance_series',
       'block',
       'build_burn',
       'build_payment',

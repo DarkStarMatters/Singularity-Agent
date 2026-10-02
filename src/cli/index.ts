@@ -119,6 +119,32 @@ program
   );
 
 program
+  .command('series')
+  .description('The native balance at evenly spaced past blocks, each read at exactly its height.')
+  .argument('<address>', 'Address, ENS name, or configured alias.')
+  .requiredOption('-c, --chain <chain>', 'Chain id or alias (EVM or Cosmos).')
+  .requiredOption('--from <height>', 'First block. Negative counts back from --to: --from=-100000.')
+  .option('--to <height>', 'Last block. Defaults to the chain head.')
+  .option('-p, --points <count>', 'How many readings, both ends included. Default 8.')
+  .action(async (address: string, options: { chain: string; from: string; to?: string; points?: string }) => {
+    const integer = (value: string, flag: string): number => {
+      if (!/^-?\d+$/.test(value.trim())) {
+        throw new SingularityError('BAD_SERIES_RANGE', `${flag} "${value}" is not a whole number.`);
+      }
+      return Number(value);
+    };
+
+    const series = await ops.balanceSeries({
+      address,
+      chain: options.chain,
+      from: integer(options.from, '--from'),
+      ...(options.to !== undefined ? { to: integer(options.to, '--to') } : {}),
+      ...(options.points !== undefined ? { points: integer(options.points, '--points') } : {}),
+    });
+    emit(series, render.renderBalanceSeries);
+  });
+
+program
   .command('portfolio')
   .description('Balances for one address, or a set of them, across many chains at once.')
   .argument(

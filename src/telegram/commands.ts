@@ -25,6 +25,7 @@ import { runDraftsCommand, runXCommand, type XControl } from './control.js';
 import type { InlineKeyboard } from './api.js';
 import {
   formatBalance,
+  formatBalanceSeries,
   formatBlock,
   formatChains,
   formatDecoded,
@@ -148,6 +149,27 @@ const balance: Command = {
   async run(ctx) {
     const address = required(ctx, 0, 'an address', balance);
     return formatBalance(await ops.getBalance({ address, chain: ctx.args[1] ?? 'ethereum' }));
+  },
+};
+
+const series: Command = {
+  name: 'series',
+  aliases: ['balance_series'],
+  usage: '/series <address> <chain> <from> [points]',
+  summary: 'A native balance at several past blocks',
+  async run(ctx) {
+    const address = required(ctx, 0, 'an address', series);
+    const chain = required(ctx, 1, 'a chain', series);
+    const from = Number(required(ctx, 2, 'a starting block (negative counts back from the head)', series));
+    const points = ctx.args[3] === undefined ? undefined : Number(ctx.args[3]);
+
+    if (!Number.isSafeInteger(from) || (points !== undefined && !Number.isSafeInteger(points))) {
+      throw new SingularityError('BAD_SERIES_RANGE', 'The starting block and the number of points must be whole numbers.', `Usage: ${series.usage}`);
+    }
+
+    return formatBalanceSeries(
+      await ops.balanceSeries({ address, chain, from, ...(points !== undefined ? { points } : {}) }),
+    );
   },
 };
 
@@ -1205,6 +1227,7 @@ const start: Command = {
 /** Order here is the order `/help` lists them. */
 const COMMAND_LIST: Command[] = [
   balance,
+  series,
   portfolio,
   tx,
   history,

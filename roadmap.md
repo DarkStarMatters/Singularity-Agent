@@ -2158,7 +2158,24 @@ that are listed," checked at the moment a chain is added. Nothing re-checks it a
 so a chain admitted on two healthy providers can decay to one, or to none, and the config
 will keep asserting failover it no longer has.
 
-### 6.3 Balances over time, carefully
+### 6.3 Balances over time, carefully — **shipped, after v0.6.0**
+
+*Shipped as `balance_series`, the twenty-third tool (`series` in the CLI and the bot). It
+reads the native balance at up to 32 evenly spaced heights, each one with `atBlock` and
+each dated by its own block header. Every point is `read`, `unavailable` (a height the
+endpoint no longer keeps) or `failed`, and a missing point is never filled in from its
+neighbours. Each reading carries its change from the previous one, and the description
+says outright that a change of zero is the same balance at both ends, not an absence of
+activity. Completeness is `curated` when every height was read, `truncated` with the
+count when some were not, and `failed` when none were. It is never `exhaustive`. A chain
+that cannot read past state refuses the whole series once. The CLI renders a table, not a
+chart, because a chart draws the line between points, and the line is the part nobody
+knows. Against Cosmos Hub's public LCDs, three of four heights over the last three
+million blocks came back `unavailable`, which is the case this was built for.
+
+Still open: tokens. A token at a past height is readable for one point through `balance`,
+but a token scan drops zero balances, so a series built on it could not tell "held none"
+from "not read". That needs a direct balance read per token, not the scan.*
 
 `atBlock` already reads past state, one block at a time. A series is the obvious next
 thing and the easiest one to get wrong: a chart of a balance implies the gaps between
