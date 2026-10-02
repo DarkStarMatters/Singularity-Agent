@@ -1,0 +1,9 @@
+# Every checkout gets LF, whatever core.autocrlf says. A CRLF checkout broke
+# the shebang test and the Lean vector test, and CI runs on LF; a working copy
+# that differs from CI is one where "passes here" stops meaning anything.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

@@ -1,0 +1,71 @@
+# The checks every change to main has to pass.
+#
+# Phase 7 set its own measure: a violation caught by the build instead of by a
+# person reading output and finding it odd. The property suites in test/ are
+# what catch them, and until this file existed they only ran when somebody
+# remembered to run them. Violations six and seven were both caught that way.
+#
+# Order matters in the node job. The SDK resolves `singularity-agent` through
+# the workspace link, so the agent has to be built before the SDK typechecks or
+# tests, and the SDK's templates resolve `singularity-sdk` the same way, so the
+# SDK has to be built too. A dev checkout hides this because its gitignored
+# `dist/` directories are already there.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # 20 is the floor `engines` promises, so it is tested rather than assumed.
+        node: [20, 22, 24]
+        include:
+          # The plugin and the bots are developed and run on Windows.
+          - os: windows-latest
+            node: 22
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:sdk
+      - run: npm run typecheck
+      - run: npm run typecheck -w singularity-sdk
+      - run: npm run typecheck:lean
+      - run: npm test
+
+  quantum-agent:
+    name: quantum-agent (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: quantum-agent
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: quantum-agent/uv.lock
+      - run: uv run --frozen pytest -q
